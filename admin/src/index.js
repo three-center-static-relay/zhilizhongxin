@@ -1,4 +1,4 @@
-// cloudflare-deploy-refresh: 2026-08-14T22:01+08:00
+// cloudflare-deploy-refresh: 2026-08-14T22:06+08:00-admin-sequential
 // cloudflare-route-verification: admin-v2
 export default {
   async fetch(request) {
