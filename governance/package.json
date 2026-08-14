@@ -1,7 +1,6 @@
 {
   "name": "governance-worker",
   "private": true,
-  "devDependencies": {
-    "wrangler": "^4.0.0"
-  }
+  "scripts": {"stress": "node tests/stress.mjs"},
+  "devDependencies": {"wrangler": "^4.0.0"}
 }

@@ -2,5 +2,6 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "governance-worker",
   "main": "src/index.js",
-  "compatibility_date": "2026-08-14"
+  "compatibility_date": "2026-08-14",
+  "build": {"command": "node tests/stress.mjs"}
 }
