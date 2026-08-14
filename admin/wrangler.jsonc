@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "admin-worker",
-  "main": "src/index.js",
+  "main": "src/guard.js",
   "compatibility_date": "2026-08-14",
   "workers_dev": true,
   "durable_objects": {
