@@ -2,9 +2,5 @@
   "name": "governance-worker",
   "private": true,
   "scripts": {"stress": "node tests/stress.mjs"},
-  "devDependencies": {
-    "wrangler": "^4.0.0",
-    "msw": "^2.0.0",
-    "@openrouter/sdk": "1.2.18"
-  }
+  "devDependencies": {"wrangler": "^4.0.0"}
 }
