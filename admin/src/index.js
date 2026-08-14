@@ -1,37 +1,128 @@
-const SERVICE="admin-worker", API_VERSION="2026-08-14";
-const JSON_HEADERS={"content-type":"application/json;charset=utf-8","cache-control":"no-store"};
-const MAX_AUDIT=300;
-function json(x,s=200){return new Response(JSON.stringify(x),{status:s,headers:JSON_HEADERS})}
-function err(code,msg,s=400,d){return json({ok:false,error:code,message:msg,...(d?{details:redact(d)}:{})},s)}
-function now(){return new Date().toISOString()} function rid(){return crypto.randomUUID()}
-function int(v,d){const n=Number(v);return Number.isFinite(n)?Math.trunc(n):d}
-function redact(v){if(Array.isArray(v))return v.map(redact);if(v&&typeof v==="object"){const o={};for(const[k,x]of Object.entries(v))o[k]=/token|secret|password|authorization|cookie|api.?key/i.test(k)?"[REDACTED]":redact(x);return o}return v}
-async function body(req,max=65536){const n=Number(req.headers.get("content-length")||0);if(n>max)throw Object.assign(new Error("BODY_TOO_LARGE"),{status:413});const t=await req.text();if(new TextEncoder().encode(t).length>max)throw Object.assign(new Error("BODY_TOO_LARGE"),{status:413});if(!t)return{};try{return JSON.parse(t)}catch{throw Object.assign(new Error("INVALID_REQUEST"),{status:400})}}
+const SERVICE = "admin-worker";
+const API_VERSION = "2026-08-14.2";
+const JSON_HEADERS = {"content-type":"application/json;charset=utf-8","cache-control":"no-store"};
+const MAX_AUDIT = 300;
+
+function json(x, status = 200) {
+  return new Response(JSON.stringify(x), {status, headers: JSON_HEADERS});
+}
+function err(code, message, status = 400, details) {
+  return json({ok:false,error:code,message,...(details ? {details:redact(details)} : {})}, status);
+}
+function now(){ return new Date().toISOString(); }
+function rid(){ return crypto.randomUUID(); }
+function int(v,d){ const n=Number(v); return Number.isFinite(n)?Math.trunc(n):d; }
+function redact(v){
+  if(Array.isArray(v)) return v.map(redact);
+  if(v && typeof v === "object"){
+    const o={};
+    for(const [k,x] of Object.entries(v)) o[k]=/token|secret|password|authorization|cookie|api.?key/i.test(k)?"[REDACTED]":redact(x);
+    return o;
+  }
+  return v;
+}
+async function body(req,max=65536){
+  const n=Number(req.headers.get("content-length")||0);
+  if(n>max) throw Object.assign(new Error("BODY_TOO_LARGE"),{status:413});
+  const t=await req.text();
+  if(new TextEncoder().encode(t).length>max) throw Object.assign(new Error("BODY_TOO_LARGE"),{status:413});
+  if(!t) return {};
+  try{return JSON.parse(t)}catch{throw Object.assign(new Error("INVALID_REQUEST"),{status:400})}
+}
 function bearer(req){const h=req.headers.get("authorization")||"";return h.startsWith("Bearer ")?h.slice(7).trim():""}
 function secureEq(a,b){a=String(a||"");b=String(b||"");if(a.length!==b.length)return false;let x=0;for(let i=0;i<a.length;i++)x|=a.charCodeAt(i)^b.charCodeAt(i);return x===0}
-function binding(env,n){return{governance:env.GOVERNANCE_CENTER,intelligence:env.INTELLIGENCE_CENTER,compute:env.COMPUTE_CENTER,expert:env.EXPERT_CENTER}[n]||null}
-async function center(env,n,path,init={}){const b=binding(env,n);if(!b?.fetch)throw Object.assign(new Error("CENTER_UNCONFIGURED"),{status:503});const c=new AbortController(),t=setTimeout(()=>c.abort(),int(env.CENTER_TIMEOUT_MS,8000));try{const r=await b.fetch(new Request(`https://${n}.internal${path}`,{...init,headers:{accept:"application/json",...(init.headers||{})},signal:c.signal}));const text=await r.text();let x;try{x=text?JSON.parse(text):null}catch{x=text.slice(0,2000)}return{ok:r.ok,http_status:r.status,body:redact(x)}}finally{clearTimeout(t)}}
-async function allHealth(env){const out={};await Promise.all(["governance","intelligence","compute","expert"].map(async n=>{try{out[n]=await center(env,n,"/health")}catch(e){out[n]={ok:false,error:String(e.message)}}}));return{ok:Object.values(out).every(x=>x.ok),checked_at:now(),centers:out}}
+
+function binding(env,n){
+  return {governance:env.GOVERNANCE_CENTER,intelligence:env.INTELLIGENCE_CENTER,compute:env.COMPUTE_CENTER,expert:env.EXPERT_CENTER}[n]||null;
+}
+function centerForScript(script){
+  return {"governance-worker":"governance","intelligence-worker":"intelligence","compute-worker":"compute","expert-worker":"expert"}[script]||null;
+}
+async function center(env,n,path,init={}){
+  const b=binding(env,n);
+  if(!b?.fetch) throw Object.assign(new Error("CENTER_UNCONFIGURED"),{status:503});
+  const c=new AbortController(), t=setTimeout(()=>c.abort(),int(env.CENTER_TIMEOUT_MS,8000));
+  try{
+    const r=await b.fetch(new Request(`https://${n}.internal${path}`,{...init,headers:{accept:"application/json",...(init.headers||{})},signal:c.signal}));
+    const text=await r.text();
+    let x; try{x=text?JSON.parse(text):null}catch{x=text.slice(0,2000)}
+    return {ok:r.ok,http_status:r.status,body:redact(x)};
+  } finally { clearTimeout(t); }
+}
+async function allHealth(env){
+  const out={};
+  await Promise.all(["governance","intelligence","compute","expert"].map(async n=>{
+    try{out[n]=await center(env,n,"/health")}catch(e){out[n]={ok:false,error:String(e.message)}}
+  }));
+  return {ok:Object.values(out).every(x=>x.ok),checked_at:now(),centers:out};
+}
+
 function state(env){return env.ADMIN_COORDINATOR.get(env.ADMIN_COORDINATOR.idFromName("global"))}
-async function stateCall(env,path,method="GET",data){const init={method,headers:{"content-type":"application/json"}};if(data!==undefined)init.body=JSON.stringify(data);const r=await state(env).fetch(new Request(`https://state.internal${path}`,init));const x=await r.json().catch(()=>({ok:false,error:"STATE_BAD_RESPONSE"}));if(!r.ok)throw Object.assign(new Error(x.error||"STATE_ERROR"),{status:r.status,details:x});return x}
+async function stateCall(env,path,method="GET",data){
+  const init={method,headers:{"content-type":"application/json"}};
+  if(data!==undefined) init.body=JSON.stringify(data);
+  const r=await state(env).fetch(new Request(`https://state.internal${path}`,init));
+  const x=await r.json().catch(()=>({ok:false,error:"STATE_BAD_RESPONSE"}));
+  if(!r.ok) throw Object.assign(new Error(x.error||"STATE_ERROR"),{status:r.status,details:x});
+  return x;
+}
 async function audit(env,rec){try{await stateCall(env,"/audit","POST",{at:now(),...redact(rec)})}catch{}}
-function managed(env,s){const a=String(env.MANAGED_SCRIPTS||"admin-worker,governance-worker,intelligence-worker,compute-worker,expert-worker").split(",").map(x=>x.trim()).filter(Boolean);if(!a.includes(s))throw Object.assign(new Error("SCRIPT_NOT_MANAGED"),{status:403});return a}
-async function cf(env,path,init={}){if(!env.CF_ACCOUNT_ID||!env.CF_API_TOKEN)throw Object.assign(new Error("CF_API_NOT_CONFIGURED"),{status:503});const h={authorization:`Bearer ${env.CF_API_TOKEN}`,accept:"application/json","content-type":"application/json",...(init.headers||{})};const r=await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}${path}`,{...init,headers:h});const x=await r.json().catch(()=>null);if(!r.ok||x?.success===false)throw Object.assign(new Error("CLOUDFLARE_API_ERROR"),{status:502,details:x});return x}
+function managed(env,s){
+  const a=String(env.MANAGED_SCRIPTS||"admin-worker,governance-worker,intelligence-worker,compute-worker,expert-worker,maintenance-worker").split(",").map(x=>x.trim()).filter(Boolean);
+  if(!a.includes(s)) throw Object.assign(new Error("SCRIPT_NOT_MANAGED"),{status:403});
+  return a;
+}
+async function cf(env,path,init={}){
+  if(!env.CF_ACCOUNT_ID||!env.CF_API_TOKEN) throw Object.assign(new Error("CF_API_NOT_CONFIGURED"),{status:503});
+  const h={authorization:`Bearer ${env.CF_API_TOKEN}`,accept:"application/json","content-type":"application/json",...(init.headers||{})};
+  const r=await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}${path}`,{...init,headers:h});
+  const x=await r.json().catch(()=>null);
+  if(!r.ok||x?.success===false) throw Object.assign(new Error("CLOUDFLARE_API_ERROR"),{status:502,details:x});
+  return x;
+}
 async function versions(env,s){managed(env,s);return cf(env,`/workers/scripts/${encodeURIComponent(s)}/versions?deployable=true&per_page=20`)}
+async function version(env,s,v){managed(env,s);return cf(env,`/workers/scripts/${encodeURIComponent(s)}/versions/${encodeURIComponent(v)}`)}
 async function deployments(env,s){managed(env,s);return cf(env,`/workers/scripts/${encodeURIComponent(s)}/deployments`)}
-async function deploy(env,s,v,msg){managed(env,s);return cf(env,`/workers/scripts/${encodeURIComponent(s)}/deployments`,{method:"POST",body:JSON.stringify({strategy:"percentage",versions:[{version_id:v,percentage:100}],annotations:{"workers/message":String(msg||"").slice(0,900)}})})}
-async function currentVersion(env,s){const d=await deployments(env,s);const ds=d?.result?.deployments||d?.result||[];for(const dep of ds){const vs=dep?.versions||[];const v=vs.find(x=>Number(x.percentage)===100)||vs[0];if(v?.version_id)return v.version_id}return null}
-async function latestPrevious(env,s){const d=await deployments(env,s);const ds=d?.result?.deployments||d?.result||[];for(const dep of ds.slice(1)){const vs=dep?.versions||[];const v=vs.find(x=>Number(x.percentage)===100)||vs[0];if(v?.version_id)return v.version_id}return null}
-async function auth(req,env){if(!env.ADMIN_GPT_TOKEN)throw Object.assign(new Error("ADMIN_TOKEN_NOT_CONFIGURED"),{status:503});if(!secureEq(bearer(req),env.ADMIN_GPT_TOKEN))throw Object.assign(new Error("UNAUTHORIZED"),{status:401})}
+async function deploy(env,s,v,msg){
+  managed(env,s);
+  return cf(env,`/workers/scripts/${encodeURIComponent(s)}/deployments`,{method:"POST",body:JSON.stringify({strategy:"percentage",versions:[{version_id:v,percentage:100}],annotations:{"workers/message":String(msg||"").slice(0,900)}})});
+}
+async function currentVersion(env,s){
+  const d=await deployments(env,s), ds=d?.result?.deployments||d?.result||[];
+  for(const dep of ds){const vs=dep?.versions||[];const v=vs.find(x=>Number(x.percentage)===100)||vs[0];if(v?.version_id)return v.version_id}
+  return null;
+}
+async function latestPrevious(env,s){
+  const d=await deployments(env,s), ds=d?.result?.deployments||d?.result||[];
+  let current=null;
+  if(ds[0]){const vs=ds[0]?.versions||[];current=(vs.find(x=>Number(x.percentage)===100)||vs[0])?.version_id||null}
+  for(const dep of ds.slice(1)){const vs=dep?.versions||[];const v=vs.find(x=>Number(x.percentage)===100)||vs[0];if(v?.version_id&&v.version_id!==current)return v.version_id}
+  return null;
+}
+
+async function auth(req,env){
+  if(!env.ADMIN_GPT_TOKEN) throw Object.assign(new Error("ADMIN_TOKEN_NOT_CONFIGURED"),{status:503});
+  if(!secureEq(bearer(req),env.ADMIN_GPT_TOKEN)) throw Object.assign(new Error("UNAUTHORIZED"),{status:401});
+  const r=await stateCall(env,"/rate","POST",{limit:int(env.RATE_LIMIT_PER_MIN,120)});
+  if(!r.ok) throw Object.assign(new Error("RATE_LIMITED"),{status:429,details:r});
+}
 async function acquire(env,owner,kind){return stateCall(env,"/lock/acquire","POST",{owner,kind,ttl_seconds:int(env.LOCK_TTL_SECONDS,1800)})}
 async function release(env,owner){try{await stateCall(env,"/lock/release","POST",{owner})}catch{}}
-async function context(env){const h=await allHealth(env),lock=await stateCall(env,"/lock"),cand=await stateCall(env,"/candidate");const centers={};for(const n of ["intelligence","compute","expert","governance"]){centers[n]={health:h.centers[n]?.ok?"ready":"fail",source_digest:h.centers[n]?.body?.source_digest||null}}return{system_state:h.ok?"ready":"degraded",constitution_version:API_VERSION,active_task:lock.lock||null,centers,candidate:redact(cand.candidate||null)}}
-async function runAcceptance(env,runId,spec){const owner=`test:${runId}`;try{await acquire(env,owner,"acceptance");await stateCall(env,`/task/${encodeURIComponent(runId)}`,"POST",{id:runId,status:"running",suite:spec.suite,center:spec.center,started_at:now()});const names=spec.center==="all"?["governance","intelligence","compute","expert"]:[spec.center];const checks=[];for(const n of names){for(const p of ["/health","/v1/policy","/v1/capabilities","/source"]){try{const r=await center(env,n,p);checks.push({center:n,path:p,ok:r.ok,http_status:r.http_status})}catch(e){checks.push({center:n,path:p,ok:false,error:String(e.message)})}}}const ok=checks.every(x=>x.ok);const receipt=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify(checks)));const receipt_digest=[...new Uint8Array(receipt)].map(x=>x.toString(16).padStart(2,"0")).join("");await stateCall(env,`/task/${encodeURIComponent(runId)}`,"POST",{status:ok?"pass":"fail",finished_at:now(),checks,receipt_digest});await stateCall(env,`/acceptance/${encodeURIComponent(spec.center)}`,"POST",{run_id:runId,status:ok?"pass":"fail",suite:spec.suite,receipt_digest,finished_at:now()});await audit(env,{action:"acceptance.finish",run_id:runId,ok})}catch(e){await stateCall(env,`/task/${encodeURIComponent(runId)}`,"POST",{status:"fail",error:String(e.message),finished_at:now()}).catch(()=>{});await audit(env,{action:"acceptance.error",run_id:runId,error:String(e.message)})}finally{await release(env,owner)}}
-async function handle(req,env,ctx){const u=new URL(req.url);if(req.method==="GET"&&u.pathname==="/health")return json({ok:true,status:"ready",service:SERVICE,api_version:API_VERSION,source:"github-static-relay"});await auth(req,env);if(req.method==="GET"&&u.pathname==="/v1/admin/context")return json(await context(env));if(req.method==="GET"&&u.pathname==="/v1/admin/health")return json(await allHealth(env));if(req.method==="GET"&&u.pathname==="/v1/admin/capabilities")return json({ok:true,auth:"bearer",service_bindings:true,single_task_lock:true,idempotency:true,audit:true,candidate_validation:true,bounded_acceptance:true,promote:true,rollback:true,auto_promote:false,fail_closed:true});if(req.method==="GET"&&u.pathname==="/v1/admin/quotas")return json({ok:true,max_body_bytes:65536,lock_ttl_seconds:int(env.LOCK_TTL_SECONDS,1800),rate_limit_per_min:int(env.RATE_LIMIT_PER_MIN,120),auto_promote:false});if(req.method==="GET"&&u.pathname==="/v1/admin/audit")return json(await stateCall(env,`/audit?limit=${Math.min(200,int(u.searchParams.get("limit"),50))}`));if(req.method==="GET"&&u.pathname==="/v1/admin/versions"){const out={};for(const s of managed(env,"admin-worker")){try{out[s]={ok:true,current:await currentVersion(env,s),versions:redact((await versions(env,s)).result)}}catch(e){out[s]={ok:false,error:String(e.message)}}}return json({ok:Object.values(out).every(x=>x.ok),scripts:out})}
-let m=u.pathname.match(/^\/v1\/admin\/source\/([^/]+)$/);if(req.method==="GET"&&m){const n=decodeURIComponent(m[1]);const r=await center(env,n,"/source");return json({ok:r.ok,center:n,source:r.body,upstream_status:r.http_status},r.ok?200:502)}m=u.pathname.match(/^\/v1\/admin\/provider\/([^/]+)\/readiness$/);if(req.method==="GET"&&m){const p=decodeURIComponent(m[1]);const r=await center(env,"intelligence",`/v1/provider/${encodeURIComponent(p)}/readiness`);return json({ok:r.ok,provider:p,readiness:r.body},r.ok?200:502)}m=u.pathname.match(/^\/v1\/admin\/acceptance\/([^/]+)\/latest$/);if(req.method==="GET"&&m)return json(await stateCall(env,`/acceptance/${encodeURIComponent(m[1])}`));
-if(req.method==="POST"&&u.pathname==="/v1/admin/candidate"){const b=await body(req);if(!b.script||!b.version_id)return err("INVALID_REQUEST","script and version_id required",400);managed(env,b.script);const current=await currentVersion(env,b.script);if(b.base_version&&current&&b.base_version!==current)return err("VERSION_CONFLICT","base_version does not match production",409,{current});const c={script:b.script,version_id:b.version_id,base_version:current,change_summary:String(b.change_summary||"").slice(0,2000),created_at:now(),validated:false,approved:false,test_passed:false};await stateCall(env,"/candidate","POST",c);await audit(env,{action:"candidate.create",script:b.script,version_id:b.version_id});return json({ok:true,candidate:c},201)}if(req.method==="POST"&&u.pathname==="/v1/admin/candidate/validate"){const c=(await stateCall(env,"/candidate")).candidate;if(!c)return err("NO_CANDIDATE","No candidate",404);const v=await cf(env,`/workers/scripts/${encodeURIComponent(c.script)}/versions/${encodeURIComponent(c.version_id)}`);const h=await allHealth(env);const nc={...c,validated:Boolean(v?.success!==false&&h.ok),validation:{checked_at:now(),health_ok:h.ok},validated_at:now()};await stateCall(env,"/candidate","POST",nc);return json({ok:nc.validated,candidate:redact(nc)},nc.validated?200:409)}if(req.method==="POST"&&u.pathname==="/v1/admin/candidate/approve"){const c=(await stateCall(env,"/candidate")).candidate;if(!c?.validated)return err("CANDIDATE_NOT_VALIDATED","Validate first",409);const nc={...c,approved:true,approved_at:now()};await stateCall(env,"/candidate","POST",nc);return json({ok:true,candidate:redact(nc)})}
-if(req.method==="POST"&&u.pathname==="/v1/admin/test"){const b=await body(req),centerName=String(b.center||"all"),suite=String(b.suite||"contract");if(!["all","governance","intelligence","compute","expert"].includes(centerName))return err("INVALID_REQUEST","Invalid center",400);const runId=rid();ctx.waitUntil(runAcceptance(env,runId,{center:centerName,suite}));return json({ok:true,run_id:runId,status:"accepted",started_at:now()},202)}m=u.pathname.match(/^\/v1\/admin\/test\/([^/]+)$/);if(req.method==="GET"&&m)return json(await stateCall(env,`/task/${encodeURIComponent(m[1])}`));if(req.method==="POST"&&u.pathname==="/v1/admin/task/cancel"){const b=await body(req);if(!b.task_id)return err("INVALID_REQUEST","task_id required",400);return json(await stateCall(env,`/task/${encodeURIComponent(b.task_id)}/cancel`,"POST",{}))}
-if(req.method==="POST"&&u.pathname==="/v1/admin/maintenance/diagnose"){const h=await allHealth(env);const lock=await stateCall(env,"/lock");const c=await stateCall(env,"/candidate");await audit(env,{action:"maintenance.diagnose",ok:h.ok});return json({ok:h.ok,health:h,lock:lock.lock||null,candidate:redact(c.candidate||null)},h.ok?200:503)}if(req.method==="POST"&&u.pathname==="/v1/admin/recovery/verify"){const h=await allHealth(env);return json({ok:h.ok,verified_at:now(),health:h},h.ok?200:503)}
-if(req.method==="POST"&&u.pathname==="/v1/admin/deploy/promote"){const b=await body(req),c=(await stateCall(env,"/candidate")).candidate;if(!c)return err("NO_CANDIDATE","No candidate",404);if(!c.validated||!c.approved)return err("CANDIDATE_NOT_READY","Candidate must be validated and approved",409);const a=await stateCall(env,`/acceptance/${encodeURIComponent(b.center||"all")}`).catch(()=>({acceptance:null})),acc=a.acceptance;if(!acc||acc.status!=="pass")return err("ACCEPTANCE_REQUIRED","Passing acceptance required",409);const current=await currentVersion(env,c.script);if(b.expected_current_version&&current!==b.expected_current_version)return err("VERSION_CONFLICT","Production moved",409,{current});const owner=`deploy:${rid()}`;await acquire(env,owner,"deploy");try{const targetPrev=current;const d=await deploy(env,c.script,c.version_id,`Promoted by ${SERVICE}`);await audit(env,{action:"deploy.promote",script:c.script,version_id:c.version_id});await stateCall(env,"/candidate","POST",{...c,promoted:true,promoted_at:now(),rollback_target:targetPrev});return json({ok:true,deployment:redact(d.result||d),rollback_target:targetPrev})}finally{await release(env,owner)}}if(req.method==="POST"&&u.pathname==="/v1/admin/deploy/rollback"){const b=await body(req),s=String(b.script||"admin-worker");managed(env,s);const current=await currentVersion(env,s);if(b.expected_current_version&&current!==b.expected_current_version)return err("VERSION_CONFLICT","Production moved",409,{current});const target=b.target_version||await latestPrevious(env,s);if(!target)return err("NO_PREVIOUS_DEPLOYMENT","No rollback target",409);const owner=`rollback:${rid()}`;await acquire(env,owner,"rollback");try{const d=await deploy(env,s,target,`Rollback by ${SERVICE}: ${String(b.reason||"").slice(0,300)}`);await audit(env,{action:"deploy.rollback",script:s,target});return json({ok:true,target_version:target,deployment:redact(d.result||d)})}finally{await release(env,owner)}}return err("NOT_FOUND","Route not found",404)}
-export default{async fetch(req,env,ctx){try{return await handle(req,env,ctx)}catch(e){await audit(env,{action:"request.error",path:new URL(req.url).pathname,error:String(e.message)});return err(String(e.message||"INTERNAL_ERROR"),e.status>=500?"Internal operation failed":String(e.message||"Request failed"),e.status||500,e.details)}}};
-export class AdminCoordinator{constructor(state,env){this.state=state;this.env=env}async fetch(req){const u=new URL(req.url),s=this.state.storage,read=async()=>{try{return await req.json()}catch{return{}}},lock=async()=>{const x=await s.get("lock");if(x&&x.expires_at_ms<=Date.now()){await s.delete("lock");return null}return x||null};if(req.method==="GET"&&u.pathname==="/lock")return json({ok:true,lock:await lock()});if(req.method==="POST"&&u.pathname==="/lock/acquire"){const b=await read(),x=await lock();if(x&&x.owner!==b.owner)return json({ok:false,error:"BUSY",lock:x},409);const l={owner:String(b.owner||""),kind:String(b.kind||"task"),acquired_at:now(),expires_at_ms:Date.now()+Math.max(30,Math.min(7200,int(b.ttl_seconds,1800)))*1000};await s.put("lock",l);return json({ok:true,lock:l})}if(req.method==="POST"&&u.pathname==="/lock/release"){const b=await read(),x=await lock();if(!x)return json({ok:true,released:false});if(x.owner!==b.owner)return json({ok:false,error:"LOCK_OWNER_MISMATCH"},409);await s.delete("lock");return json({ok:true,released:true})}if(req.method==="GET"&&u.pathname==="/candidate")return json({ok:true,candidate:await s.get("candidate")||null});if(req.method==="POST"&&u.pathname==="/candidate"){const b=await read();await s.put("candidate",redact(b));return json({ok:true,candidate:redact(b)})}let m=u.pathname.match(/^\/task\/([^/]+)$/);if(m&&req.method==="GET")return json({ok:true,task:await s.get(`task:${decodeURIComponent(m[1])}`)||null});if(m&&req.method==="POST"){const id=decodeURIComponent(m[1]),b=await read(),old=await s.get(`task:${id}`)||{};const x={...old,...redact(b)};await s.put(`task:${id}`,x);return json({ok:true,task:x})}m=u.pathname.match(/^\/task\/([^/]+)\/cancel$/);if(m&&req.method==="POST"){const id=decodeURIComponent(m[1]),k=`task:${id}`,old=await s.get(k);if(!old)return json({ok:false,error:"TASK_NOT_FOUND"},404);const x={...old,cancel_requested:true,cancel_requested_at:now()};await s.put(k,x);return json({ok:true,task:x})}m=u.pathname.match(/^\/acceptance\/([^/]+)$/);if(m&&req.method==="GET")return json({ok:true,acceptance:await s.get(`acceptance:${decodeURIComponent(m[1])}`)||null});if(m&&req.method==="POST"){const b=await read();await s.put(`acceptance:${decodeURIComponent(m[1])}`,redact(b));return json({ok:true,acceptance:redact(b)})}if(req.method==="POST"&&u.pathname==="/audit"){const b=redact(await read()),k=`audit:${String(Date.now()).padStart(13,"0")}:${rid()}`;await s.put(k,b);const all=await s.list({prefix:"audit:",reverse:true,limit:MAX_AUDIT+30});if(all.size>MAX_AUDIT)await s.delete([...all.keys()].slice(MAX_AUDIT));return json({ok:true})}if(req.method==="GET"&&u.pathname==="/audit"){const limit=Math.max(1,Math.min(200,int(u.searchParams.get("limit"),50))),all=await s.list({prefix:"audit:",reverse:true,limit});return json({ok:true,records:[...all.values()]})}return json({ok:false,error:"STATE_ROUTE_NOT_FOUND"},404)}}
+async function context(env){
+  const h=await allHealth(env), lock=await stateCall(env,"/lock"), cand=await stateCall(env,"/candidate");
+  const centers={};
+  for(const n of ["intelligence","compute","expert","governance"]) centers[n]={health:h.centers[n]?.ok?"ready":"fail",source_digest:h.centers[n]?.body?.source_digest||null};
+  return {system_state:h.ok?"ready":"degraded",constitution_version:API_VERSION,active_task:lock.lock||null,centers,candidate:redact(cand.candidate||null)};
+}
+async function isCancelled(env,runId){
+  const t=await stateCall(env,`/task/${encodeURIComponent(runId)}`).catch(()=>({task:null}));
+  return t.task?.cancel_requested===true;
+}
+
+async function runAcceptance(env,runId,spec,owner){
+  let snapshot=null;
+  try{
+    const cand=(await stateCall(env,"/candidate")).candidate;
+    if(!cand) throw new Error("NO_CANDIDATE");
+    if(!cand.validated) throw new Error("CANDIDATE_NOT_VALIDATED");
+    const current=await currentVersion(env,cand.script);kºwµç
