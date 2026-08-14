@@ -1,0 +1,1 @@
+negative path probe: this root-level file must not trigger governance/admin/maintenance workers
