@@ -1,3 +1,0 @@
-controlled burst stress probe 2026-08-14T20:14+08:00
-target=maintenance-worker
-behavior_change=false
