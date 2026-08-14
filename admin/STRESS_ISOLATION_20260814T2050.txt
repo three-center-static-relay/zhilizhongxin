@@ -1,2 +1,0 @@
-isolation probe admin
-expected=admin-worker only
