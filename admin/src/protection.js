@@ -1,4 +1,4 @@
-export const PROTECTION_VERSION="2026-08-15.3";
+export const PROTECTION_VERSION="2026-08-15.4";
 const EXPECTED_MANAGED=["admin-worker","governance-worker","intelligence-worker","compute-worker","expert-worker","maintenance-worker"];
 const RULES={
   admin:{
@@ -10,13 +10,16 @@ const RULES={
     "/v1/capabilities":{"capabilities.production_write":false}
   },
   intelligence:{
-    "/v1/policy":{"policy.fail_closed":true,"policy.single_active_task":true,"policy.network":"allowlisted-upstreams-only","policy.arbitrary_url_fetch":false,"policy.arbitrary_code":false,"policy.max_retries":0,"policy.task_persistence":"operational-metadata-only"}
+    "/v1/policy":{"policy.fail_closed":true,"policy.single_active_task":true,"policy.network":"allowlisted-upstreams-only","policy.arbitrary_url_fetch":false,"policy.arbitrary_code":false,"policy.max_retries":0,"policy.task_persistence":"operational-metadata-only","policy.unknown_provider":"deny","policy.unknown_operation":"deny","policy.github_role":"static-source-relay-backup","policy.runtime_authority":"cloudflare"},
+    "/v1/capabilities":{"capabilities.live_adapters":true,"capabilities.connector_registry":true,"capabilities.adapter_contract":true}
   },
   compute:{
-    "/v1/policy":{"policy.fail_closed":true,"policy.single_active_task":true,"policy.cloudflare_heavy_compute":false,"policy.executor":"kaggle","policy.arbitrary_code_upload":false,"policy.arbitrary_shell":false,"policy.max_retries":1,"policy.timeout_cleanup":true,"policy.duplicate_task_rejected":true}
+    "/v1/policy":{"policy.fail_closed":true,"policy.single_active_task":true,"policy.cloudflare_heavy_compute":false,"policy.executor":"kaggle","policy.arbitrary_code_upload":false,"policy.arbitrary_shell":false,"policy.max_retries":1,"policy.timeout_cleanup":true,"policy.duplicate_task_rejected":true},
+    "/v1/capabilities":{"capabilities.router":true,"capabilities.durable_gate":true,"capabilities.kaggle_official_mcp":true}
   },
   expert:{
-    "/v1/policy":{"policy.fail_closed":true,"policy.single_active_task":true,"policy.network":"openrouter-only","policy.tools":false,"policy.web":false,"policy.history_weight":0,"policy.reasoning_effort":"high","policy.exclude_free":true,"policy.exclude_flash":true,"policy.max_retries":0,"policy.max_models":4,"policy.judge_required":true,"policy.model_selection":"reasoning+most-popular"}
+    "/v1/policy":{"policy.fail_closed":true,"policy.single_active_task":true,"policy.network":"openrouter-only","policy.tools":false,"policy.web":false,"policy.history_weight":0,"policy.reasoning_effort":"high","policy.exclude_free":true,"policy.exclude_flash":true,"policy.max_retries":0,"policy.max_models":4,"policy.judge_required":true,"policy.model_selection":"reasoning+most-popular"},
+    "/v1/capabilities":{"capabilities.duplicate_task_rejected":true,"capabilities.cancel_checked_between_calls":true,"capabilities.company_diversity":true,"capabilities.tools":false,"capabilities.web":false}
   },
   maintenance:{
     "/health":{"service":"maintenance-worker","status":"ready"}
