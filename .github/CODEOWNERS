@@ -1,0 +1,15 @@
+# PROTECTED CORE OWNERSHIP — enforcement requires a GitHub Ruleset that requires code-owner review.
+# This file is metadata only. It does not execute GitHub Actions.
+/.github/CODEOWNERS @menimall8ewel
+/admin/src/protection.js @menimall8ewel
+/admin/src/superguard.js @menimall8ewel
+/admin/src/guard.js @menimall8ewel
+/admin/wrangler.jsonc @menimall8ewel
+/admin/openapi.json @menimall8ewel
+/governance/src/index.js @menimall8ewel
+/governance/wrangler.jsonc @menimall8ewel
+/maintenance/src/index.js @menimall8ewel
+/maintenance/wrangler.jsonc @menimall8ewel
+
+# Future automatically maintainable code should be isolated outside the paths above.
+# Protected Core must never be auto-upgraded or auto-merged.
