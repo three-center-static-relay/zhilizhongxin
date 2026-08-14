@@ -1,3 +1,4 @@
+// cloudflare-route-verification: governance
 export default {
   async fetch(request) {
     const url = new URL(request.url);
