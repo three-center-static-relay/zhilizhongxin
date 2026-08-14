@@ -1,0 +1,10 @@
+name: STATIC_RELAY_EXECUTION_TEST
+on:
+  push:
+    paths:
+      - '.github/workflows/STATIC_RELAY_EXECUTION_TEST.yml'
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo STATIC_RELAY_EXECUTION_TEST
