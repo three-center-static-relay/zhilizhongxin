@@ -1,0 +1,10 @@
+name: STATIC_RELAY_VERIFY
+on:
+  push:
+    paths:
+      - '.github/workflows/STATIC_RELAY_VERIFY.yml'
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo STATIC_RELAY_VERIFY
