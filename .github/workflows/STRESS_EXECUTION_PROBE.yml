@@ -1,0 +1,10 @@
+name: STRESS_EXECUTION_PROBE
+on:
+  push:
+    paths:
+      - '.github/workflows/STRESS_EXECUTION_PROBE.yml'
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo STRESS_EXECUTION_PROBE
