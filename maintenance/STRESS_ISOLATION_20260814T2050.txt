@@ -1,0 +1,2 @@
+isolation probe maintenance
+expected=maintenance-worker only
