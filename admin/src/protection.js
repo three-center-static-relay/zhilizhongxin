@@ -1,4 +1,4 @@
-export const PROTECTION_VERSION="2026-08-15.1";
+export const PROTECTION_VERSION="2026-08-15.2";
 const EXPECTED_MANAGED=["admin-worker","governance-worker","intelligence-worker","compute-worker","expert-worker","maintenance-worker"];
 const RULES={
   admin:{
@@ -27,7 +27,7 @@ function same(a,b){if(Array.isArray(b))return Array.isArray(a)&&b.every(x=>a.inc
 function bind(env,n){return{governance:env.GOVERNANCE_CENTER,intelligence:env.INTELLIGENCE_CENTER,compute:env.COMPUTE_CENTER,expert:env.EXPERT_CENTER,maintenance:env.MAINTENANCE_CENTER}[n]||null}
 async function serviceJson(env,n,path,init={}){const b=bind(env,n);if(!b?.fetch)return{ok:false,http_status:503,body:null,error:"CENTER_UNCONFIGURED"};const c=new AbortController(),t=setTimeout(()=>c.abort(),8000);try{const r=await b.fetch(new Request(`https://${n}.internal${path}`,{...init,headers:{accept:"application/json",...(init.headers||{})},signal:c.signal}));const body=await r.json().catch(()=>null);return{ok:r.ok,http_status:r.status,body}}catch(e){return{ok:false,http_status:503,body:null,error:String(e?.message||e)}}finally{clearTimeout(t)}}
 function checksFor(n,path,body){const spec=RULES[n]?.[path]||{},out=[];for(const [field,expected] of Object.entries(spec)){const actual=at(body,field);out.push({center:n,path,field,expected,actual,ok:same(actual,expected)});}return out}
-export function protectionBaseline(){return{version:PROTECTION_VERSION,mode:"runtime-invariant-baseline",rules:RULES,github_path_hard_lock:"external-ruleset-required",protected_core_auto_upgrade:false}}
+export function protectionBaseline(){return{version:PROTECTION_VERSION,mode:"cloudflare-runtime-protected-core",authoritative_control_plane:"cloudflare",github_role:"static-source-relay-backup",github_ruleset_required:false,protected_core_lock:"cloudflare-admin-protection",protected_core_auto_upgrade:false,rules:RULES}}
 export async function verifyProtection(env,adminBase){const checks=[];
   const scripts=String(env.MANAGED_SCRIPTS||"").split(",").map(x=>x.trim()).filter(Boolean).sort();
   checks.push({center:"admin",field:"env.AUTO_PROMOTE",expected:"false",actual:String(env.AUTO_PROMOTE||""),ok:String(env.AUTO_PROMOTE||"")==="false"});
