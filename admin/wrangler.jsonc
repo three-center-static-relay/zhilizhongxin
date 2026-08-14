@@ -21,7 +21,7 @@
   "vars": {
     "ENVIRONMENT": "production",
     "CF_ACCOUNT_ID": "e3aec027af13c557bbcb831d29c1e7b4",
-    "MANAGED_SCRIPTS": "admin-worker,governance-worker,intelligence-worker,compute-worker,expert-worker",
+    "MANAGED_SCRIPTS": "admin-worker,governance-worker,intelligence-worker,compute-worker,expert-worker,maintenance-worker",
     "CENTER_TIMEOUT_MS": "8000",
     "LOCK_TTL_SECONDS": "1800",
     "RATE_LIMIT_PER_MIN": "120",
