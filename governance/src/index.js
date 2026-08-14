@@ -1,11 +1,39 @@
-// cloudflare-deploy-refresh: 2026-08-14T22:01+08:00
-// cloudflare-route-verification: governance-v2
+const SERVICE = "governance-worker";
+const API_VERSION = "2026-08-14";
+const POLICY = {
+  fail_closed: true,
+  role: "governance-control-plane",
+  business_secrets: false,
+  arbitrary_code: false,
+  github_actions_required: false,
+  negative_value_changes: "deny",
+  stability_first: true,
+  center_isolation: true
+};
+const CAPABILITIES = {
+  constitution: true,
+  policy: true,
+  center_boundaries: true,
+  release_gate: true,
+  source_digest: true,
+  production_write: false
+};
+function json(body, status=200){ return Response.json(body,{status,headers:{"cache-control":"no-store"}}); }
+async function digest(){
+  const data=new TextEncoder().encode(JSON.stringify({service:SERVICE,api_version:API_VERSION,policy:POLICY,capabilities:CAPABILITIES}));
+  const h=await crypto.subtle.digest("SHA-256",data);
+  return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,"0")).join("");
+}
 export default {
   async fetch(request) {
     const url = new URL(request.url);
-    if (url.pathname === "/health") {
-      return Response.json({ ok: true, service: "governance-worker", source: "github-static-relay", route_test: "governance-v2" });
-    }
-    return Response.json({ service: "governance-worker", status: "ready" });
+    if (request.method === "GET" && url.pathname === "/health") return json({ok:true,status:"ready",service:SERVICE,api_version:API_VERSION,source:"github-static-relay"});
+    if (request.method === "GET" && (url.pathname === "/v1/policy" || url.pathname === "/policy")) return json({ok:true,service:SERVICE,policy:POLICY});
+    if (request.method === "GET" && (url.pathname === "/v1/capabilities" || url.pathname === "/capabilities")) return json({ok:true,service:SERVICE,capabilities:CAPABILITIES});
+    if (request.method === "GET" && (url.pathname === "/v1/quota" || url.pathname === "/quota")) return json({ok:true,production_write:false,secret_storage:false});
+    if (request.method === "GET" && url.pathname === "/source") return json({ok:true,service:SERVICE,api_version:API_VERSION,source_digest:await digest(),secrets_redacted:true});
+    if (request.method === "GET" && url.pathname === "/v1/acceptance/latest") return json({ok:true,service:SERVICE,status:"not_verified",run_id:null,receipt_digest:null});
+    if (request.method === "GET" && url.pathname === "/openapi.json") return json({openapi:"3.1.0",info:{title:"Governance Center",version:API_VERSION},paths:{"/health":{get:{}},"/v1/policy":{get:{}},"/v1/capabilities":{get:{}}}});
+    return json({ok:false,error:"POLICY_DENIED",message:"Governance worker is read-only from this interface"},403);
   }
 };
