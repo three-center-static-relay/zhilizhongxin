@@ -1,3 +1,4 @@
+// cloudflare-deploy-refresh: 2026-08-14T22:01+08:00
 // cloudflare-route-verification: governance-v2
 export default {
   async fetch(request) {
