@@ -1,0 +1,2 @@
+isolation probe governance
+expected=governance-worker only
