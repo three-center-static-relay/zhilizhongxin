@@ -1,4 +1,4 @@
-export const PROTECTION_VERSION="2026-08-15.2";
+export const PROTECTION_VERSION="2026-08-15.3";
 const EXPECTED_MANAGED=["admin-worker","governance-worker","intelligence-worker","compute-worker","expert-worker","maintenance-worker"];
 const RULES={
   admin:{
@@ -10,7 +10,7 @@ const RULES={
     "/v1/capabilities":{"capabilities.production_write":false}
   },
   intelligence:{
-    "/v1/policy":{"policy.fail_closed":true,"policy.single_active_task":true,"policy.network":"allowlisted-upstreams-only","policy.arbitrary_url_fetch":false,"policy.arbitrary_code":false,"policy.max_retries":1,"policy.task_persistence":"operational-metadata-only"}
+    "/v1/policy":{"policy.fail_closed":true,"policy.single_active_task":true,"policy.network":"allowlisted-upstreams-only","policy.arbitrary_url_fetch":false,"policy.arbitrary_code":false,"policy.max_retries":0,"policy.task_persistence":"operational-metadata-only"}
   },
   compute:{
     "/v1/policy":{"policy.fail_closed":true,"policy.single_active_task":true,"policy.cloudflare_heavy_compute":false,"policy.executor":"kaggle","policy.arbitrary_code_upload":false,"policy.arbitrary_shell":false,"policy.max_retries":1,"policy.timeout_cleanup":true,"policy.duplicate_task_rejected":true}
