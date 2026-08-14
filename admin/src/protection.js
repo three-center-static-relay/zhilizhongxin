@@ -1,4 +1,4 @@
-export const PROTECTION_VERSION="2026-08-15.4";
+export const PROTECTION_VERSION="2026-08-15.5";
 const EXPECTED_MANAGED=["admin-worker","governance-worker","intelligence-worker","compute-worker","expert-worker","maintenance-worker"];
 const RULES={
   admin:{
@@ -15,11 +15,11 @@ const RULES={
   },
   compute:{
     "/v1/policy":{"policy.fail_closed":true,"policy.single_active_task":true,"policy.cloudflare_heavy_compute":false,"policy.executor":"kaggle","policy.arbitrary_code_upload":false,"policy.arbitrary_shell":false,"policy.max_retries":1,"policy.timeout_cleanup":true,"policy.duplicate_task_rejected":true},
-    "/v1/capabilities":{"capabilities.router":true,"capabilities.durable_gate":true,"capabilities.kaggle_official_mcp":true}
+    "/v1/capabilities":{"capabilities.router":true,"capabilities.durable_gate":true,"capabilities.kaggle_official_mcp":true,"capabilities.upstream_response_limit_bytes":1500000}
   },
   expert:{
     "/v1/policy":{"policy.fail_closed":true,"policy.single_active_task":true,"policy.network":"openrouter-only","policy.tools":false,"policy.web":false,"policy.history_weight":0,"policy.reasoning_effort":"high","policy.exclude_free":true,"policy.exclude_flash":true,"policy.max_retries":0,"policy.max_models":4,"policy.judge_required":true,"policy.model_selection":"reasoning+most-popular"},
-    "/v1/capabilities":{"capabilities.duplicate_task_rejected":true,"capabilities.cancel_checked_between_calls":true,"capabilities.company_diversity":true,"capabilities.tools":false,"capabilities.web":false}
+    "/v1/capabilities":{"capabilities.duplicate_task_rejected":true,"capabilities.cancel_checked_between_calls":true,"capabilities.company_diversity":true,"capabilities.external_calls_inside_single_task_lock":true,"capabilities.automatic_retries":false,"capabilities.fixed_chat_endpoint":true,"capabilities.openrouter_rest":true,"capabilities.upstream_response_limit_bytes":1500000,"capabilities.tools":false,"capabilities.web":false}
   },
   maintenance:{
     "/health":{"service":"maintenance-worker","status":"ready"}
