@@ -1,3 +1,5 @@
+import { buildGovernanceSystem, deterministicPolicyDecision, validateModelContent } from "./assist-policy.js";
+
 const FREE_MODELS = Object.freeze([
   "@cf/zai-org/glm-4.7-flash",
   "@cf/google/gemma-4-26b-a4b-it",
@@ -113,10 +115,22 @@ export async function runAssist(request, env) {
     const body = await parseBody(request);
     const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
     if (!prompt) return json({ ok: false, error: "INVALID_REQUEST", message: "prompt required" }, 400);
+
+    const hardDecision = deterministicPolicyDecision(prompt);
+    if (hardDecision) {
+      return json({
+        ok: true,
+        provider: "governance-policy-kernel",
+        selection: "deterministic-hard-rule",
+        model: null,
+        content: hardDecision,
+        usage: null,
+        attempts: []
+      });
+    }
+
     const maxTokens = boundedInt(body.max_tokens, DEFAULT_MAX_TOKENS, 256, MAX_MAX_TOKENS);
-    const system = typeof body.system === "string" && body.system.trim()
-      ? body.system.trim()
-      : "You are the governance copilot for the controlling web GPT. Handle repository governance, code review, fault diagnosis, maintenance planning, routing advice, policy interpretation, and decision support. Preserve existing hard governance rules, never claim unexecuted actions, and state uncertainty explicitly.";
+    const system = buildGovernanceSystem(body.system);
     const messages = [{ role: "system", content: system }, { role: "user", content: prompt }];
     const models = shuffledModels();
     const attempts = [];
@@ -124,7 +138,7 @@ export async function runAssist(request, env) {
       const started = Date.now();
       try {
         const output = await workersAiAttempt(env, model, messages, maxTokens);
-        const content = extractContent(output);
+        const content = validateModelContent(prompt, output, extractContent(output));
         attempts.push({ provider: "cloudflare-workers-ai", model, status: "completed", elapsed_ms: Date.now() - started });
         return json({
           ok: true,
