@@ -9,13 +9,21 @@ const FREE_MODELS = Object.freeze([
 const MAX_BODY_BYTES = 65536;
 const DEFAULT_MAX_TOKENS = 4096;
 const MAX_MAX_TOKENS = 16384;
-const AUTH_TIMEOUT_MS = 5000;
 
 const json = (body, status = 200) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
 
 function boundedInt(value, fallback, min, max) {
   const n = Number(value);
   return Number.isFinite(n) ? Math.max(min, Math.min(max, Math.trunc(n))) : fallback;
+}
+
+function constantTimeEqual(a, b) {
+  a = String(a || "");
+  b = String(b || "");
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 async function parseBody(request) {
@@ -38,35 +46,13 @@ function shuffledModels() {
   return out;
 }
 
-async function authenticate(request, env) {
+function authenticate(request, env) {
   const authorization = request.headers.get("authorization") || "";
   if (!authorization.startsWith("Bearer ")) return { ok: false, status: 401, error: "UNAUTHORIZED" };
-  if (!env.ADMIN_AUTH?.fetch) return { ok: false, status: 503, error: "AUTH_SERVICE_BINDING_UNAVAILABLE" };
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS);
-  try {
-    const response = await env.ADMIN_AUTH.fetch(new Request("https://admin.internal/v1/admin/context", {
-      method: "GET",
-      headers: { authorization, accept: "application/json" },
-      signal: controller.signal
-    }));
-    const payload = await response.clone().json().catch(() => null);
-    if (response.ok) return { ok: true, status: 200, error: null };
-    return {
-      ok: false,
-      status: response.status || 503,
-      error: String(payload?.error || (response.status === 401 ? "UNAUTHORIZED" : "AUTH_UPSTREAM_UNAVAILABLE"))
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      status: error?.name === "AbortError" ? 504 : 503,
-      error: error?.name === "AbortError" ? "AUTH_UPSTREAM_TIMEOUT" : "AUTH_UPSTREAM_UNAVAILABLE"
-    };
-  } finally {
-    clearTimeout(timer);
-  }
+  if (!env.ADMIN_GPT_TOKEN) return { ok: false, status: 503, error: "ADMIN_TOKEN_NOT_CONFIGURED" };
+  const token = authorization.slice(7).trim();
+  if (!constantTimeEqual(token, env.ADMIN_GPT_TOKEN)) return { ok: false, status: 401, error: "UNAUTHORIZED" };
+  return { ok: true, status: 200, error: null };
 }
 
 function extractContent(output) {
@@ -121,7 +107,7 @@ export function assistRoutingInfo() {
 }
 
 export async function runAssist(request, env) {
-  const auth = await authenticate(request, env);
+  const auth = authenticate(request, env);
   if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
   try {
     const body = await parseBody(request);
