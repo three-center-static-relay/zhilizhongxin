@@ -10,7 +10,6 @@ const MAX_BODY_BYTES = 65536;
 const DEFAULT_MAX_TOKENS = 4096;
 const MAX_MAX_TOKENS = 16384;
 const AUTH_TIMEOUT_MS = 5000;
-const ADMIN_AUTH_URL = "https://admin-worker.a15280020511.workers.dev/v1/admin/context";
 
 const json = (body, status = 200) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
 
@@ -39,20 +38,32 @@ function shuffledModels() {
   return out;
 }
 
-async function authenticate(request) {
+async function authenticate(request, env) {
   const authorization = request.headers.get("authorization") || "";
-  if (!authorization.startsWith("Bearer ")) return { ok: false, status: 401 };
+  if (!authorization.startsWith("Bearer ")) return { ok: false, status: 401, error: "UNAUTHORIZED" };
+  if (!env.ADMIN_AUTH?.fetch) return { ok: false, status: 503, error: "AUTH_SERVICE_BINDING_UNAVAILABLE" };
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS);
   try {
-    const response = await fetch(ADMIN_AUTH_URL, {
+    const response = await env.ADMIN_AUTH.fetch(new Request("https://admin.internal/v1/admin/context", {
       method: "GET",
       headers: { authorization, accept: "application/json" },
       signal: controller.signal
-    });
-    return { ok: response.ok, status: response.ok ? 200 : response.status };
-  } catch {
-    return { ok: false, status: 503 };
+    }));
+    const payload = await response.clone().json().catch(() => null);
+    if (response.ok) return { ok: true, status: 200, error: null };
+    return {
+      ok: false,
+      status: response.status || 503,
+      error: String(payload?.error || (response.status === 401 ? "UNAUTHORIZED" : "AUTH_UPSTREAM_UNAVAILABLE"))
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: error?.name === "AbortError" ? 504 : 503,
+      error: error?.name === "AbortError" ? "AUTH_UPSTREAM_TIMEOUT" : "AUTH_UPSTREAM_UNAVAILABLE"
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -110,8 +121,8 @@ export function assistRoutingInfo() {
 }
 
 export async function runAssist(request, env) {
-  const auth = await authenticate(request);
-  if (!auth.ok) return json({ ok: false, error: auth.status === 401 ? "UNAUTHORIZED" : "AUTH_UPSTREAM_UNAVAILABLE" }, auth.status);
+  const auth = await authenticate(request, env);
+  if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
   try {
     const body = await parseBody(request);
     const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
