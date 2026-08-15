@@ -11,6 +11,8 @@ const FREE_MODELS = Object.freeze([
 const MAX_BODY_BYTES = 65536;
 const DEFAULT_MAX_TOKENS = 4096;
 const MAX_MAX_TOKENS = 16384;
+const SELFTEST_OPENROUTER = "__SELFTEST_OPENROUTER_FALLBACK__";
+const SELFTEST_WEBGPT = "__SELFTEST_WEBGPT_FALLBACK__";
 
 const json = (body, status = 200) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
 
@@ -104,7 +106,8 @@ export function assistRoutingInfo() {
     mode: "single-model-serial-failover",
     cloudflare: { selection: "shuffle-once-per-task", free_only: true, model_count: FREE_MODELS.length, models: [...FREE_MODELS] },
     openrouter: { free_models: false, paid_only: true, ranking: "intelligence-high-to-low", sequential: true },
-    final_fallback: "web-gpt"
+    final_fallback: "web-gpt",
+    authenticated_selftests: ["openrouter-fallback", "webgpt-fallback"]
   };
 }
 
@@ -115,6 +118,46 @@ export async function runAssist(request, env) {
     const body = await parseBody(request);
     const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
     if (!prompt) return json({ ok: false, error: "INVALID_REQUEST", message: "prompt required" }, 400);
+
+    const maxTokens = boundedInt(body.max_tokens, DEFAULT_MAX_TOKENS, 256, MAX_MAX_TOKENS);
+    const system = buildGovernanceSystem(body.system);
+
+    if (prompt === SELFTEST_OPENROUTER) {
+      const fallback = await openRouterFallback(env, {
+        prompt: "Reply exactly: OPENROUTER_FALLBACK_OK",
+        system,
+        max_tokens: 256
+      });
+      const payload = await fallback.clone().json().catch(() => null);
+      if (fallback.ok && payload?.ok) {
+        return json({
+          ...payload,
+          selftest: "openrouter-fallback",
+          cloudflare_bypassed: true,
+          cloudflare_attempts: []
+        });
+      }
+      return json({
+        ...(payload || {}),
+        ok: false,
+        selftest: "openrouter-fallback",
+        cloudflare_bypassed: true,
+        cloudflare_attempts: [],
+        web_gpt_fallback_required: true
+      }, fallback.status || 503);
+    }
+
+    if (prompt === SELFTEST_WEBGPT) {
+      return json({
+        ok: false,
+        error: "SELFTEST_FORCED_ALL_PROVIDERS_FAILED",
+        selftest: "webgpt-fallback",
+        cloudflare_bypassed: true,
+        openrouter_bypassed: true,
+        web_gpt_fallback_required: true,
+        message: "Controlled self-test: upstream providers were intentionally bypassed; the controlling web GPT should take over this request."
+      }, 503);
+    }
 
     const hardDecision = deterministicPolicyDecision(prompt);
     if (hardDecision) {
@@ -129,8 +172,6 @@ export async function runAssist(request, env) {
       });
     }
 
-    const maxTokens = boundedInt(body.max_tokens, DEFAULT_MAX_TOKENS, 256, MAX_MAX_TOKENS);
-    const system = buildGovernanceSystem(body.system);
     const messages = [{ role: "system", content: system }, { role: "user", content: prompt }];
     const models = shuffledModels();
     const attempts = [];
