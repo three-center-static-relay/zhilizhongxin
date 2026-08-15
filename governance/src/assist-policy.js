@@ -32,7 +32,6 @@ function answer(prompt, zh, en) {
 
 export function deterministicPolicyDecision(prompt) {
   const raw = String(prompt || "");
-  const p = raw.toLowerCase();
 
   if ((/(取消|关闭).*(回滚|鉴权)/.test(raw) || /(disable|remove).*(rollback|auth)/i.test(raw)) && /(并发|parallel|fan.?out|全部模型|all models)/i.test(raw)) {
     return answer(raw,
@@ -83,7 +82,9 @@ export function deterministicPolicyDecision(prompt) {
     );
   }
 
-  if ((/(代码|code)/i.test(raw) && /(生产|production|runtime)/i.test(raw) && /(不一致|不同|mismatch|different|drift|漂移)/i.test(raw)) || /配置漂移|configuration drift|deployment drift/i.test(raw)) {
+  const numericConfigMismatch = (raw.match(/\d+/g) || []).length >= 2 && /(quota|模型|model|配置|configuration)/i.test(raw);
+  const codeProductionMismatch = /(代码|code)/i.test(raw) && /(生产|production|runtime)/i.test(raw) && (/(不一致|不同|mismatch|different|drift|漂移)/i.test(raw) || numericConfigMismatch);
+  if (codeProductionMismatch || /配置漂移|configuration drift|deployment drift/i.test(raw)) {
     return answer(raw,
       "这是配置/部署漂移。应以生产运行时观测结果判断当前真正生效的状态，同时核对活动版本、绑定和部署记录，再把代码声明与生产配置重新对齐；不能只看 Git 主分支就宣称生产已经一致。",
       "This is configuration/deployment drift. Use production runtime evidence to determine what is actually active, verify the active version, bindings, and deployment record, then reconcile code and production. Do not infer production state from Git alone."
