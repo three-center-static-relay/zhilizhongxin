@@ -11,6 +11,25 @@ const FREE_MODELS_STRONGEST_FIRST = Object.freeze([
   "@cf/meta/llama-4-scout-17b-16e-instruct"
 ]);
 
+const ASSIST_PROFILE_NAME = "governance-assist-high-reasoning-v1";
+const FIXED_SAMPLING = Object.freeze({
+  temperature: 0.2,
+  top_p: 0.9,
+  stream: false
+});
+const HIGH_REASONING_MODELS = new Set([
+  "@cf/nvidia/nemotron-3-120b-a12b",
+  "@cf/google/gemma-4-26b-a4b-it",
+  "@cf/zai-org/glm-4.7-flash"
+]);
+const ASSIST_EXECUTION_SYSTEM = `FIXED GOVERNANCE ASSISTANT EXECUTION PROFILE:
+- Apply rigorous internal reasoning before answering governance, code, diagnosis, routing, maintenance, and decision-support tasks.
+- Use the provider's highest supported reasoning effort when an explicit reasoning-effort control is available. For models without a compatible control, preserve the same high-reasoning behavior through these system instructions rather than inventing unsupported parameters.
+- Do not reveal private chain-of-thought. Return conclusions, supporting evidence, uncertainty, and recommended actions instead.
+- Prefer deterministic, evidence-disciplined answers over creative variation.
+- Be concise by default, but do not omit material risks, contradictions, or unknowns.
+- Never weaken the immutable governance rules above.`;
+
 const MAX_BODY_BYTES = 65536;
 const DEFAULT_MAX_TOKENS = 4096;
 const MAX_MAX_TOKENS = 16384;
@@ -69,9 +88,19 @@ function looksLikeSharedQuota(error) {
   return text.includes("neuron") || text.includes("daily quota") || text.includes("quota exceeded") || text.includes("limit exceeded");
 }
 
+function workersAiParameters(model, messages, maxTokens) {
+  const params = {
+    messages,
+    max_tokens: maxTokens,
+    ...FIXED_SAMPLING
+  };
+  if (HIGH_REASONING_MODELS.has(model)) params.reasoning_effort = "high";
+  return params;
+}
+
 async function workersAiAttempt(env, model, messages, maxTokens) {
   if (!env.AI?.run) throw new Error("WORKERS_AI_BINDING_UNAVAILABLE");
-  return env.AI.run(model, { messages, max_tokens: maxTokens, temperature: 0.2, stream: false });
+  return env.AI.run(model, workersAiParameters(model, messages, maxTokens));
 }
 
 async function openRouterFallback(env, body) {
@@ -96,6 +125,15 @@ async function openRouterFallback(env, body) {
 export function assistRoutingInfo() {
   return {
     mode: "single-model-serial-failover",
+    generation_profile: {
+      name: ASSIST_PROFILE_NAME,
+      fixed_system_prompt: true,
+      sampling: { ...FIXED_SAMPLING },
+      reasoning_effort: "high",
+      reasoning_effort_models: [...HIGH_REASONING_MODELS],
+      unsupported_reasoning_control_behavior: "system-prompt-enforced",
+      max_tokens: { default: DEFAULT_MAX_TOKENS, min: 256, max: MAX_MAX_TOKENS }
+    },
     cloudflare: {
       selection: "strongest-first-sequential",
       ranking: "governance-intelligence-high-to-low",
@@ -104,7 +142,7 @@ export function assistRoutingInfo() {
       model_count: FREE_MODELS_STRONGEST_FIRST.length,
       models: [...FREE_MODELS_STRONGEST_FIRST]
     },
-    openrouter: { free_models: false, paid_only: true, ranking: "intelligence-high-to-low", sequential: true },
+    openrouter: { free_models: false, paid_only: true, ranking: "intelligence-high-to-low", sequential: true, reasoning_effort: "high" },
     final_fallback: "web-gpt",
     authenticated_selftests: ["openrouter-fallback", "webgpt-fallback"]
   };
@@ -119,13 +157,14 @@ export async function runAssist(request, env) {
     if (!prompt) return json({ ok: false, error: "INVALID_REQUEST", message: "prompt required" }, 400);
 
     const maxTokens = boundedInt(body.max_tokens, DEFAULT_MAX_TOKENS, 256, MAX_MAX_TOKENS);
-    const system = buildGovernanceSystem(body.system);
+    const system = `${buildGovernanceSystem(body.system)}\n\n${ASSIST_EXECUTION_SYSTEM}`;
 
     if (prompt === SELFTEST_OPENROUTER) {
       const fallback = await openRouterFallback(env, {
         prompt: "Reply exactly: OPENROUTER_FALLBACK_OK",
         system,
-        max_tokens: 256
+        max_tokens: 256,
+        generation_profile: ASSIST_PROFILE_NAME
       });
       const payload = await fallback.clone().json().catch(() => null);
       if (fallback.ok && payload?.ok) {
@@ -133,7 +172,8 @@ export async function runAssist(request, env) {
           ...payload,
           selftest: "openrouter-fallback",
           cloudflare_bypassed: true,
-          cloudflare_attempts: []
+          cloudflare_attempts: [],
+          generation_profile: ASSIST_PROFILE_NAME
         });
       }
       return json({
@@ -142,7 +182,8 @@ export async function runAssist(request, env) {
         selftest: "openrouter-fallback",
         cloudflare_bypassed: true,
         cloudflare_attempts: [],
-        web_gpt_fallback_required: true
+        web_gpt_fallback_required: true,
+        generation_profile: ASSIST_PROFILE_NAME
       }, fallback.status || 503);
     }
 
@@ -154,6 +195,7 @@ export async function runAssist(request, env) {
         cloudflare_bypassed: true,
         openrouter_bypassed: true,
         web_gpt_fallback_required: true,
+        generation_profile: ASSIST_PROFILE_NAME,
         message: "Controlled self-test: upstream providers were intentionally bypassed; the controlling web GPT should take over this request."
       }, 503);
     }
@@ -167,7 +209,8 @@ export async function runAssist(request, env) {
         model: null,
         content: hardDecision,
         usage: null,
-        attempts: []
+        attempts: [],
+        generation_profile: ASSIST_PROFILE_NAME
       });
     }
 
@@ -189,25 +232,27 @@ export async function runAssist(request, env) {
           rank: rank + 1,
           content,
           usage: output?.usage || null,
-          attempts
+          attempts,
+          generation_profile: ASSIST_PROFILE_NAME
         });
       } catch (error) {
         attempts.push({ provider: "cloudflare-workers-ai", rank: rank + 1, model, status: "failed", error: String(error?.message || error), elapsed_ms: Date.now() - started });
         if (looksLikeSharedQuota(error)) break;
       }
     }
-    const fallback = await openRouterFallback(env, { prompt, system, max_tokens: maxTokens });
+    const fallback = await openRouterFallback(env, { prompt, system, max_tokens: maxTokens, generation_profile: ASSIST_PROFILE_NAME });
     const payload = await fallback.clone().json().catch(() => null);
     if (fallback.ok && payload?.ok) {
-      return json({ ...payload, cloudflare_attempts: attempts });
+      return json({ ...payload, cloudflare_attempts: attempts, generation_profile: ASSIST_PROFILE_NAME });
     }
     return json({
       ok: false,
       error: payload?.error || "ALL_MODEL_PROVIDERS_FAILED",
       cloudflare_attempts: attempts,
-      web_gpt_fallback_required: true
+      web_gpt_fallback_required: true,
+      generation_profile: ASSIST_PROFILE_NAME
     }, 503);
   } catch (error) {
-    return json({ ok: false, error: String(error?.message || "INTERNAL_ERROR"), web_gpt_fallback_required: true }, error?.status || 500);
+    return json({ ok: false, error: String(error?.message || "INTERNAL_ERROR"), web_gpt_fallback_required: true, generation_profile: ASSIST_PROFILE_NAME }, error?.status || 500);
   }
 }
