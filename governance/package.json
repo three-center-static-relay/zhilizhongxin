@@ -6,10 +6,11 @@
     "policy": "node tests/policy-regression.mjs",
     "policy:hardening": "node tests/policy-hardening-second-layer.mjs",
     "runtime:attestation": "node tests/runtime-attestation.mjs",
+    "openapi": "node tests/openapi-action-schema.mjs",
     "final:validate": "node tests/final-output-validation.mjs",
     "profile": "node tests/assist-profile.mjs",
     "stress": "node tests/stress.mjs",
-    "test": "node tests/policy-regression.mjs && node tests/policy-hardening-second-layer.mjs && node tests/runtime-attestation.mjs && node tests/final-output-validation.mjs && node tests/assist-profile.mjs && node tests/stress.mjs"
+    "test": "node tests/policy-regression.mjs && node tests/policy-hardening-second-layer.mjs && node tests/runtime-attestation.mjs && node tests/openapi-action-schema.mjs && node tests/final-output-validation.mjs && node tests/assist-profile.mjs && node tests/stress.mjs"
   },
   "devDependencies": {"wrangler": "^4.0.0"}
 }
