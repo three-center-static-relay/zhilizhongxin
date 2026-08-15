@@ -122,6 +122,12 @@ async function openRouterFallback(env, body) {
   }, 503);
 }
 
+export function validateFallbackPayload(prompt, payload) {
+  if (!payload?.ok) throw new Error("OPENROUTER_PAYLOAD_NOT_SUCCESS");
+  const content = validateModelContent(prompt, payload, payload?.content);
+  return { ...payload, content };
+}
+
 export function assistRoutingInfo() {
   return {
     mode: "single-model-serial-failover",
@@ -142,7 +148,14 @@ export function assistRoutingInfo() {
       model_count: FREE_MODELS_STRONGEST_FIRST.length,
       models: [...FREE_MODELS_STRONGEST_FIRST]
     },
-    openrouter: { free_models: false, paid_only: true, ranking: "intelligence-high-to-low", sequential: true, reasoning_effort: "high" },
+    openrouter: {
+      free_models: false,
+      paid_only: true,
+      ranking: "intelligence-high-to-low",
+      sequential: true,
+      reasoning_effort: "high",
+      output_validation: "governance-policy-before-return"
+    },
     final_fallback: "web-gpt",
     authenticated_selftests: ["openrouter-fallback", "webgpt-fallback"]
   };
@@ -160,21 +173,37 @@ export async function runAssist(request, env) {
     const system = `${buildGovernanceSystem(body.system)}\n\n${ASSIST_EXECUTION_SYSTEM}`;
 
     if (prompt === SELFTEST_OPENROUTER) {
+      const fallbackPrompt = "Reply exactly: OPENROUTER_FALLBACK_OK";
       const fallback = await openRouterFallback(env, {
-        prompt: "Reply exactly: OPENROUTER_FALLBACK_OK",
+        prompt: fallbackPrompt,
         system,
         max_tokens: 256,
         generation_profile: ASSIST_PROFILE_NAME
       });
       const payload = await fallback.clone().json().catch(() => null);
       if (fallback.ok && payload?.ok) {
-        return json({
-          ...payload,
-          selftest: "openrouter-fallback",
-          cloudflare_bypassed: true,
-          cloudflare_attempts: [],
-          generation_profile: ASSIST_PROFILE_NAME
-        });
+        try {
+          const validated = validateFallbackPayload(fallbackPrompt, payload);
+          return json({
+            ...validated,
+            selftest: "openrouter-fallback",
+            cloudflare_bypassed: true,
+            cloudflare_attempts: [],
+            openrouter_output_validated: true,
+            generation_profile: ASSIST_PROFILE_NAME
+          });
+        } catch (error) {
+          return json({
+            ok: false,
+            error: "OPENROUTER_SELFTEST_OUTPUT_INVALID",
+            validation_error: String(error?.message || error),
+            selftest: "openrouter-fallback",
+            cloudflare_bypassed: true,
+            cloudflare_attempts: [],
+            web_gpt_fallback_required: true,
+            generation_profile: ASSIST_PROFILE_NAME
+          }, 503);
+        }
       }
       return json({
         ...(payload || {}),
@@ -240,11 +269,31 @@ export async function runAssist(request, env) {
         if (looksLikeSharedQuota(error)) break;
       }
     }
+
     const fallback = await openRouterFallback(env, { prompt, system, max_tokens: maxTokens, generation_profile: ASSIST_PROFILE_NAME });
     const payload = await fallback.clone().json().catch(() => null);
     if (fallback.ok && payload?.ok) {
-      return json({ ...payload, cloudflare_attempts: attempts, generation_profile: ASSIST_PROFILE_NAME });
+      try {
+        const validated = validateFallbackPayload(prompt, payload);
+        return json({
+          ...validated,
+          cloudflare_attempts: attempts,
+          openrouter_output_validated: true,
+          generation_profile: ASSIST_PROFILE_NAME
+        });
+      } catch (error) {
+        return json({
+          ok: false,
+          error: "OPENROUTER_OUTPUT_POLICY_REJECTED",
+          validation_error: String(error?.message || error),
+          cloudflare_attempts: attempts,
+          openrouter_attempts: Array.isArray(payload?.attempts) ? payload.attempts : [],
+          web_gpt_fallback_required: true,
+          generation_profile: ASSIST_PROFILE_NAME
+        }, 503);
+      }
     }
+
     return json({
       ok: false,
       error: payload?.error || "ALL_MODEL_PROVIDERS_FAILED",
