@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import { assistRoutingInfo } from "../src/assist.js";
+
+const routing = assistRoutingInfo();
+const profile = routing.generation_profile;
+
+assert.equal(profile.name, "governance-assist-high-reasoning-v1");
+assert.equal(profile.fixed_system_prompt, true);
+assert.equal(profile.sampling.temperature, 0.2);
+assert.equal(profile.sampling.top_p, 0.9);
+assert.equal(profile.sampling.stream, false);
+assert.equal(profile.reasoning_effort, "high");
+assert.equal(profile.unsupported_reasoning_control_behavior, "system-prompt-enforced");
+assert.deepEqual(profile.max_tokens, { default: 4096, min: 256, max: 16384 });
+assert.deepEqual(profile.reasoning_effort_models, [
+  "@cf/nvidia/nemotron-3-120b-a12b",
+  "@cf/google/gemma-4-26b-a4b-it",
+  "@cf/zai-org/glm-4.7-flash"
+]);
+assert.equal(routing.openrouter.reasoning_effort, "high");
+assert.equal(routing.mode, "single-model-serial-failover");
+
+console.log(JSON.stringify({
+  ok: true,
+  suite: "governance-assist-profile",
+  profile: profile.name
+}));
