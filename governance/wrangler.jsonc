@@ -6,6 +6,7 @@
   "workers_dev": true,
   "ai": {"binding": "AI"},
   "services": [
+    {"binding": "ADMIN_AUTH", "service": "admin-worker"},
     {"binding": "OPENROUTER_RELAY", "service": "expert-worker"}
   ],
   "build": {"command": "node tests/stress.mjs"},
