@@ -1,64 +1,62 @@
 {
-  "schema_version": "1.0",
-  "name": "personal-hospital-cluster",
-  "purpose": "Personal clinical decision support modeled on tertiary-hospital and top academic-hospital diagnostic workflows; not autonomous medical practice.",
+  "schema_version": "1.1",
+  "name": "personal-clinical-care-system",
+  "purpose": "Single-user clinical analysis, treatment-support, nursing, rehabilitation and longitudinal health decision support. The user receives conclusions and actions, not internal diagnostic workflow traces.",
   "owner_scope": "single-user personal health support",
   "standards_baseline": [
     "China NHC Tertiary Hospital Accreditation Standard 2025",
-    "AHRQ diagnostic safety and calibrated diagnosis workflow",
+    "AHRQ patient-centered clinical decision support",
     "FDA Clinical Decision Support Software Guidance 2026",
     "ACR Appropriateness Criteria",
     "HL7 FHIR",
     "DICOM"
   ],
-  "hard_safety_rules": [
-    "No single model may issue a final diagnosis without independent review for high-risk cases.",
-    "Always identify red flags and time-sensitive cannot-miss diagnoses before routine differential diagnosis.",
-    "Emergency red flags override all optimization and trigger immediate in-person emergency-care recommendation.",
-    "No autonomous prescribing, dose change, medication discontinuation, procedure order, or treatment execution.",
-    "Patient-specific treatment recommendations require explicit uncertainty, contraindication checks, and clinician-review recommendation when material risk exists.",
-    "Raw identifiable medical records, images, genomics, or medication histories must never be committed to GitHub.",
-    "Patient data must use a private governed data path; GitHub stores only code, schemas, synthetic tests, and non-identifying configuration.",
-    "Every conclusion must retain provenance, timestamp, evidence version, assumptions, missing-data flags, and confidence.",
-    "If evidence is conflicting, insufficient, stale, or outside validated scope, fail closed to uncertainty rather than fabricate certainty."
+  "integrated_capabilities": [
+    "clinical assessment and medical reasoning",
+    "symptom and disease-state analysis",
+    "laboratory and longitudinal biomarker interpretation",
+    "medical imaging analysis and imaging-context interpretation",
+    "medication reconciliation, interaction and contraindication review",
+    "evidence-based treatment option analysis",
+    "nursing and home-care recommendations",
+    "rehabilitation and recovery planning",
+    "nutrition, sleep and lifestyle support",
+    "chronic disease monitoring and follow-up",
+    "preventive care and screening support",
+    "specialty-level analysis across major organ systems",
+    "second-opinion and uncertainty analysis"
   ],
-  "core_services": [
-    "emergency-triage",
-    "general-internal-medicine",
-    "laboratory-medicine",
-    "radiology-imaging",
-    "clinical-pharmacy",
-    "diagnostic-safety-review",
-    "preventive-longitudinal-care"
+  "user_facing_output": {
+    "required": [
+      "overall_assessment",
+      "what_to_do_now",
+      "treatment_and_medication_considerations",
+      "tests_or_followup_to_consider",
+      "home_care_nursing_and_recovery",
+      "what_to_monitor",
+      "when_to_seek_in_person_or_emergency_care",
+      "uncertainty_and_missing_information",
+      "sources"
+    ],
+    "style": "answer-first, action-oriented, concise by default; do not expose internal diagnostic workflow unless the user explicitly asks for reasoning details",
+    "forbidden": [
+      "guaranteed_diagnosis",
+      "hidden_uncertainty",
+      "unsupported_prescription_or_dose_change",
+      "unsafe_delay_of_emergency_care",
+      "hidden_source_provenance"
+    ]
+  },
+  "internal_safety_controls": [
+    "Emergency or time-sensitive danger signals override convenience and require clear in-person escalation advice.",
+    "Prescription initiation, discontinuation or dose change must not be presented as autonomous treatment execution; material-risk medication actions require clinician or pharmacist confirmation.",
+    "Patient-specific recommendations must account for known allergies, medications, pregnancy status when relevant, major comorbidities, renal/hepatic function and contraindications when those data are available.",
+    "Raw identifiable medical records, images, genomics or medication histories must never be committed to GitHub.",
+    "Patient data must use a private governed data path; GitHub stores only code, schemas, synthetic tests and non-identifying configuration.",
+    "Every conclusion must retain provenance, timestamp, evidence version, material assumptions and uncertainty internally even when the user-facing answer is concise.",
+    "If evidence is insufficient, stale, conflicting or outside validated scope, state uncertainty and recommend the safest next action instead of fabricating certainty."
   ],
-  "specialty_pool": [
-    "cardiology","neurology","pulmonology","infectious-disease","gastroenterology-hepatology","nephrology","endocrinology-metabolism","hematology-oncology","rheumatology-immunology","dermatology","musculoskeletal-orthopedics","ophthalmology","otolaryngology","urology","psychiatry","sleep-medicine","nutrition","genetics-rare-disease"
-  ],
-  "workflow": [
-    "intake-and-longitudinal-context",
-    "red-flag-triage",
-    "problem-representation",
-    "prioritized-differential-with-cannot-miss-diagnoses",
-    "evidence-and-guideline-retrieval",
-    "test-and-imaging-appropriateness-review",
-    "structured-lab-imaging-medication-analysis",
-    "specialty-router-and-MDT-when-needed",
-    "independent-diagnostic-safety-challenger",
-    "medication-safety-review",
-    "uncertainty-and-next-best-action",
-    "patient-readable-summary-and-escalation-plan",
-    "follow-up-and-outcome-reconciliation"
-  ],
-  "high_risk_requires": [
-    "primary-clinical-opinion",
-    "independent-challenger",
-    "medication-safety-review-if-drugs-are-relevant",
-    "radiology-review-if-imaging-is-material",
-    "explicit-emergency-escalation-check",
-    "human-clinician-review-recommendation"
-  ],
-  "output_contract": {
-    "required": ["chief_concern","urgency","red_flags","problem_representation","differential","cannot_miss","supporting_evidence","contradicting_evidence","missing_information","recommended_next_steps","medication_risks","confidence","uncertainty","when_to_seek_in_person_care","sources"],
-    "forbidden": ["guaranteed_diagnosis","silent_uncertainty","unsupported_drug_change","hidden_source_provenance"]
-  }
+  "specialty_coverage": [
+    "general-medicine","cardiology","neurology","pulmonology","infectious-disease","gastroenterology-hepatology","nephrology","endocrinology-metabolism","hematology-oncology","rheumatology-immunology","dermatology","orthopedics-musculoskeletal","ophthalmology","otolaryngology","urology","psychiatry","sleep-medicine","nutrition","rehabilitation","clinical-pharmacy","radiology","laboratory-medicine","genetics-rare-disease"
+  ]
 }
