@@ -1,0 +1,46 @@
+name: verify-cloudflare
+
+on:
+  push:
+    branches:
+      - agent/cloudflare-deploy-verify
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify production Workers
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          GOV='https://governance-worker.a15280020511.workers.dev'
+          EXP='https://expert-worker.a15280020511.workers.dev'
+
+          ok=0
+          for i in $(seq 1 12); do
+            body="$(curl -fsS "$GOV/health" || true)"
+            if printf '%s' "$body" | jq -e '.ok == true and .ai_assist == true and .routing_mode == "single-model-serial-failover"' >/dev/null 2>&1; then
+              ok=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ok" -eq 1
+
+          curl -fsS "$EXP/health" | jq -e '.ok == true' >/dev/null
+
+          status="$(curl -sS -o /tmp/gov-assist.json -w '%{http_code}' -X POST "$GOV/v1/assist" -H 'content-type: application/json' --data '{"prompt":"health probe"}')"
+          test "$status" = '401'
+          jq -e '.error == "UNAUTHORIZED"' /tmp/gov-assist.json >/dev/null
+
+          status="$(curl -sS -o /tmp/expert-relay.json -w '%{http_code}' -X POST "$EXP/v1/governance-assist" -H 'content-type: application/json' --data '{"prompt":"health probe"}')"
+          test "$status" = '403'
+          jq -e '.error == "POLICY_DENIED"' /tmp/expert-relay.json >/dev/null
+
+          echo 'CLOUDFLARE_PRODUCTION_VERIFY_PASS'
