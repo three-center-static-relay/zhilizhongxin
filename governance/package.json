@@ -4,8 +4,9 @@
   "type": "module",
   "scripts": {
     "policy": "node tests/policy-regression.mjs",
+    "profile": "node tests/assist-profile.mjs",
     "stress": "node tests/stress.mjs",
-    "test": "node tests/policy-regression.mjs && node tests/stress.mjs"
+    "test": "node tests/policy-regression.mjs && node tests/assist-profile.mjs && node tests/stress.mjs"
   },
   "devDependencies": {"wrangler": "^4.0.0"}
 }
