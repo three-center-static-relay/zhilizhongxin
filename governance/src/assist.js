@@ -1,10 +1,13 @@
 import { buildGovernanceSystem, deterministicPolicyDecision, validateModelContent } from "./assist-policy.js";
 
-const FREE_MODELS = Object.freeze([
-  "@cf/zai-org/glm-4.7-flash",
-  "@cf/google/gemma-4-26b-a4b-it",
+// Governance routing priority: strongest validated Workers Free-plan model first.
+// Order is intentionally deterministic; a model is attempted only after every stronger
+// predecessor failed. Shared-quota exhaustion skips the remaining Cloudflare pool.
+const FREE_MODELS_STRONGEST_FIRST = Object.freeze([
   "@cf/nvidia/nemotron-3-120b-a12b",
+  "@cf/google/gemma-4-26b-a4b-it",
   "@cf/qwen/qwen3-30b-a3b-fp8",
+  "@cf/zai-org/glm-4.7-flash",
   "@cf/meta/llama-4-scout-17b-16e-instruct"
 ]);
 
@@ -37,17 +40,6 @@ async function parseBody(request) {
   if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) throw Object.assign(new Error("BODY_TOO_LARGE"), { status: 413 });
   if (!text) return {};
   try { return JSON.parse(text); } catch { throw Object.assign(new Error("INVALID_REQUEST"), { status: 400 }); }
-}
-
-function shuffledModels() {
-  const out = [...FREE_MODELS];
-  const random = new Uint32Array(out.length || 1);
-  crypto.getRandomValues(random);
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = random[i] % (i + 1);
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
 }
 
 function authenticate(request, env) {
@@ -104,7 +96,14 @@ async function openRouterFallback(env, body) {
 export function assistRoutingInfo() {
   return {
     mode: "single-model-serial-failover",
-    cloudflare: { selection: "shuffle-once-per-task", free_only: true, model_count: FREE_MODELS.length, models: [...FREE_MODELS] },
+    cloudflare: {
+      selection: "strongest-first-sequential",
+      ranking: "governance-intelligence-high-to-low",
+      free_only: true,
+      deterministic_order: true,
+      model_count: FREE_MODELS_STRONGEST_FIRST.length,
+      models: [...FREE_MODELS_STRONGEST_FIRST]
+    },
     openrouter: { free_models: false, paid_only: true, ranking: "intelligence-high-to-low", sequential: true },
     final_fallback: "web-gpt",
     authenticated_selftests: ["openrouter-fallback", "webgpt-fallback"]
@@ -173,25 +172,27 @@ export async function runAssist(request, env) {
     }
 
     const messages = [{ role: "system", content: system }, { role: "user", content: prompt }];
-    const models = shuffledModels();
+    const models = [...FREE_MODELS_STRONGEST_FIRST];
     const attempts = [];
-    for (const model of models) {
+    for (let rank = 0; rank < models.length; rank++) {
+      const model = models[rank];
       const started = Date.now();
       try {
         const output = await workersAiAttempt(env, model, messages, maxTokens);
         const content = validateModelContent(prompt, output, extractContent(output));
-        attempts.push({ provider: "cloudflare-workers-ai", model, status: "completed", elapsed_ms: Date.now() - started });
+        attempts.push({ provider: "cloudflare-workers-ai", rank: rank + 1, model, status: "completed", elapsed_ms: Date.now() - started });
         return json({
           ok: true,
           provider: "cloudflare-workers-ai",
-          selection: "free-random-shuffle-once",
+          selection: "free-strongest-first-sequential",
           model,
+          rank: rank + 1,
           content,
           usage: output?.usage || null,
           attempts
         });
       } catch (error) {
-        attempts.push({ provider: "cloudflare-workers-ai", model, status: "failed", error: String(error?.message || error), elapsed_ms: Date.now() - started });
+        attempts.push({ provider: "cloudflare-workers-ai", rank: rank + 1, model, status: "failed", error: String(error?.message || error), elapsed_ms: Date.now() - started });
         if (looksLikeSharedQuota(error)) break;
       }
     }

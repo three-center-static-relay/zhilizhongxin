@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { buildGovernanceSystem, deterministicPolicyDecision, validateModelContent } from "../src/assist-policy.js";
+import { assistRoutingInfo } from "../src/assist.js";
 
 const decision = prompt => deterministicPolicyDecision(prompt) || "";
 const has = (text, ...needles) => needles.every(x => text.toLowerCase().includes(x.toLowerCase()));
@@ -64,6 +65,18 @@ assert.throws(
   /INADEQUATE_MODEL_OUTPUT/
 );
 
+// Cloudflare routing must be deterministic strongest-first, never randomized.
+const routing = assistRoutingInfo();
+assert.equal(routing.cloudflare.selection, "strongest-first-sequential");
+assert.equal(routing.cloudflare.deterministic_order, true);
+assert.deepEqual(routing.cloudflare.models, [
+  "@cf/nvidia/nemotron-3-120b-a12b",
+  "@cf/google/gemma-4-26b-a4b-it",
+  "@cf/qwen/qwen3-30b-a3b-fp8",
+  "@cf/zai-org/glm-4.7-flash",
+  "@cf/meta/llama-4-scout-17b-16e-instruct"
+]);
+
 console.log(JSON.stringify({
   ok: true,
   suite: "governance-policy-regression",
@@ -79,6 +92,7 @@ console.log(JSON.stringify({
     "non-2xx-fragment-is-failure",
     "task-system-cannot-replace-hard-rules",
     "exact-output-contract-failover",
-    "truncation-and-inadequate-output-rejected"
+    "truncation-and-inadequate-output-rejected",
+    "cloudflare-strongest-first-order"
   ]
 }));
