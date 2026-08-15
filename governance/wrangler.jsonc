@@ -1,7 +1,13 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "governance-worker",
-  "main": "src/index.js",
-  "compatibility_date": "2026-08-14",
-  "build": {"command": "node tests/stress.mjs"}
+  "main": "src/entry.js",
+  "compatibility_date": "2026-08-15",
+  "workers_dev": true,
+  "ai": {"binding": "AI"},
+  "services": [
+    {"binding": "OPENROUTER_RELAY", "service": "expert-worker"}
+  ],
+  "build": {"command": "node tests/stress.mjs"},
+  "observability": {"enabled": true, "head_sampling_rate": 1}
 }
