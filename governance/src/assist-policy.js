@@ -38,6 +38,14 @@ function isCompositePrompt(raw) {
   return text.length > 2200 || sectionMarkers.length >= 6;
 }
 
+function hasVerifiedExecutionReceipt(input) {
+  const text = String(input || "");
+  const denied = /(?:没有|无|缺少|不存在|未提供|without|no|missing).{0,24}(?:工具)?(?:回执|receipt|tool result|工具结果|调用记录|execution record)/i.test(text);
+  if (denied) return false;
+  return /(?:已提供|提供了|存在|attached|provided|verified).{0,24}(?:工具)?(?:回执|receipt|tool result|工具结果|调用记录|execution record)/i.test(text) ||
+    /(?:工具)?(?:回执|receipt|tool result|工具结果|调用记录|execution record).{0,24}(?:显示|表明|证明|verified|valid|有效|=\s*verified)/i.test(text);
+}
+
 export function deterministicPolicyDecision(prompt) {
   const raw = String(prompt || "");
 
@@ -104,7 +112,7 @@ export function deterministicPolicyDecision(prompt) {
     );
   }
 
-  if (/(外部红队|红队检查|red[- ]?team)/i.test(raw) && /(已尝试|已完成|已执行|attempted|completed|executed)/i.test(raw) && !/(回执|receipt|tool result|工具结果|调用记录|execution record)/i.test(raw)) {
+  if (/(外部红队|红队检查|red[- ]?team)/i.test(raw) && /(已尝试|已完成|已执行|attempted|completed|executed)/i.test(raw) && !hasVerifiedExecutionReceipt(raw)) {
     return answer(raw,
       "不能把外部红队检查写成已尝试或已完成，因为当前没有可验证的工具回执/调用记录。正确状态是 UNKNOWN / NOT VERIFIED；只有拿到真实执行回执后才能升级为已执行事实。",
       "Do not claim the external/red-team check was attempted or completed without a verifiable tool receipt/execution record. The correct status is UNKNOWN / NOT VERIFIED until real execution evidence is available."
@@ -174,11 +182,9 @@ function quotaFallbackCompliant(content) {
 }
 
 function claimsUnverifiedExternalExecution(prompt, content) {
-  const input = String(prompt || "");
   const text = String(content || "");
   const claim = /(外部红队|红队检查|red[- ]?team).{0,40}(已尝试|已完成|已执行|attempted|completed|executed)/i.test(text);
-  const evidence = /(回执|receipt|tool result|工具结果|调用记录|execution record)/i.test(input);
-  return claim && !evidence;
+  return claim && !hasVerifiedExecutionReceipt(prompt);
 }
 
 export function validateModelContent(prompt, output, content) {
