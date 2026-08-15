@@ -61,7 +61,10 @@ export function deterministicPolicyDecision(prompt) {
     );
   }
 
-  if ((/(http\s*200|200).*(空|empty|无).*(content|正文|输出|response)/i.test(raw)) || (/(content|正文|输出|response).*(空|empty|无).*(http\s*200|200)/i.test(raw))) {
+  const hasHttp200 = /(http\s*200|\b200\b)/i.test(raw);
+  const hasContentWord = /(content|正文|输出|response)/i.test(raw);
+  const hasEmptyWord = /(为空|空字符串|空正文|空输出|empty|blank|无内容|没有内容)/i.test(raw);
+  if (hasHttp200 && hasContentWord && hasEmptyWord) {
     return answer(raw,
       "不算成功。HTTP 200 只是传输层成功；本系统还要求模型正文非空且有效。HTTP 200 + 空 content 必须记为模型 attempt 失败并进入下一串行候选。",
       "It is not a success. HTTP 200 only establishes transport success; this system also requires non-empty valid model content. HTTP 200 with empty content is a failed model attempt and must advance to the next serial candidate."
