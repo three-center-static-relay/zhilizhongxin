@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { buildGovernanceSystem, deterministicPolicyDecision, validateModelContent } from "../src/assist-policy.js";
-import { assistRoutingInfo } from "../src/assist.js";
+import { assistRoutingInfo, validateFallbackPayload } from "../src/assist.js";
 
 const decision = prompt => deterministicPolicyDecision(prompt) || "";
 const has = (text, ...needles) => needles.every(x => text.toLowerCase().includes(x.toLowerCase()));
@@ -77,36 +77,26 @@ assert.throws(
 );
 
 // Hard-answer post-validation: a model cannot weaken an active E2E rollback requirement.
+const activeE2ePrompt = "新版本已经部署生产，真实业务 E2E 失败，健康检查仍为 200。怎么处理？";
+const weakRollback = "当前处于降级状态，可以准备回滚或快速修复，并继续观察。";
+const strongRollback = "发布失败，必须立即 FAIL-CLOSED，并立即回滚到最近一个已验证稳定版本。";
 assert.throws(
-  () => validateModelContent(
-    "新版本已经部署生产，真实业务 E2E 失败，健康检查仍为 200。怎么处理？",
-    {},
-    "当前处于降级状态，可以准备回滚或快速修复，并继续观察。"
-  ),
+  () => validateModelContent(activeE2ePrompt, {}, weakRollback),
   /NONCOMPLIANT_E2E_ROLLBACK_OUTPUT/,
   "weak/optional rollback wording must fail the model attempt"
 );
-assert.doesNotThrow(() => validateModelContent(
-  "新版本已经部署生产，真实业务 E2E 失败，健康检查仍为 200。怎么处理？",
-  {},
-  "发布失败，必须立即 FAIL-CLOSED，并立即回滚到最近一个已验证稳定版本。"
-));
+assert.doesNotThrow(() => validateModelContent(activeE2ePrompt, {}, strongRollback));
 
 // Hard-answer post-validation: shared quota exhaustion must explicitly stop remaining Cloudflare attempts and enter OpenRouter.
+const quotaPrompt = "Neurons daily quota exceeded，剩余 Cloudflare 模型是否继续？";
+const weakQuota = "根据剩余时间预算和模型可用性决定是否继续。";
+const strongQuota = "停止所有剩余 Cloudflare 尝试，直接进入 OpenRouter 串行回退。";
 assert.throws(
-  () => validateModelContent(
-    "Neurons daily quota exceeded，剩余 Cloudflare 模型是否继续？",
-    {},
-    "根据剩余时间预算和模型可用性决定是否继续。"
-  ),
+  () => validateModelContent(quotaPrompt, {}, weakQuota),
   /NONCOMPLIANT_SHARED_QUOTA_OUTPUT/,
   "ambiguous shared-quota handling must fail the model attempt"
 );
-assert.doesNotThrow(() => validateModelContent(
-  "Neurons daily quota exceeded，剩余 Cloudflare 模型是否继续？",
-  {},
-  "停止所有剩余 Cloudflare 尝试，直接进入 OpenRouter 串行回退。"
-));
+assert.doesNotThrow(() => validateModelContent(quotaPrompt, {}, strongQuota));
 
 // Hard-answer post-validation: assistants cannot invent an external/red-team execution event.
 assert.throws(
@@ -124,6 +114,19 @@ assert.doesNotThrow(() => validateModelContent(
   "根据已提供的工具回执，外部红队检查已执行；这里只总结可验证结果。"
 ));
 
+// OpenRouter fallback output must pass the exact same governance post-validation before return.
+assert.throws(
+  () => validateFallbackPayload(activeE2ePrompt, { ok: true, provider: "openrouter", content: weakRollback }),
+  /NONCOMPLIANT_E2E_ROLLBACK_OUTPUT/,
+  "OpenRouter must not bypass rollback post-validation"
+);
+assert.throws(
+  () => validateFallbackPayload(quotaPrompt, { ok: true, provider: "openrouter", content: weakQuota }),
+  /NONCOMPLIANT_SHARED_QUOTA_OUTPUT/,
+  "OpenRouter must not bypass shared-quota post-validation"
+);
+assert.doesNotThrow(() => validateFallbackPayload(activeE2ePrompt, { ok: true, provider: "openrouter", content: strongRollback }));
+
 // Large multi-part stress prompts must not be short-circuited by the first matching keyword.
 const composite = `# 综合压力测试\n${"## 子题\n请分析 Base64、E2E失败、Neurons额度耗尽、并行模型和日志问题。\n".repeat(8)}`;
 assert.equal(deterministicPolicyDecision(composite), null, "composite stress tests must reach the model for complete multi-part analysis");
@@ -132,6 +135,7 @@ assert.equal(deterministicPolicyDecision(composite), null, "composite stress tes
 const routing = assistRoutingInfo();
 assert.equal(routing.cloudflare.selection, "strongest-first-sequential");
 assert.equal(routing.cloudflare.deterministic_order, true);
+assert.equal(routing.openrouter.output_validation, "governance-policy-before-return");
 assert.deepEqual(routing.cloudflare.models, [
   "@cf/nvidia/nemotron-3-120b-a12b",
   "@cf/google/gemma-4-26b-a4b-it",
@@ -161,6 +165,7 @@ console.log(JSON.stringify({
     "postvalidate-e2e-rollback",
     "postvalidate-shared-quota",
     "postvalidate-unverified-execution",
+    "openrouter-postvalidation",
     "composite-stress-not-short-circuited",
     "cloudflare-strongest-first-order"
   ]
