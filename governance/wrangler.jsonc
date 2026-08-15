@@ -8,6 +8,6 @@
   "services": [
     {"binding": "OPENROUTER_RELAY", "service": "expert-worker"}
   ],
-  "build": {"command": "node tests/stress.mjs"},
+  "build": {"command": "node tests/policy-regression.mjs && node tests/stress.mjs"},
   "observability": {"enabled": true, "head_sampling_rate": 1}
 }
