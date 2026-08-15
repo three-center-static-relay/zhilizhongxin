@@ -1,6 +1,11 @@
 {
   "name": "governance-worker",
   "private": true,
-  "scripts": {"stress": "node tests/stress.mjs"},
+  "type": "module",
+  "scripts": {
+    "policy": "node tests/policy-regression.mjs",
+    "stress": "node tests/stress.mjs",
+    "test": "node tests/policy-regression.mjs && node tests/stress.mjs"
+  },
   "devDependencies": {"wrangler": "^4.0.0"}
 }
