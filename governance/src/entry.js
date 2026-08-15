@@ -1,16 +1,11 @@
 import base from "./index.js";
-import { assistRoutingInfo, runAssist } from "./assist.js";
+import { assistRoutingInfo } from "./assist.js";
+import { runAttestedAssist, runtimeSelftestResponse } from "./assist-attested.js";
 import { runFinalAssistValidation } from "./assist-final-validator.js";
 import { assistRuntimeIdentity } from "./assist-runtime.js";
 
 const POLICY_KERNEL_VERSION = "deterministic-v3";
 const json = (body, status = 200) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
-
-async function augmentAssistResponse(response) {
-  const body = await response.clone().json().catch(() => null);
-  if (!body || typeof body !== "object") return response;
-  return json({ ...body, ...assistRuntimeIdentity() }, response.status);
-}
 
 async function augmentBaseResponse(request, env, ctx) {
   const response = await base.fetch(request, env, ctx);
@@ -29,6 +24,7 @@ async function augmentBaseResponse(request, env, ctx) {
       routing_mode: routing.mode,
       policy_kernel: POLICY_KERNEL_VERSION,
       fallback_selftests: true,
+      runtime_selftest: true,
       final_output_validation: true,
       ...runtime
     });
@@ -47,7 +43,8 @@ async function augmentBaseResponse(request, env, ctx) {
         web_gpt_final_output_must_be_revalidated: true,
         hard_rules_immutable: true,
         deterministic_policy_kernel: true,
-        runtime_attestation: true
+        runtime_attestation: true,
+        runtime_identity_required_on_assist_response: true
       },
       ...runtime
     });
@@ -67,7 +64,9 @@ async function augmentBaseResponse(request, env, ctx) {
         model_output_contract_validation: true,
         authenticated_fallback_selftests: true,
         authenticated_final_output_validation: true,
-        runtime_policy_attestation: true
+        runtime_policy_attestation: true,
+        zero_cost_runtime_selftest: true,
+        attestation_response_headers: true
       },
       ...runtime
     });
@@ -87,6 +86,11 @@ async function augmentBaseResponse(request, env, ctx) {
             summary: "Run authenticated governance AI assistance with deterministic hard-policy enforcement, serial model failover, and runtime policy attestation"
           }
         },
+        "/v1/assist/runtime": {
+          get: {
+            summary: "Return zero-cost governance assist runtime attestation without invoking AI"
+          }
+        },
         "/v1/assist/validate": {
           post: {
             summary: "Validate a final governance answer against the same hard policy before it is accepted, including WebGPT final-fallback answers"
@@ -104,7 +108,10 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/v1/assist") {
-      return augmentAssistResponse(await runAssist(request, env));
+      return runAttestedAssist(request, env);
+    }
+    if (request.method === "GET" && url.pathname === "/v1/assist/runtime") {
+      return runtimeSelftestResponse();
     }
     if (request.method === "POST" && url.pathname === "/v1/assist/validate") {
       return runFinalAssistValidation(request, env);
