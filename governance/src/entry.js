@@ -156,6 +156,7 @@ async function augmentBaseResponse(request, env, ctx) {
     return json({
       ...body,
       info: { ...(body.info || {}), title: "Governance Center", version: runtime.policy_version },
+      servers: [{ url: url.origin, description: "Current Governance Worker origin" }],
       components: {
         ...(body.components || {}),
         securitySchemes: {
