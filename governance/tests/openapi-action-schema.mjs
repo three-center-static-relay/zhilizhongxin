@@ -11,6 +11,7 @@ assert.equal(spec.openapi, "3.1.0");
 assert.equal(spec.info.version, runtime.policy_version);
 assert.equal(spec.policy_version, runtime.policy_version);
 assert.equal(spec.validator_version, runtime.validator_version);
+assert.deepEqual(spec.servers, [{ url: "https://governance.test", description: "Current Governance Worker origin" }]);
 
 const bearer = spec.components?.securitySchemes?.BearerAuth;
 assert.equal(bearer?.type, "http");
@@ -34,6 +35,7 @@ assert.ok(validate?.responses?.["422"], "hard-policy rejection response must be 
 console.log(JSON.stringify({
   ok: true,
   suite: "governance-openapi-action-schema",
+  server: spec.servers[0].url,
   operations: [
     "runGovernanceAssist",
     "getGovernanceAssistRuntime",
