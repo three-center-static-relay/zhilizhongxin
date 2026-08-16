@@ -101,8 +101,8 @@
     "/v1/intelligence/provider-selftest": {
       "post": {
         "operationId": "runProviderFreshE2E",
-        "summary": "Run fresh production E2E for Google Cloud, Earth Engine, Google Patents, and PKULaw",
-        "description": "Authenticated zero-AI canary via the intelligence service binding. Runs the real /v1/run path for BigQuery metadata (no query scan), one Earth Engine public asset, one bounded Google Patents search, and schema-aware PKULaw health. Returns only redacted receipts.",
+        "summary": "Run fresh production E2E for Google Cloud, Earth Engine, Google Patents, PKULaw, and Wind AIFin",
+        "description": "Authenticated zero-AI canary via the intelligence service binding. Runs the real /v1/run path for BigQuery metadata (no query scan), one Earth Engine public asset, one bounded Google Patents search, schema-aware PKULaw health, and one bounded Wind AIFin stock-data MCP business call. Returns only redacted receipts.",
         "security": [{"BearerAuth": []}],
         "requestBody": {"required": false, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false}}}},
         "responses": {
