@@ -9,9 +9,21 @@
 
 不要从旧聊天记录、旧分支、旧 PR、`admin/openapi.json` 或历史截图复制 Action 代码。
 
+## 当前阶段
+
+当前为 **Phase 2：candidate control-plane acceptance**。
+
+除原有治理辅助、runtime、最终验证、文献生产自检和 3 个只读 Admin Action 外，新增：
+
+- `createCandidateVersion`：只创建当前四中心生产 runtime/source digest 的不可变候选快照；只写治理元数据，不部署代码。
+- `validateCandidate`：只做控制面一致性验收，包括候选 digest、四中心 health、空闲状态、runtime version 和 source digest 身份一致性。
+- `getAcceptanceResult`：按 `run_id` 查询已保存的验收 receipt。
+
+本阶段明确 **不包含** `promoteCandidate` 或 `rollbackProduction`。`validateCandidate` 返回的 PASS 只代表 `control-plane-consistency-v1`，且必须同时声明 `fresh_business_e2e=false`、`promotion_eligible=false`，不得冒充完整生产业务 E2E。
+
 ## 更新规则
 
-1. 任何会改变 `governance-worker /openapi.json`、Action 路径、operationId、请求参数、认证声明或响应契约的修改，必须在同一个 PR 中同步更新 `LATEST.openapi.json`。
+1. 任何会改变 `governance-worker /openapi.json`、Action 路径、operationId、请求参数、认证声明或响应契约的修改，必须同步更新 `LATEST.openapi.json`。
 2. `tests/web-gpt-action-snapshot.mjs` 会把 `LATEST.openapi.json` 与真实部署入口 `src/admin-entry.js` 动态生成的 Action Schema 做结构比对；不一致即失败，禁止把过期 Action Schema 当成最新版。
 3. 本目录不保存多个“latest”或历史副本，避免误选旧代码。历史版本由 Git 提交记录负责。
 4. API Token/Key 永远不写入 Schema 文件；`ADMIN_GPT_TOKEN` 只在 GPT 编辑器的认证配置和 Cloudflare Secret 中设置。
