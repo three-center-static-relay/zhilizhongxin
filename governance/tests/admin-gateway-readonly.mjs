@@ -78,7 +78,7 @@ const auth={authorization:`Bearer ${TOKEN}`};
   }
 }
 
-// GPT Actions schema exposes exactly the old 3 governance operations plus 3 read-only admin operations.
+// Production GPT Actions schema preserves literature selftest and adds 3 read-only admin operations.
 {
   const response=await worker.fetch(new Request("https://governance.test/openapi.json"),env,{});
   const spec=await response.json();
@@ -89,7 +89,7 @@ const auth={authorization:`Bearer ${TOKEN}`};
     if(op.description!==undefined)assert.ok(op.description.length<=300,`${op.operationId} description exceeds 300 characters`);
   }
   assert.deepEqual(operations.sort(),[
-    "getAdminContext","getGovernanceAssistRuntime","getProductionVersions","getSystemHealth","runGovernanceAssist","validateGovernanceAssistFinal"
+    "getAdminContext","getGovernanceAssistRuntime","getProductionVersions","getSystemHealth","runGovernanceAssist","runLiteratureProductionSelftest","validateGovernanceAssistFinal"
   ].sort());
   for(const path of ["/v1/admin/context","/v1/admin/health","/v1/admin/versions"]){
     assert.deepEqual(spec.paths[path].get.security,[{BearerAuth:[]}]);
@@ -97,4 +97,4 @@ const auth={authorization:`Bearer ${TOKEN}`};
   }
 }
 
-console.log(JSON.stringify({ok:true,suite:"governance-admin-gateway-readonly",operations:3,receipt_schema:"three-center-admin-read-receipt-v1",mutation_actions:0}));
+console.log(JSON.stringify({ok:true,suite:"governance-admin-gateway-readonly",admin_operations:3,total_production_operations:7,receipt_schema:"three-center-admin-read-receipt-v1",mutation_actions:0,literature_action_preserved:true}));
