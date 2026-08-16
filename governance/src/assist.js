@@ -24,6 +24,7 @@ const HIGH_REASONING_MODELS = new Set([
 ]);
 const ASSIST_EXECUTION_SYSTEM = `FIXED GOVERNANCE ASSISTANT EXECUTION PROFILE:
 - Apply rigorous internal reasoning before answering governance, code, diagnosis, routing, maintenance, and decision-support tasks.
+- You are a mandatory collaborating auxiliary model for every normal web-GPT work item routed through this endpoint; provide useful independent analysis rather than merely acknowledging the task.
 - Use the provider's highest supported reasoning effort when an explicit reasoning-effort control is available. For models without a compatible control, preserve the same high-reasoning behavior through these system instructions rather than inventing unsupported parameters.
 - Do not reveal private chain-of-thought. Return conclusions, supporting evidence, uncertainty, and recommended actions instead.
 - Prefer deterministic, evidence-disciplined answers over creative variation.
@@ -131,6 +132,14 @@ export function validateFallbackPayload(prompt, payload) {
 export function assistRoutingInfo() {
   return {
     mode: "single-model-serial-failover",
+    collaboration: {
+      required: true,
+      scope: "every-work-item",
+      invocation: "before-substantive-work",
+      normal_work_must_reach_auxiliary_model: true,
+      outage_behavior: "web-gpt-degraded-fallback",
+      tool_access: "none"
+    },
     generation_profile: {
       name: ASSIST_PROFILE_NAME,
       fixed_system_prompt: true,
@@ -170,7 +179,11 @@ export async function runAssist(request, env) {
     if (!prompt) return json({ ok: false, error: "INVALID_REQUEST", message: "prompt required" }, 400);
 
     const maxTokens = boundedInt(body.max_tokens, DEFAULT_MAX_TOKENS, 256, MAX_MAX_TOKENS);
-    const system = `${buildGovernanceSystem(body.system)}\n\n${ASSIST_EXECUTION_SYSTEM}`;
+    const hardDecision = deterministicPolicyDecision(prompt);
+    const policyGuidance = hardDecision
+      ? `\n\nAUTHORITATIVE DETERMINISTIC POLICY GUIDANCE (must be preserved in your answer; elaborate only in a compliant direction):\n${hardDecision}`
+      : "";
+    const system = `${buildGovernanceSystem(body.system)}\n\n${ASSIST_EXECUTION_SYSTEM}${policyGuidance}`;
 
     if (prompt === SELFTEST_OPENROUTER) {
       const fallbackPrompt = "Reply exactly: OPENROUTER_FALLBACK_OK";
@@ -229,20 +242,6 @@ export async function runAssist(request, env) {
       }, 503);
     }
 
-    const hardDecision = deterministicPolicyDecision(prompt);
-    if (hardDecision) {
-      return json({
-        ok: true,
-        provider: "governance-policy-kernel",
-        selection: "deterministic-hard-rule",
-        model: null,
-        content: hardDecision,
-        usage: null,
-        attempts: [],
-        generation_profile: ASSIST_PROFILE_NAME
-      });
-    }
-
     const messages = [{ role: "system", content: system }, { role: "user", content: prompt }];
     const models = [...FREE_MODELS_STRONGEST_FIRST];
     const attempts = [];
@@ -262,7 +261,10 @@ export async function runAssist(request, env) {
           content,
           usage: output?.usage || null,
           attempts,
-          generation_profile: ASSIST_PROFILE_NAME
+          generation_profile: ASSIST_PROFILE_NAME,
+          collaboration_required: true,
+          collaboration_status: "participated",
+          policy_kernel_guidance_applied: Boolean(hardDecision)
         });
       } catch (error) {
         attempts.push({ provider: "cloudflare-workers-ai", rank: rank + 1, model, status: "failed", error: String(error?.message || error), elapsed_ms: Date.now() - started });
@@ -279,7 +281,10 @@ export async function runAssist(request, env) {
           ...validated,
           cloudflare_attempts: attempts,
           openrouter_output_validated: true,
-          generation_profile: ASSIST_PROFILE_NAME
+          generation_profile: ASSIST_PROFILE_NAME,
+          collaboration_required: true,
+          collaboration_status: "participated",
+          policy_kernel_guidance_applied: Boolean(hardDecision)
         });
       } catch (error) {
         return json({
@@ -289,7 +294,9 @@ export async function runAssist(request, env) {
           cloudflare_attempts: attempts,
           openrouter_attempts: Array.isArray(payload?.attempts) ? payload.attempts : [],
           web_gpt_fallback_required: true,
-          generation_profile: ASSIST_PROFILE_NAME
+          generation_profile: ASSIST_PROFILE_NAME,
+          collaboration_required: true,
+          collaboration_status: "unavailable-degraded"
         }, 503);
       }
     }
@@ -299,9 +306,18 @@ export async function runAssist(request, env) {
       error: payload?.error || "ALL_MODEL_PROVIDERS_FAILED",
       cloudflare_attempts: attempts,
       web_gpt_fallback_required: true,
-      generation_profile: ASSIST_PROFILE_NAME
+      generation_profile: ASSIST_PROFILE_NAME,
+      collaboration_required: true,
+      collaboration_status: "unavailable-degraded"
     }, 503);
   } catch (error) {
-    return json({ ok: false, error: String(error?.message || "INTERNAL_ERROR"), web_gpt_fallback_required: true, generation_profile: ASSIST_PROFILE_NAME }, error?.status || 500);
+    return json({
+      ok: false,
+      error: String(error?.message || "INTERNAL_ERROR"),
+      web_gpt_fallback_required: true,
+      generation_profile: ASSIST_PROFILE_NAME,
+      collaboration_required: true,
+      collaboration_status: "unavailable-degraded"
+    }, error?.status || 500);
   }
 }
