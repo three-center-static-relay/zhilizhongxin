@@ -17,7 +17,7 @@ function withRuntimeHeaders(headers = new Headers()) {
 }
 
 function attestedJson(body, status = 200) {
-  return Response.json({ ...body, ...assistRuntimeIdentity() }, {
+  return Response.json({ ...body, http_status: status, ...assistRuntimeIdentity() }, {
     status,
     headers: withRuntimeHeaders()
   });
@@ -113,7 +113,7 @@ export async function runAttestedAssist(request, env) {
     });
   }
 
-  return Response.json({ ...body, ...assistRuntimeIdentity() }, {
+  return Response.json({ ...body, http_status: response.status, ...assistRuntimeIdentity() }, {
     status: response.status,
     headers: withRuntimeHeaders(response.headers)
   });
