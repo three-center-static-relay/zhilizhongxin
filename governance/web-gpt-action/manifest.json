@@ -1,0 +1,29 @@
+{
+  "schema": "web-gpt-action-canonical-v1",
+  "snapshot_version": "2026-08-16.1",
+  "status": "LATEST",
+  "canonical_file": "governance/web-gpt-action/LATEST.openapi.json",
+  "source_entry": "governance/src/admin-entry.js",
+  "runtime_schema_endpoint": "https://governance-worker.a15280020511.workers.dev/openapi.json",
+  "production_server": "https://governance-worker.a15280020511.workers.dev",
+  "authentication": {
+    "editor_mode": "API key",
+    "auth_type": "Bearer",
+    "secret_name": "ADMIN_GPT_TOKEN",
+    "secret_stored_in_repository": false
+  },
+  "required_operation_ids": [
+    "runGovernanceAssist",
+    "getGovernanceAssistRuntime",
+    "validateGovernanceAssistFinal",
+    "runLiteratureProductionSelftest",
+    "getAdminContext",
+    "getSystemHealth",
+    "getProductionVersions"
+  ],
+  "copy_paste_ready": true,
+  "secret_free": true,
+  "history_policy": "Git history only; do not keep competing latest files",
+  "update_policy": "Any Action surface change must update LATEST.openapi.json in the same PR and pass web-gpt-action-snapshot.mjs",
+  "updated_at": "2026-08-16T12:30:00+08:00"
+}
