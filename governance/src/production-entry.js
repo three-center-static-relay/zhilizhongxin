@@ -26,7 +26,7 @@ function providerActionPath(){
     post:{
       operationId:"runProviderFreshE2E",
       summary:"Run fresh production E2E for Google Cloud, Earth Engine, Google Patents, and PKULaw",
-      description:"Authenticated zero-AI production canary through the intelligence service binding. It executes the real /v1/run path sequentially, validates task receipts and lock release, uses BigQuery metadata only (no query scan), reads one Earth Engine public asset, performs one bounded Google Patents public search, and runs schema-aware PKULaw health. No secrets or upstream document bodies are returned.",
+      description:"Authenticated zero-AI canary via the intelligence service binding. Runs the real /v1/run path for BigQuery metadata (no query scan), one Earth Engine public asset, one bounded Google Patents search, and schema-aware PKULaw health. Returns only redacted receipts.",
       security:[{BearerAuth:[]}],
       requestBody:{required:false,content:{"application/json":{schema:{type:"object",additionalProperties:false}}}},
       responses:{
