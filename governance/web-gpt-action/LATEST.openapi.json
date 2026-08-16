@@ -64,7 +64,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true,
+                "additionalProperties": false,
                 "required": ["prompt", "content"],
                 "properties": {
                   "prompt": {"type": "string", "minLength": 1, "description": "Original governance prompt that the answer must satisfy."},
