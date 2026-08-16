@@ -12,7 +12,12 @@ export function assistRuntimeIdentity() {
     auxiliary_tools_allowed: false,
     auxiliary_collaboration_required: true,
     auxiliary_collaboration_scope: "every-work-item",
-    auxiliary_normal_work_ai_required: true,
+    auxiliary_collaboration_default: "active",
+    auxiliary_controller_may_cancel: true,
+    auxiliary_cancel_authority: "web-gpt-only",
+    auxiliary_cancel_requires_explicit_request: true,
+    auxiliary_work_item_handshake_required: true,
+    auxiliary_normal_work_ai_required_unless_cancelled: true,
     auxiliary_outage_behavior: "web-gpt-degraded-fallback"
   };
 }
