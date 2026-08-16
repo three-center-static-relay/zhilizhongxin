@@ -21,9 +21,12 @@ assert.deepEqual(profile.reasoning_effort_models, [
 assert.equal(routing.openrouter.reasoning_effort, "high");
 assert.equal(routing.mode, "single-model-serial-failover");
 assert.equal(collaboration.required, true);
-assert.equal(collaboration.scope, "every-work-item");
-assert.equal(collaboration.invocation, "before-substantive-work");
+assert.equal(collaboration.scope, "every-work-item-and-all-repository-cloudflare-use");
+assert.equal(collaboration.repository_use_requires_collaboration, true);
+assert.equal(collaboration.cloudflare_use_requires_collaboration, true);
+assert.equal(collaboration.invocation, "before-substantive-work-or-repository-cloudflare-use");
 assert.equal(collaboration.normal_work_must_reach_auxiliary_model, true);
+assert.equal(collaboration.bypass_only_by_controller_cancel, true);
 assert.equal(collaboration.outage_behavior, "web-gpt-degraded-fallback");
 assert.equal(collaboration.tool_access, "none");
 
@@ -42,6 +45,8 @@ console.log(JSON.stringify({
   profile: profile.name,
   mandatory_collaboration: true,
   collaboration_scope: collaboration.scope,
+  repository_use_requires_collaboration: true,
+  cloudflare_use_requires_collaboration: true,
   cloudflare_model_tier: "free-only",
   openrouter_model_tier: "paid-only"
 }));
