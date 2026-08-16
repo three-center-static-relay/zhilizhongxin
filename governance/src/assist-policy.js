@@ -91,7 +91,7 @@ export function deterministicPolicyDecision(prompt) {
     );
   }
 
-  if ((/(http\s*(?:429|5\d\d)|非2xx|non-2xx)/i.test(raw)) && /(模型片段|片段|fragment|content|正文|输出|完整回答|response)/i.test(raw)) {
+  if (/(http\s*(?:429|5\d\d)|非2xx|non-2xx)/i.test(raw)) {
     return answer(raw,
       "不算成功。任何非 2xx（包括 HTTP 429/503/504）都必须直接记为 FAILED ATTEMPT；即使响应体里残留完整模型正文，也不能再用输出契约把该 attempt 判为成功。",
       "It is not a success. Any non-2xx response, including HTTP 429/503/504, is a FAILED ATTEMPT even if the body contains model content; output-contract validation cannot turn that transport failure into success."
@@ -194,8 +194,7 @@ function quotaFallbackCompliant(content) {
 
 function non2xxContentScenario(prompt) {
   const text = String(prompt || "");
-  return /(http\s*(?:429|5\d\d)|非2xx|non-2xx)/i.test(text) &&
-    /(模型片段|片段|fragment|content|正文|输出|完整回答|response)/i.test(text);
+  return /(http\s*(?:429|5\d\d)|非2xx|non-2xx)/i.test(text);
 }
 
 function non2xxFailureCompliant(content) {
