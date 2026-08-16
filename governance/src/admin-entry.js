@@ -1,4 +1,4 @@
-import app from "./entry.js";
+import app from "./production-entry.js";
 import {adminOpenApiPaths,getAdminContext,getProductionVersions,getSystemHealth} from "./admin-gateway.js";
 
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
