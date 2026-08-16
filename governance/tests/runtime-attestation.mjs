@@ -9,6 +9,7 @@ const runtime = assistRuntimeIdentity();
   const response = runtimeSelftestResponse();
   const body = await response.json();
   assert.equal(response.status, 200);
+  assert.equal(body.http_status, 200);
   assert.equal(body.ok, true);
   assert.equal(body.selftest, "runtime-attestation");
   assert.equal(body.ai_called, false);
@@ -31,6 +32,7 @@ const runtime = assistRuntimeIdentity();
   const response = await runAttestedAssist(request, { ADMIN_GPT_TOKEN: "correct-token" });
   const body = await response.json();
   assert.equal(response.status, 401);
+  assert.equal(body.http_status, 401);
   assert.equal(body.error, "UNAUTHORIZED");
   assert.equal(body.policy_version, runtime.policy_version);
   assert.equal(body.validator_version, runtime.validator_version);
@@ -47,6 +49,7 @@ const runtime = assistRuntimeIdentity();
   const response = await runAttestedAssist(request, { ADMIN_GPT_TOKEN: "test-token" });
   const body = await response.json();
   assert.equal(response.status, 200);
+  assert.equal(body.http_status, 200);
   assert.equal(body.ok, true);
   assert.equal(body.provider, "governance-policy-kernel");
   assert.equal(body.policy_version, runtime.policy_version);
@@ -61,6 +64,7 @@ console.log(JSON.stringify({
   tests: [
     "zero-cost-runtime-selftest",
     "attestation-on-auth-failure",
-    "attestation-on-deterministic-policy-path"
+    "attestation-on-deterministic-policy-path",
+    "http-status-mirrored-in-body"
   ]
 }));
