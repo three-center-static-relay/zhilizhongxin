@@ -88,15 +88,26 @@ for (const [path,operationId] of Object.entries({
 const createCandidate=spec.paths?.["/v1/admin/candidates"]?.post;
 assert.equal(createCandidate?.operationId,"createCandidateVersion");
 assert.deepEqual(createCandidate?.security,[{BearerAuth:[]}]);
-assert.equal(createCandidate?.requestBody?.required,false);
-assert.equal(createCandidate?.requestBody?.content?.["application/json"]?.schema?.additionalProperties,false);
-assert.ok(createCandidate?.responses?.["201"]);
+assert.equal(createCandidate?.requestBody?.required,true);
+const candidateSchema=createCandidate?.requestBody?.content?.["application/json"]?.schema;
+assert.equal(candidateSchema?.additionalProperties,false);
+assert.deepEqual(candidateSchema?.required,["branch","commits"]);
+assert.equal(candidateSchema?.properties?.branch?.maxLength,200);
+assert.deepEqual(candidateSchema?.properties?.commits?.required,["governance","intelligence","compute","expert"]);
+for(const center of ["governance","intelligence","compute","expert"])assert.equal(candidateSchema?.properties?.commits?.properties?.[center]?.pattern,"^[A-Fa-f0-9]{40}$");
+assert.ok(createCandidate?.responses?.["202"]);
 assert.ok(createCandidate?.responses?.["409"]);
+assert.ok(createCandidate?.responses?.["503"]);
+assert.match(createCandidate?.description||"",/versions upload/i);
+assert.match(createCandidate?.description||"",/production traffic is never changed/i);
 
 const validateCandidate=spec.paths?.["/v1/admin/candidates/validate"]?.post;
 assert.equal(validateCandidate?.operationId,"validateCandidate");
 assert.deepEqual(validateCandidate?.requestBody?.content?.["application/json"]?.schema?.required,["candidate_id"]);
+assert.ok(validateCandidate?.responses?.["200"]);
+assert.ok(validateCandidate?.responses?.["202"]);
 assert.ok(validateCandidate?.responses?.["422"]);
+assert.match(validateCandidate?.description||"",/No runtime E2E is claimed/i);
 
 const acceptance=spec.paths?.["/v1/admin/acceptance"]?.get;
 assert.equal(acceptance?.operationId,"getAcceptanceResult");
@@ -124,6 +135,8 @@ console.log(JSON.stringify({
   operations: operationIds,
   operation_count: operationIds.length,
   phase_2_candidate_acceptance: true,
+  candidate_kind: "cloudflare-preview-build-set",
+  fresh_business_e2e: false,
   production_mutation_actions: 0,
   operation_description_max_chars: 300,
   parser_safe_components_schemas: true,
