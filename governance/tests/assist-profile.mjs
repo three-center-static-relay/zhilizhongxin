@@ -27,10 +27,21 @@ assert.equal(collaboration.normal_work_must_reach_auxiliary_model, true);
 assert.equal(collaboration.outage_behavior, "web-gpt-degraded-fallback");
 assert.equal(collaboration.tool_access, "none");
 
+assert.equal(routing.cloudflare.free_only, true);
+assert.equal(routing.cloudflare.paid_models_allowed, false);
+assert.equal(routing.cloudflare.quota_failure_behavior, "continue-remaining-free-models");
+assert.equal(routing.cloudflare.exhaust_free_pool_before_openrouter, true);
+assert.equal(routing.openrouter.free_models, false);
+assert.equal(routing.openrouter.free_models_allowed, false);
+assert.equal(routing.openrouter.paid_only, true);
+assert.equal(routing.openrouter.entry_condition, "cloudflare-free-pool-exhausted");
+
 console.log(JSON.stringify({
   ok: true,
   suite: "governance-assist-profile",
   profile: profile.name,
   mandatory_collaboration: true,
-  collaboration_scope: collaboration.scope
+  collaboration_scope: collaboration.scope,
+  cloudflare_model_tier: "free-only",
+  openrouter_model_tier: "paid-only"
 }));
