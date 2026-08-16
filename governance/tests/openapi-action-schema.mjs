@@ -12,11 +12,14 @@ assert.equal(spec.info.version, runtime.policy_version);
 assert.equal(spec.policy_version, runtime.policy_version);
 assert.equal(spec.validator_version, runtime.validator_version);
 assert.equal(spec.auxiliary_collaboration_required, true);
-assert.equal(spec.auxiliary_collaboration_scope, "every-work-item");
+assert.equal(spec.auxiliary_collaboration_scope, "every-work-item-and-all-repository-cloudflare-use");
+assert.equal(spec.auxiliary_repository_use_requires_collaboration, true);
+assert.equal(spec.auxiliary_cloudflare_use_requires_collaboration, true);
 assert.equal(spec.auxiliary_collaboration_default, "active");
 assert.equal(spec.auxiliary_controller_may_cancel, true);
 assert.equal(spec.auxiliary_cancel_authority, "web-gpt-only");
 assert.equal(spec.auxiliary_cancel_requires_explicit_request, true);
+assert.equal(spec.auxiliary_bypass_only_by_controller_cancel, true);
 assert.equal(spec.auxiliary_work_item_handshake_required, true);
 assert.equal(spec.auxiliary_normal_work_ai_required_unless_cancelled, true);
 assert.deepEqual(spec.servers, [{ url: "https://governance.test", description: "Current Governance Worker origin" }]);
@@ -36,6 +39,8 @@ const assist = spec.paths?.["/v1/assist"]?.post;
 assert.equal(assist?.operationId, "runGovernanceAssist");
 assert.match(assist?.summary || "", /Default-on auxiliary collaboration/i);
 assert.match(assist?.description || "", /every substantive work item/i);
+assert.match(assist?.description || "", /any governed repository resource/i);
+assert.match(assist?.description || "", /any Cloudflare-hosted capability/i);
 assert.match(assist?.description || "", /Only the controlling web GPT may explicitly set auxiliary_mode=cancel/i);
 assert.deepEqual(assist?.security, [{ BearerAuth: [] }]);
 const requestSchema = assist?.requestBody?.content?.["application/json"]?.schema;
@@ -73,6 +78,8 @@ console.log(JSON.stringify({
   default_on_auxiliary: true,
   controller_cancel_only: true,
   work_item_handshake_required: true,
+  repository_use_requires_collaboration: true,
+  cloudflare_use_requires_collaboration: true,
   parser_safe_components_schemas: true,
   only_callable_action_paths_exposed: true
 }));
