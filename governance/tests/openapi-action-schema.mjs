@@ -11,6 +11,9 @@ assert.equal(spec.openapi, "3.1.0");
 assert.equal(spec.info.version, runtime.policy_version);
 assert.equal(spec.policy_version, runtime.policy_version);
 assert.equal(spec.validator_version, runtime.validator_version);
+assert.equal(spec.auxiliary_collaboration_required, true);
+assert.equal(spec.auxiliary_collaboration_scope, "every-work-item");
+assert.equal(spec.auxiliary_normal_work_ai_required, true);
 assert.deepEqual(spec.servers, [{ url: "https://governance.test", description: "Current Governance Worker origin" }]);
 assert.deepEqual(spec.components?.schemas, {}, "components.schemas must be an object for GPT Actions parser compatibility");
 
@@ -26,6 +29,8 @@ assert.deepEqual(Object.keys(spec.paths).sort(), [
 
 const assist = spec.paths?.["/v1/assist"]?.post;
 assert.equal(assist?.operationId, "runGovernanceAssist");
+assert.match(assist?.summary || "", /Mandatory auxiliary-model collaboration/i);
+assert.match(assist?.description || "", /before substantive work on every user work item/i);
 assert.deepEqual(assist?.security, [{ BearerAuth: [] }]);
 assert.deepEqual(assist?.requestBody?.content?.["application/json"]?.schema?.required, ["prompt"]);
 assert.equal(assist?.requestBody?.content?.["application/json"]?.schema?.properties?.max_tokens?.maximum, 16384);
@@ -55,6 +60,7 @@ console.log(JSON.stringify({
     "getGovernanceAssistRuntime",
     "validateGovernanceAssistFinal"
   ],
+  mandatory_collaboration_action_guidance: true,
   parser_safe_components_schemas: true,
   only_callable_action_paths_exposed: true
 }));
