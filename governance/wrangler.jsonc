@@ -12,6 +12,6 @@
     {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
     {"binding": "EXPERT_CENTER", "service": "expert-worker"}
   ],
-  "build": {"command": "node tests/policy-regression.mjs && node tests/policy-hardening-second-layer.mjs && node tests/runtime-attestation.mjs && node tests/openapi-action-schema.mjs && node tests/literature-action-route.mjs && node tests/final-output-validation.mjs && node tests/legacy-action-compat-selftests.mjs && node tests/assist-profile.mjs && node tests/stress.mjs && node tests/admin-gateway-readonly.mjs"},
+  "build": {"command": "node tests/policy-regression.mjs && node tests/policy-hardening-second-layer.mjs && node tests/runtime-attestation.mjs && node tests/openapi-action-schema.mjs && node tests/literature-action-route.mjs && node tests/final-output-validation.mjs && node tests/legacy-action-compat-selftests.mjs && node tests/assist-profile.mjs && node tests/stress.mjs && node tests/admin-gateway-readonly.mjs && node tests/web-gpt-action-snapshot.mjs"},
   "observability": {"enabled": true, "head_sampling_rate": 1}
 }
