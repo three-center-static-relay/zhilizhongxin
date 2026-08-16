@@ -36,7 +36,10 @@ assert.deepEqual(Object.keys(spec.paths).sort(), [
   "/v1/intelligence/literature-selftest",
   "/v1/admin/context",
   "/v1/admin/health",
-  "/v1/admin/versions"
+  "/v1/admin/versions",
+  "/v1/admin/candidates",
+  "/v1/admin/candidates/validate",
+  "/v1/admin/acceptance"
 ].sort(), "Deployed Action schema must expose exactly the approved governance operations");
 
 const assist = spec.paths?.["/v1/assist"]?.post;
@@ -79,26 +82,49 @@ for (const [path,operationId] of Object.entries({
   const operation=spec.paths?.[path]?.get;
   assert.equal(operation?.operationId,operationId);
   assert.deepEqual(operation?.security,[{BearerAuth:[]}]);
-  assert.equal(spec.paths?.[path]?.post,undefined,"phase-1 admin gateway must remain read-only");
+  assert.equal(spec.paths?.[path]?.post,undefined,"phase-1 read routes must remain read-only");
 }
 
+const createCandidate=spec.paths?.["/v1/admin/candidates"]?.post;
+assert.equal(createCandidate?.operationId,"createCandidateVersion");
+assert.deepEqual(createCandidate?.security,[{BearerAuth:[]}]);
+assert.equal(createCandidate?.requestBody?.required,false);
+assert.equal(createCandidate?.requestBody?.content?.["application/json"]?.schema?.additionalProperties,false);
+assert.ok(createCandidate?.responses?.["201"]);
+assert.ok(createCandidate?.responses?.["409"]);
+
+const validateCandidate=spec.paths?.["/v1/admin/candidates/validate"]?.post;
+assert.equal(validateCandidate?.operationId,"validateCandidate");
+assert.deepEqual(validateCandidate?.requestBody?.content?.["application/json"]?.schema?.required,["candidate_id"]);
+assert.ok(validateCandidate?.responses?.["422"]);
+
+const acceptance=spec.paths?.["/v1/admin/acceptance"]?.get;
+assert.equal(acceptance?.operationId,"getAcceptanceResult");
+assert.equal(acceptance?.parameters?.[0]?.name,"run_id");
+assert.equal(acceptance?.parameters?.[0]?.in,"query");
+assert.equal(acceptance?.parameters?.[0]?.required,true);
+
+const operationIds=[];
 for (const pathItem of Object.values(spec.paths)) {
   for (const operation of Object.values(pathItem)) {
     assert.equal(typeof operation.operationId, "string");
     assert.ok(operation.operationId.length > 0);
     if (operation.description !== undefined) assert.ok(operation.description.length <= 300, `${operation.operationId} description exceeds GPT Actions 300-character limit`);
+    operationIds.push(operation.operationId);
   }
 }
+assert.equal(new Set(operationIds).size,operationIds.length,"operationId values must remain unique");
+assert.equal(operationIds.includes("promoteCandidate"),false,"phase 2 must not expose promote");
+assert.equal(operationIds.includes("rollbackProduction"),false,"phase 2 must not expose rollback");
 
 console.log(JSON.stringify({
   ok: true,
   suite: "governance-openapi-action-schema",
   server: spec.servers[0].url,
-  operations: [
-    "runGovernanceAssist","getGovernanceAssistRuntime","validateGovernanceAssistFinal","runLiteratureProductionSelftest",
-    "getAdminContext","getSystemHealth","getProductionVersions"
-  ],
-  admin_read_only: true,
+  operations: operationIds,
+  operation_count: operationIds.length,
+  phase_2_candidate_acceptance: true,
+  production_mutation_actions: 0,
   operation_description_max_chars: 300,
   parser_safe_components_schemas: true,
   deployed_entry_schema_verified: true
