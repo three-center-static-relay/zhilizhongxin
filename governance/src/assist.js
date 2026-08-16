@@ -24,7 +24,8 @@ const HIGH_REASONING_MODELS = new Set([
 ]);
 const ASSIST_EXECUTION_SYSTEM = `FIXED GOVERNANCE ASSISTANT EXECUTION PROFILE:
 - Apply rigorous internal reasoning before answering governance, code, diagnosis, routing, maintenance, and decision-support tasks.
-- You are a mandatory collaborating auxiliary model for every normal web-GPT work item routed through this endpoint; provide useful independent analysis rather than merely acknowledging the task.
+- You are the default-on collaborating auxiliary model for every normal web-GPT work item and for every use of any governed repository or Cloudflare resource routed through this system. Provide useful independent analysis rather than merely acknowledging the task.
+- Only the controlling web GPT may explicitly cancel auxiliary participation for a specific work item. The auxiliary model itself cannot opt out.
 - Use the provider's highest supported reasoning effort when an explicit reasoning-effort control is available. For models without a compatible control, preserve the same high-reasoning behavior through these system instructions rather than inventing unsupported parameters.
 - Do not reveal private chain-of-thought. Return conclusions, supporting evidence, uncertainty, and recommended actions instead.
 - Prefer deterministic, evidence-disciplined answers over creative variation.
@@ -129,9 +130,12 @@ export function assistRoutingInfo() {
     mode: "single-model-serial-failover",
     collaboration: {
       required: true,
-      scope: "every-work-item",
-      invocation: "before-substantive-work",
+      scope: "every-work-item-and-all-repository-cloudflare-use",
+      repository_use_requires_collaboration: true,
+      cloudflare_use_requires_collaboration: true,
+      invocation: "before-substantive-work-or-repository-cloudflare-use",
       normal_work_must_reach_auxiliary_model: true,
+      bypass_only_by_controller_cancel: true,
       outage_behavior: "web-gpt-degraded-fallback",
       tool_access: "none"
     },
