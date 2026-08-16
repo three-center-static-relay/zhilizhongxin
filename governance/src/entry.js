@@ -13,7 +13,7 @@ function assistOpenApiPaths() {
       post: {
         operationId: "runGovernanceAssist",
         summary: "Default-on auxiliary collaboration for every work item and every repository or Cloudflare use, with explicit controller cancellation",
-        description: "The controlling web GPT should call this operation before every substantive work item and before using any governed repository resource or any Cloudflare-hosted capability in this system. auxiliary_mode defaults to active, so a real auxiliary model participates through strict serial failover with zero tool authority. Only the controlling web GPT may explicitly set auxiliary_mode=cancel for a specific work item; cancellation still uses this operation and returns a cancellation receipt, so repository or Cloudflare use is not silently bypassed. If every auxiliary provider is unavailable, the response explicitly requires WebGPT degraded fallback instead of pretending collaboration occurred.",
+        description: "Call before every substantive work item and before any governed repository or Cloudflare-hosted capability. Default auxiliary_mode=active. Only the controlling web GPT may set auxiliary_mode=cancel per item. Auxiliary models have zero tool authority; failures use degraded WebGPT fallback.",
         security: [{ BearerAuth: [] }],
         requestBody: {
           required: true,
