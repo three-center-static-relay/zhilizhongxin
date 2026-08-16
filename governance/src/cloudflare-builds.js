@@ -86,6 +86,16 @@ async function cancelBuild(env,buildUuid){
   try{await api(env,`/builds/builds/${encodeURIComponent(buildUuid)}/cancel`,{method:"PUT"});return true}catch{return false}
 }
 
+export async function cancelCandidateBuilds(env,builds){
+  const results=[];
+  for(const [center] of CANDIDATE_CENTERS){
+    const buildUuid=String(builds?.[center]?.build_uuid||"");
+    if(!buildUuid)continue;
+    results.push({center,build_uuid:buildUuid,cancelled:await cancelBuild(env,buildUuid)});
+  }
+  return results;
+}
+
 export async function triggerCandidateBuilds(env,{branch,commits}){
   const candidateBranch=validateBranch(branch);
   const normalizedCommits={};
