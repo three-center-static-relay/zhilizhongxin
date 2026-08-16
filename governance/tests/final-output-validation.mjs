@@ -33,6 +33,7 @@ assert.equal(runtime.runtime_attested, true);
     content: "整体系统状态：DEGRADED。失败版本必须立即回滚。"
   });
   assert.equal(result.status, 422);
+  assert.equal(result.body.http_status, 422);
   assert.equal(result.body.error, "FINAL_OUTPUT_POLICY_REJECTED");
   assert.equal(result.body.validation_error, "NONCOMPLIANT_E2E_STATE_OUTPUT");
 }
@@ -44,6 +45,7 @@ assert.equal(runtime.runtime_attested, true);
     content: "需看输出契约，不直接成功。"
   });
   assert.equal(result.status, 422);
+  assert.equal(result.body.http_status, 422);
   assert.equal(result.body.validation_error, "NONCOMPLIANT_NON2XX_OUTPUT");
 }
 
@@ -54,6 +56,7 @@ assert.equal(runtime.runtime_attested, true);
     content: "高推理 Profile：PASS"
   });
   assert.equal(result.status, 422);
+  assert.equal(result.body.http_status, 422);
   assert.equal(result.body.validation_error, "UNVERIFIED_RUNTIME_PROFILE_PASS");
 }
 
@@ -64,6 +67,7 @@ assert.equal(runtime.runtime_attested, true);
     content: "红队审查支持该判断：失败版本必须回滚。"
   });
   assert.equal(result.status, 422);
+  assert.equal(result.body.http_status, 422);
   assert.equal(result.body.validation_error, "UNVERIFIED_EXECUTION_CLAIM");
 }
 
@@ -74,6 +78,7 @@ assert.equal(runtime.runtime_attested, true);
     content: "整体系统状态：FAIL-CLOSED。失败版本必须立即回滚到最近一个已验证稳定版本。"
   });
   assert.equal(result.status, 200);
+  assert.equal(result.body.http_status, 200);
   assert.equal(result.body.ok, true);
   assert.equal(result.body.validation, "PASS");
   assert.equal(result.body.final_output_validated, true);
@@ -88,6 +93,7 @@ assert.equal(runtime.runtime_attested, true);
 {
   const result = await validate({ prompt: "x", content: "y" }, "wrong-token");
   assert.equal(result.status, 401);
+  assert.equal(result.body.http_status, 401);
   assert.equal(result.body.error, "UNAUTHORIZED");
 }
 
@@ -101,6 +107,7 @@ console.log(JSON.stringify({
     "reject-unverified-profile-pass",
     "reject-unverified-redteam-claim",
     "validated-output-receipt",
-    "auth-before-validation"
+    "auth-before-validation",
+    "http-status-mirrored-in-body"
   ]
 }));
