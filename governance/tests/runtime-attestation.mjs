@@ -21,7 +21,12 @@ const runtime = assistRuntimeIdentity();
   assert.equal(body.auxiliary_tools_allowed, false);
   assert.equal(body.auxiliary_collaboration_required, true);
   assert.equal(body.auxiliary_collaboration_scope, "every-work-item");
-  assert.equal(body.auxiliary_normal_work_ai_required, true);
+  assert.equal(body.auxiliary_collaboration_default, "active");
+  assert.equal(body.auxiliary_controller_may_cancel, true);
+  assert.equal(body.auxiliary_cancel_authority, "web-gpt-only");
+  assert.equal(body.auxiliary_cancel_requires_explicit_request, true);
+  assert.equal(body.auxiliary_work_item_handshake_required, true);
+  assert.equal(body.auxiliary_normal_work_ai_required_unless_cancelled, true);
   assert.equal(body.auxiliary_outage_behavior, "web-gpt-degraded-fallback");
   assert.equal(response.headers.get("x-governance-policy-version"), runtime.policy_version);
   assert.equal(response.headers.get("x-governance-validator-version"), runtime.validator_version);
@@ -48,7 +53,7 @@ const runtime = assistRuntimeIdentity();
   assert.equal(response.headers.get("x-governance-policy-version"), runtime.policy_version);
 }
 
-// Normal work must reach an auxiliary model even when the deterministic policy kernel already has guidance.
+// Normal work defaults to active and must reach an auxiliary model even when deterministic guidance already exists.
 {
   let aiCalls = 0;
   let observedSystem = "";
@@ -72,7 +77,7 @@ const runtime = assistRuntimeIdentity();
   assert.equal(body.http_status, 200);
   assert.equal(body.ok, true);
   assert.equal(body.provider, "cloudflare-workers-ai");
-  assert.equal(aiCalls, 1, "every normal work item must invoke an auxiliary model");
+  assert.equal(aiCalls, 1, "default active work must invoke an auxiliary model");
   assert.equal(body.collaboration_required, true);
   assert.equal(body.collaboration_status, "participated");
   assert.equal(body.policy_kernel_guidance_applied, true);
@@ -84,13 +89,59 @@ const runtime = assistRuntimeIdentity();
   assert.equal(body.auxiliary_tools_allowed, false);
 }
 
+// Only an authenticated controlling web GPT may explicitly cancel auxiliary participation for one work item.
+{
+  let aiCalls = 0;
+  const request = new Request("https://governance.test/v1/assist", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+    body: JSON.stringify({
+      prompt: "本次工作由总控直接处理。",
+      auxiliary_mode: "cancel",
+      cancel_reason: "controller override test"
+    })
+  });
+  const response = await runAttestedAssist(request, {
+    ADMIN_GPT_TOKEN: "test-token",
+    AI: { async run() { aiCalls += 1; return { response: "should not run" }; } }
+  });
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.http_status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.provider, "governance-collaboration-control");
+  assert.equal(body.collaboration_status, "cancelled-by-controller");
+  assert.equal(body.collaboration_cancel_authority, "web-gpt-only");
+  assert.equal(body.collaboration_cancel_explicit, true);
+  assert.equal(body.auxiliary_called, false);
+  assert.equal(body.ai_called, false);
+  assert.equal(body.cost_incurred, false);
+  assert.equal(body.cancel_reason, "controller override test");
+  assert.equal(aiCalls, 0, "controller cancellation must stop auxiliary model invocation");
+}
+
+// Cancellation cannot bypass authentication.
+{
+  const request = new Request("https://governance.test/v1/assist", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: "Bearer wrong-token" },
+    body: JSON.stringify({ prompt: "x", auxiliary_mode: "cancel" })
+  });
+  const response = await runAttestedAssist(request, { ADMIN_GPT_TOKEN: "correct-token" });
+  const body = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(body.error, "UNAUTHORIZED");
+}
+
 console.log(JSON.stringify({
   ok: true,
   suite: "governance-runtime-attestation",
   tests: [
     "zero-cost-runtime-selftest",
     "attestation-on-auth-failure",
-    "mandatory-ai-on-normal-hard-rule-work",
+    "default-active-ai-on-normal-work",
+    "explicit-controller-cancel-without-ai",
+    "cancel-cannot-bypass-auth",
     "zero-tool-and-collaboration-runtime-attestation",
     "http-status-mirrored-in-body"
   ]
