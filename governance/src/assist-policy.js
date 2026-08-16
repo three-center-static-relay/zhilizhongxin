@@ -190,7 +190,7 @@ function quotaFallbackCompliant(content) {
   const cloudflarePaidForbidden = /(?:禁止|不允许|不得|never|forbid).{0,40}Cloudflare.{0,30}(?:付费|paid)|Cloudflare.{0,30}(?:付费|paid).{0,30}(?:禁止|不允许|不得|never|forbid)/i.test(text);
   const entersOpenRouterAfterPool = /(?:全部|所有|池|pool).{0,40}(?:失败|耗尽|exhaust).{0,80}OpenRouter|OpenRouter.{0,80}(?:after|之后|以后).{0,40}(?:全部|所有|池|pool)/i.test(text);
   const openRouterPaidOnly = /OpenRouter.{0,40}(?:只允许|仅允许|付费|paid).{0,20}(?:模型|models?)|(?:付费|paid).{0,20}OpenRouter/i.test(text);
-  const openRouterFreeForbidden = /(?:禁止|不允许|不得|never|forbid).{0,40}OpenRouter.{0,30}(?:免费|free)|OpenRouter.{0,30}(?:免费|free).{0,30}(?:禁止|不允许|不得|never|forbid)/i.test(text);
+  const openRouterFreeForbidden = /(?:禁止|不允许|不得|never|forbid).{0,40}OpenRouter.{0,30}(?:免费|free)|OpenRouter.{0,30}(?:禁止|不允许|不得|never|forbid).{0,30}(?:免费|free)|OpenRouter.{0,30}(?:免费|free).{0,30}(?:禁止|不允许|不得|never|forbid)/i.test(text);
   return continuesFreeCloudflare && cloudflarePaidForbidden && entersOpenRouterAfterPool && openRouterPaidOnly && openRouterFreeForbidden;
 }
 
