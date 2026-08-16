@@ -3,6 +3,7 @@ import { assistRoutingInfo } from "../src/assist.js";
 
 const routing = assistRoutingInfo();
 const profile = routing.generation_profile;
+const collaboration = routing.collaboration;
 
 assert.equal(profile.name, "governance-assist-high-reasoning-v1");
 assert.equal(profile.fixed_system_prompt, true);
@@ -19,9 +20,17 @@ assert.deepEqual(profile.reasoning_effort_models, [
 ]);
 assert.equal(routing.openrouter.reasoning_effort, "high");
 assert.equal(routing.mode, "single-model-serial-failover");
+assert.equal(collaboration.required, true);
+assert.equal(collaboration.scope, "every-work-item");
+assert.equal(collaboration.invocation, "before-substantive-work");
+assert.equal(collaboration.normal_work_must_reach_auxiliary_model, true);
+assert.equal(collaboration.outage_behavior, "web-gpt-degraded-fallback");
+assert.equal(collaboration.tool_access, "none");
 
 console.log(JSON.stringify({
   ok: true,
   suite: "governance-assist-profile",
-  profile: profile.name
+  profile: profile.name,
+  mandatory_collaboration: true,
+  collaboration_scope: collaboration.scope
 }));
