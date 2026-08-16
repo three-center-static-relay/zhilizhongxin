@@ -1,6 +1,6 @@
 {
   "schema": "web-gpt-action-canonical-v1",
-  "snapshot_version": "2026-08-16.3",
+  "snapshot_version": "2026-08-16.4",
   "status": "LATEST",
   "canonical_file": "governance/web-gpt-action/LATEST.openapi.json",
   "source_entry": "governance/src/admin-entry.js",
@@ -17,6 +17,7 @@
     "getGovernanceAssistRuntime",
     "validateGovernanceAssistFinal",
     "runLiteratureProductionSelftest",
+    "runProviderFreshE2E",
     "getAdminContext",
     "getSystemHealth",
     "getProductionVersions",
@@ -33,6 +34,7 @@
   "candidate_deploy_command_required": "npx wrangler versions upload",
   "candidate_branch_main_allowed": false,
   "fresh_business_e2e": false,
+  "provider_fresh_e2e_action": true,
   "production_mutation_actions": 0,
   "promote_enabled": false,
   "rollback_enabled": false,
@@ -42,5 +44,5 @@
     "api_token_user_scoped": true,
     "production_secret_value_stored_in_repository": false
   },
-  "updated_at": "2026-08-16T12:44:00+08:00"
+  "updated_at": "2026-08-16T14:02:00+08:00"
 }
