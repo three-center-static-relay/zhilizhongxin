@@ -46,7 +46,7 @@
       "description": "Store an immutable snapshot of the four current production runtime versions and source digests. This writes admin metadata only; it never deploys, promotes, rolls back, or runs paid tests.",
       "security": [{"BearerAuth": []}],
       "requestBody": {"required": false, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false, "properties": {"label": {"type": "string", "maxLength": 120}, "reason": {"type": "string", "maxLength": 500}}}}}},
-      "responses": {"201": {"description": "Candidate snapshot created with candidate and receipt digests."}, "401": {"description": "Unauthorized."}, "409": {"description": "A center is active; stable snapshot not created."}, "503": {"description": "Runtime context or admin state is incomplete."}}
+      "responses": {"201": {"description": "Candidate snapshot created with candidate and receipt digests."}, "400": {"description": "Invalid request body."}, "401": {"description": "Unauthorized."}, "409": {"description": "A center is active; stable snapshot not created."}, "503": {"description": "Runtime context or admin state is incomplete."}}
     }},
     "/v1/admin/candidates/validate": {"post": {
       "operationId": "validateCandidate",
@@ -54,7 +54,7 @@
       "description": "Validate candidate digest, four-center health, idle state, runtime-version identity and source-digest identity. Scope is control-plane consistency only; fresh business E2E is not claimed.",
       "security": [{"BearerAuth": []}],
       "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false, "required": ["candidate_id"], "properties": {"candidate_id": {"type": "string", "minLength": 1, "maxLength": 160}}}}}},
-      "responses": {"200": {"description": "Control-plane candidate validation PASS receipt."}, "401": {"description": "Unauthorized."}, "404": {"description": "Candidate not found."}, "422": {"description": "Candidate validation failed; FAIL receipt was stored."}, "503": {"description": "Admin state or runtime context unavailable."}}
+      "responses": {"200": {"description": "Control-plane candidate validation PASS receipt."}, "400": {"description": "Invalid candidate_id."}, "401": {"description": "Unauthorized."}, "404": {"description": "Candidate not found."}, "422": {"description": "Candidate validation failed; FAIL receipt was stored."}, "503": {"description": "Admin state or runtime context unavailable."}}
     }},
     "/v1/admin/acceptance": {"get": {
       "operationId": "getAcceptanceResult",
@@ -62,7 +62,7 @@
       "description": "Read a previously stored candidate validation receipt by run_id. The returned query receipt embeds the immutable acceptance receipt and does not create deployment or promotion state.",
       "security": [{"BearerAuth": []}],
       "parameters": [{"name": "run_id", "in": "query", "required": true, "schema": {"type": "string", "minLength": 1, "maxLength": 200}}],
-      "responses": {"200": {"description": "Stored acceptance result and receipt digest."}, "400": {"description": "run_id required."}, "401": {"description": "Unauthorized."}, "404": {"description": "Acceptance result not found."}, "503": {"description": "Admin state unavailable."}}
+      "responses": {"200": {"description": "Stored acceptance result and receipt digest."}, "400": {"description": "Valid run_id required."}, "401": {"description": "Unauthorized."}, "404": {"description": "Acceptance result not found."}, "503": {"description": "Admin state unavailable."}}
     }}
   },
   "components": {"schemas": {}, "securitySchemes": {"BearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "opaque"}}}
