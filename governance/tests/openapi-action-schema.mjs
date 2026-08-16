@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import worker from "../src/entry.js";
+import worker from "../src/production-entry.js";
 import { assistRuntimeIdentity } from "../src/assist-runtime.js";
 
 const response = await worker.fetch(new Request("https://governance.test/openapi.json", { method: "GET" }), {}, {});
@@ -32,7 +32,8 @@ assert.equal(bearer?.scheme, "bearer");
 assert.deepEqual(Object.keys(spec.paths).sort(), [
   "/v1/assist",
   "/v1/assist/runtime",
-  "/v1/assist/validate"
+  "/v1/assist/validate",
+  "/v1/intelligence/literature-selftest"
 ].sort(), "Action schema must expose only callable governance Action operations");
 
 const assist = spec.paths?.["/v1/assist"]?.post;
@@ -60,6 +61,16 @@ assert.deepEqual(validate?.security, [{ BearerAuth: [] }]);
 assert.deepEqual(validate?.requestBody?.content?.["application/json"]?.schema?.required, ["prompt", "content"]);
 assert.ok(validate?.responses?.["422"], "hard-policy rejection response must be documented");
 
+const literature = spec.paths?.["/v1/intelligence/literature-selftest"]?.post;
+assert.equal(literature?.operationId, "runLiteratureProductionSelftest");
+assert.deepEqual(literature?.security, [{ BearerAuth: [] }]);
+assert.equal(literature?.requestBody?.required, false);
+assert.match(literature?.description || "", /OpenAlex/i);
+assert.match(literature?.description || "", /Semantic Scholar/i);
+assert.match(literature?.description || "", /BASE/i);
+assert.ok((literature?.description || "").length <= 300, "runLiteratureProductionSelftest description must stay within GPT Actions 300-character limit");
+assert.ok(literature?.responses?.["503"], "production provider/key failure response must be documented");
+
 for (const pathItem of Object.values(spec.paths)) {
   for (const operation of Object.values(pathItem)) {
     assert.equal(typeof operation.operationId, "string");
@@ -77,7 +88,8 @@ console.log(JSON.stringify({
   operations: [
     "runGovernanceAssist",
     "getGovernanceAssistRuntime",
-    "validateGovernanceAssistFinal"
+    "validateGovernanceAssistFinal",
+    "runLiteratureProductionSelftest"
   ],
   default_on_auxiliary: true,
   controller_cancel_only: true,
