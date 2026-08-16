@@ -17,6 +17,8 @@ const runtime = assistRuntimeIdentity();
   assert.equal(body.policy_version, "governance-assist-policy-v3-20260816");
   assert.equal(body.validator_version, "governance-assist-validator-v3-20260816");
   assert.equal(body.runtime_attested, true);
+  assert.equal(body.auxiliary_tool_access, "none");
+  assert.equal(body.auxiliary_tools_allowed, false);
   assert.equal(response.headers.get("x-governance-policy-version"), runtime.policy_version);
   assert.equal(response.headers.get("x-governance-validator-version"), runtime.validator_version);
   assert.equal(response.headers.get("x-governance-runtime-attested"), "true");
@@ -36,6 +38,8 @@ const runtime = assistRuntimeIdentity();
   assert.equal(body.error, "UNAUTHORIZED");
   assert.equal(body.policy_version, runtime.policy_version);
   assert.equal(body.validator_version, runtime.validator_version);
+  assert.equal(body.auxiliary_tool_access, "none");
+  assert.equal(body.auxiliary_tools_allowed, false);
   assert.equal(response.headers.get("x-governance-policy-version"), runtime.policy_version);
 }
 
@@ -55,6 +59,8 @@ const runtime = assistRuntimeIdentity();
   assert.equal(body.policy_version, runtime.policy_version);
   assert.equal(body.validator_version, runtime.validator_version);
   assert.equal(body.runtime_attested, true);
+  assert.equal(body.auxiliary_tool_access, "none");
+  assert.equal(body.auxiliary_tools_allowed, false);
   assert.match(body.content, /不算成功|失败/);
 }
 
@@ -65,6 +71,7 @@ console.log(JSON.stringify({
     "zero-cost-runtime-selftest",
     "attestation-on-auth-failure",
     "attestation-on-deterministic-policy-path",
-    "http-status-mirrored-in-body"
+    "http-status-mirrored-in-body",
+    "auxiliary-zero-tool-attestation"
   ]
 }));
