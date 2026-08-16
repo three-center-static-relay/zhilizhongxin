@@ -19,6 +19,11 @@ async function activeOperation(storage){
   if(active&&Number(active.expires_at_ms||0)<=Date.now()){await storage.delete(OPERATION_LOCK_KEY);return null;}
   return active;
 }
+async function releaseIfKind(storage,kind){
+  const active=await activeOperation(storage);
+  if(active&&String(active.kind||"")===kind){await storage.delete(OPERATION_LOCK_KEY);return true;}
+  return false;
+}
 async function boundedAppend(storage,indexKey,id,limit,prefix){
   const old=await storage.get(indexKey)||[];
   const next=[id,...old.filter(x=>x!==id)].slice(0,limit);
@@ -59,7 +64,8 @@ export class AdminState{
         if(await storage.get(key))return json({ok:false,error:"CANDIDATE_ALREADY_EXISTS"},409);
         await storage.put(key,body.record);
         await boundedAppend(storage,"index:candidates",id,MAX_CANDIDATES,"candidate:");
-        return json({ok:true,candidate:body.record},201);
+        const operation_lock_released=await releaseIfKind(storage,"candidate-build");
+        return json({ok:true,candidate:body.record,operation_lock_released},201);
       }
       let match=url.pathname.match(/^\/candidate\/([^/]+)$/);
       if(request.method==="GET"&&match){
@@ -82,7 +88,8 @@ export class AdminState{
           latest_acceptance_validation:body.record?.validation||null,
           latest_acceptance_at:body.record?.completed_at||body.record?.observed_at||new Date().toISOString()
         });
-        return json({ok:true,acceptance:body.record},201);
+        const operation_lock_released=await releaseIfKind(storage,"candidate-validation");
+        return json({ok:true,acceptance:body.record,operation_lock_released},201);
       }
       match=url.pathname.match(/^\/acceptance\/([^/]+)$/);
       if(request.method==="GET"&&match){
