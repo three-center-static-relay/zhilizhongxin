@@ -20,11 +20,14 @@ const runtime = assistRuntimeIdentity();
   assert.equal(body.auxiliary_tool_access, "none");
   assert.equal(body.auxiliary_tools_allowed, false);
   assert.equal(body.auxiliary_collaboration_required, true);
-  assert.equal(body.auxiliary_collaboration_scope, "every-work-item");
+  assert.equal(body.auxiliary_collaboration_scope, "every-work-item-and-all-repository-cloudflare-use");
+  assert.equal(body.auxiliary_repository_use_requires_collaboration, true);
+  assert.equal(body.auxiliary_cloudflare_use_requires_collaboration, true);
   assert.equal(body.auxiliary_collaboration_default, "active");
   assert.equal(body.auxiliary_controller_may_cancel, true);
   assert.equal(body.auxiliary_cancel_authority, "web-gpt-only");
   assert.equal(body.auxiliary_cancel_requires_explicit_request, true);
+  assert.equal(body.auxiliary_bypass_only_by_controller_cancel, true);
   assert.equal(body.auxiliary_work_item_handshake_required, true);
   assert.equal(body.auxiliary_normal_work_ai_required_unless_cancelled, true);
   assert.equal(body.auxiliary_outage_behavior, "web-gpt-degraded-fallback");
@@ -142,6 +145,8 @@ console.log(JSON.stringify({
     "default-active-ai-on-normal-work",
     "explicit-controller-cancel-without-ai",
     "cancel-cannot-bypass-auth",
+    "repository-use-requires-collaboration",
+    "cloudflare-use-requires-collaboration",
     "zero-tool-and-collaboration-runtime-attestation",
     "http-status-mirrored-in-body"
   ]
