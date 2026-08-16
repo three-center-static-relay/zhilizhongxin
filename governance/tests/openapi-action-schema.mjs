@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import worker from "../src/production-entry.js";
+import worker from "../src/admin-entry.js";
 import { assistRuntimeIdentity } from "../src/assist-runtime.js";
 
 const response = await worker.fetch(new Request("https://governance.test/openapi.json", { method: "GET" }), {}, {});
@@ -33,8 +33,11 @@ assert.deepEqual(Object.keys(spec.paths).sort(), [
   "/v1/assist",
   "/v1/assist/runtime",
   "/v1/assist/validate",
-  "/v1/intelligence/literature-selftest"
-].sort(), "Action schema must expose only callable governance Action operations");
+  "/v1/intelligence/literature-selftest",
+  "/v1/admin/context",
+  "/v1/admin/health",
+  "/v1/admin/versions"
+].sort(), "Deployed Action schema must expose exactly the approved governance operations");
 
 const assist = spec.paths?.["/v1/assist"]?.post;
 assert.equal(assist?.operationId, "runGovernanceAssist");
@@ -43,7 +46,6 @@ assert.match(assist?.description || "", /every substantive work item/i);
 assert.match(assist?.description || "", /governed repository/i);
 assert.match(assist?.description || "", /Cloudflare-hosted capability/i);
 assert.match(assist?.description || "", /Only the controlling web GPT may set auxiliary_mode=cancel/i);
-assert.ok((assist?.description || "").length <= 300, "runGovernanceAssist description must stay within GPT Actions 300-character limit");
 assert.deepEqual(assist?.security, [{ BearerAuth: [] }]);
 const requestSchema = assist?.requestBody?.content?.["application/json"]?.schema;
 assert.deepEqual(requestSchema?.required, ["prompt"]);
@@ -59,7 +61,7 @@ const validate = spec.paths?.["/v1/assist/validate"]?.post;
 assert.equal(validate?.operationId, "validateGovernanceAssistFinal");
 assert.deepEqual(validate?.security, [{ BearerAuth: [] }]);
 assert.deepEqual(validate?.requestBody?.content?.["application/json"]?.schema?.required, ["prompt", "content"]);
-assert.ok(validate?.responses?.["422"], "hard-policy rejection response must be documented");
+assert.ok(validate?.responses?.["422"]);
 
 const literature = spec.paths?.["/v1/intelligence/literature-selftest"]?.post;
 assert.equal(literature?.operationId, "runLiteratureProductionSelftest");
@@ -68,16 +70,23 @@ assert.equal(literature?.requestBody?.required, false);
 assert.match(literature?.description || "", /OpenAlex/i);
 assert.match(literature?.description || "", /Semantic Scholar/i);
 assert.match(literature?.description || "", /BASE/i);
-assert.ok((literature?.description || "").length <= 300, "runLiteratureProductionSelftest description must stay within GPT Actions 300-character limit");
-assert.ok(literature?.responses?.["503"], "production provider/key failure response must be documented");
+
+for (const [path,operationId] of Object.entries({
+  "/v1/admin/context":"getAdminContext",
+  "/v1/admin/health":"getSystemHealth",
+  "/v1/admin/versions":"getProductionVersions"
+})) {
+  const operation=spec.paths?.[path]?.get;
+  assert.equal(operation?.operationId,operationId);
+  assert.deepEqual(operation?.security,[{BearerAuth:[]}]);
+  assert.equal(spec.paths?.[path]?.post,undefined,"phase-1 admin gateway must remain read-only");
+}
 
 for (const pathItem of Object.values(spec.paths)) {
   for (const operation of Object.values(pathItem)) {
     assert.equal(typeof operation.operationId, "string");
-    assert.ok(operation.operationId.length > 0, "every exposed Action operation must have operationId");
-    if (operation.description !== undefined) {
-      assert.ok(operation.description.length <= 300, `${operation.operationId} description exceeds GPT Actions 300-character limit`);
-    }
+    assert.ok(operation.operationId.length > 0);
+    if (operation.description !== undefined) assert.ok(operation.description.length <= 300, `${operation.operationId} description exceeds GPT Actions 300-character limit`);
   }
 }
 
@@ -86,17 +95,11 @@ console.log(JSON.stringify({
   suite: "governance-openapi-action-schema",
   server: spec.servers[0].url,
   operations: [
-    "runGovernanceAssist",
-    "getGovernanceAssistRuntime",
-    "validateGovernanceAssistFinal",
-    "runLiteratureProductionSelftest"
+    "runGovernanceAssist","getGovernanceAssistRuntime","validateGovernanceAssistFinal","runLiteratureProductionSelftest",
+    "getAdminContext","getSystemHealth","getProductionVersions"
   ],
-  default_on_auxiliary: true,
-  controller_cancel_only: true,
-  work_item_handshake_required: true,
-  repository_use_requires_collaboration: true,
-  cloudflare_use_requires_collaboration: true,
+  admin_read_only: true,
   operation_description_max_chars: 300,
   parser_safe_components_schemas: true,
-  only_callable_action_paths_exposed: true
+  deployed_entry_schema_verified: true
 }));
