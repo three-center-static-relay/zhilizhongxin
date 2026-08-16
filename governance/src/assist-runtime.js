@@ -18,6 +18,12 @@ export function assistRuntimeIdentity() {
     auxiliary_cancel_requires_explicit_request: true,
     auxiliary_work_item_handshake_required: true,
     auxiliary_normal_work_ai_required_unless_cancelled: true,
-    auxiliary_outage_behavior: "web-gpt-degraded-fallback"
+    auxiliary_outage_behavior: "web-gpt-degraded-fallback",
+    cloudflare_model_tier: "free-only",
+    cloudflare_paid_models_allowed: false,
+    cloudflare_failure_behavior: "continue-remaining-free-models",
+    openrouter_model_tier: "paid-only",
+    openrouter_free_models_allowed: false,
+    openrouter_entry_condition: "cloudflare-free-pool-exhausted"
   };
 }
