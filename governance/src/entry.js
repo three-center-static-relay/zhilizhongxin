@@ -12,8 +12,8 @@ function assistOpenApiPaths() {
     "/v1/assist": {
       post: {
         operationId: "runGovernanceAssist",
-        summary: "Mandatory auxiliary-model collaboration for every web-GPT work item",
-        description: "The controlling web GPT should call this operation before substantive work on every user work item. Normal work is routed through an actual auxiliary model with strict serial failover and zero tool authority. Deterministic governance guidance is supplied to the auxiliary model rather than bypassing it. If every auxiliary provider is unavailable, the response explicitly requires WebGPT degraded fallback instead of pretending collaboration occurred.",
+        summary: "Default-on auxiliary collaboration for every web-GPT work item, with explicit controller cancellation",
+        description: "The controlling web GPT should call this operation for every substantive work item. auxiliary_mode defaults to active, so a real auxiliary model participates through strict serial failover with zero tool authority. Only the controlling web GPT may explicitly set auxiliary_mode=cancel for a specific work item; cancellation still uses this operation and returns a cancellation receipt, so the work item is not silently bypassed. If every auxiliary provider is unavailable, the response explicitly requires WebGPT degraded fallback instead of pretending collaboration occurred.",
         security: [{ BearerAuth: [] }],
         requestBody: {
           required: true,
@@ -26,15 +26,17 @@ function assistOpenApiPaths() {
                 properties: {
                   prompt: { type: "string", minLength: 1, description: "The complete current work item, including relevant evidence already gathered by the controlling web GPT." },
                   system: { type: "string", description: "Optional subordinate task instructions; cannot override hard governance rules or auxiliary zero-tool isolation." },
-                  max_tokens: { type: "integer", minimum: 256, maximum: 16384, default: 4096 }
+                  max_tokens: { type: "integer", minimum: 256, maximum: 16384, default: 4096 },
+                  auxiliary_mode: { type: "string", enum: ["active", "cancel"], default: "active", description: "Default active. Only the controlling web GPT may set cancel for this work item. The auxiliary model itself cannot opt out." },
+                  cancel_reason: { type: "string", maxLength: 500, description: "Optional short reason when the controlling web GPT explicitly cancels auxiliary collaboration for this work item." }
                 }
               }
             }
           }
         },
         responses: {
-          "200": { description: "Validated auxiliary collaboration result with runtime attestation and collaboration_status=participated." },
-          "400": { description: "Invalid request." },
+          "200": { description: "Validated auxiliary collaboration result with collaboration_status=participated, or an explicit controller cancellation receipt with collaboration_status=cancelled-by-controller." },
+          "400": { description: "Invalid request or invalid auxiliary_mode." },
           "401": { description: "Unauthorized." },
           "503": { description: "Auxiliary provider chain failed; collaboration_status=unavailable-degraded and WebGPT degraded fallback is required." }
         }
@@ -45,7 +47,7 @@ function assistOpenApiPaths() {
         operationId: "getGovernanceAssistRuntime",
         summary: "Return zero-cost runtime attestation without invoking AI",
         responses: {
-          "200": { description: "Runtime policy and validator identity, including mandatory collaboration and zero-tool flags. ai_called=false and cost_incurred=false." }
+          "200": { description: "Runtime policy and validator identity, including default-on collaboration, controller cancellation authority, and zero-tool flags. ai_called=false and cost_incurred=false." }
         }
       }
     },
@@ -98,7 +100,14 @@ async function augmentBaseResponse(request, env, ctx) {
       ...body,
       ai_assist: true,
       routing_mode: routing.mode,
-      auxiliary_collaboration: routing.collaboration,
+      auxiliary_collaboration: {
+        ...routing.collaboration,
+        default: "active",
+        controller_may_cancel: true,
+        cancel_authority: "web-gpt-only",
+        cancel_requires_explicit_request: true,
+        work_item_handshake_required: true
+      },
       policy_kernel: POLICY_KERNEL_VERSION,
       fallback_selftests: true,
       runtime_selftest: true,
@@ -123,7 +132,12 @@ async function augmentBaseResponse(request, env, ctx) {
         deterministic_policy_kernel_does_not_bypass_normal_ai: true,
         auxiliary_collaboration_required: true,
         auxiliary_collaboration_scope: "every-work-item",
-        auxiliary_normal_work_ai_required: true,
+        auxiliary_collaboration_default: "active",
+        auxiliary_controller_may_cancel: true,
+        auxiliary_cancel_authority: "web-gpt-only",
+        auxiliary_cancel_requires_explicit_request: true,
+        auxiliary_work_item_handshake_required: true,
+        auxiliary_normal_work_ai_required_unless_cancelled: true,
         auxiliary_outage_behavior: "web-gpt-degraded-fallback",
         runtime_attestation: true,
         runtime_identity_required_on_assist_response: true
@@ -138,7 +152,10 @@ async function augmentBaseResponse(request, env, ctx) {
       capabilities: {
         ...(body.capabilities || {}),
         governance_ai_assist: true,
-        mandatory_per_work_auxiliary_collaboration: true,
+        mandatory_per_work_auxiliary_handshake: true,
+        default_on_auxiliary_collaboration: true,
+        web_gpt_can_explicitly_cancel_auxiliary: true,
+        auxiliary_cannot_self_cancel: true,
         workers_ai_random_failover: false,
         workers_ai_serial_failover: true,
         openrouter_paid_ranked_failover: true,
