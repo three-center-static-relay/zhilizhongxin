@@ -215,16 +215,16 @@ try {
     active.expert=null;
   }
 
-  // Phase 2 still does not expose promote or rollback.
+  // Phase 2 still does not expose promote or rollback; the authenticated provider E2E action is preserved.
   {
     const response=await worker.fetch(new Request("https://governance.test/openapi.json"),env,{}),spec=await response.json(),operationIds=[];
     for(const pathItem of Object.values(spec.paths))for(const operation of Object.values(pathItem))operationIds.push(operation.operationId);
-    for(const required of ["createCandidateVersion","validateCandidate","getAcceptanceResult"])assert.ok(operationIds.includes(required));
+    for(const required of ["runProviderFreshE2E","createCandidateVersion","validateCandidate","getAcceptanceResult"])assert.ok(operationIds.includes(required));
     for(const forbidden of ["promoteCandidate","rollbackProduction"])assert.equal(operationIds.includes(forbidden),false);
-    assert.equal(operationIds.length,10);
+    assert.equal(operationIds.length,11);
   }
 
-  console.log(JSON.stringify({ok:true,suite:"governance-admin-candidate-acceptance",candidate_kind:"cloudflare-preview-build-set",acceptance_scope:"cloudflare-preview-build-control-plane-v1",fresh_business_e2e:false,promotion_enabled:false,rollback_enabled:false,total_action_operations:10,runtime_contract_strict:true,safe_preview_only:true}));
+  console.log(JSON.stringify({ok:true,suite:"governance-admin-candidate-acceptance",candidate_kind:"cloudflare-preview-build-set",acceptance_scope:"cloudflare-preview-build-control-plane-v1",fresh_business_e2e:false,provider_fresh_e2e_action:true,promotion_enabled:false,rollback_enabled:false,total_action_operations:11,runtime_contract_strict:true,safe_preview_only:true}));
 } finally {
   globalThis.fetch=originalFetch;
 }
