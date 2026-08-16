@@ -158,16 +158,12 @@ async function augmentBaseResponse(request, env, ctx) {
       info: { ...(body.info || {}), title: "Governance Center", version: runtime.policy_version },
       servers: [{ url: url.origin, description: "Current Governance Worker origin" }],
       components: {
-        ...(body.components || {}),
+        schemas: {},
         securitySchemes: {
-          ...(body.components?.securitySchemes || {}),
           BearerAuth: { type: "http", scheme: "bearer", bearerFormat: "opaque" }
         }
       },
-      paths: {
-        ...(body.paths || {}),
-        ...assistOpenApiPaths()
-      },
+      paths: assistOpenApiPaths(),
       ...runtime
     });
   }
