@@ -34,6 +34,16 @@ async function parseBody(request,allowedKeys){
   for(const key of Object.keys(body))if(!allowedKeys.has(key))throw Object.assign(new Error("UNKNOWN_FIELD"),{status:400});
   return body;
 }
+function optionalString(body,key,max){
+  const value=body[key];if(value===undefined)return null;
+  if(typeof value!=="string"||value.length>max)throw Object.assign(new Error("INVALID_REQUEST"),{status:400});
+  return value.trim();
+}
+function requiredString(body,key,max){
+  const value=body[key];
+  if(typeof value!=="string"||!value.trim()||value.length>max)throw Object.assign(new Error("INVALID_REQUEST"),{status:400});
+  return value.trim();
+}
 
 async function sha256Text(text){
   const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(String(text)));
@@ -181,9 +191,9 @@ export function adminOpenApiPaths(){
     "/v1/admin/context":{get:{operationId:"getAdminContext",summary:"Read three-center admin context",description:"Read-only snapshot of governance, intelligence, compute and expert centers, including runtime version metadata, source digest, acceptance state and active-task metadata where exposed.",security:[{BearerAuth:[]}],responses:{"200":{description:"Read-only context receipt."},"401":{description:"Unauthorized."},"503":{description:"Admin authentication is not configured."}}}},
     "/v1/admin/health":{get:{operationId:"getSystemHealth",summary:"Read three-center system health",description:"Read-only health snapshot for governance, intelligence, compute and expert centers. Returns a receipt even when one or more centers are degraded, without treating health as acceptance.",security:[{BearerAuth:[]}],responses:{"200":{description:"Read-only health receipt."},"401":{description:"Unauthorized."},"503":{description:"Admin authentication is not configured."}}}},
     "/v1/admin/versions":{get:{operationId:"getProductionVersions",summary:"Read production runtime versions",description:"Read Cloudflare runtime version metadata and source digests for all centers. A center is version-verified only when both runtime version ID and source digest are present.",security:[{BearerAuth:[]}],responses:{"200":{description:"Read-only production-version receipt."},"401":{description:"Unauthorized."},"503":{description:"Admin authentication is not configured."}}}},
-    "/v1/admin/candidates":{post:{operationId:"createCandidateVersion",summary:"Create an immutable control-plane candidate snapshot",description:"Store an immutable snapshot of the four current production runtime versions and source digests. This writes admin metadata only; it never deploys, promotes, rolls back, or runs paid tests.",security:[{BearerAuth:[]}],requestBody:{required:false,content:{"application/json":{schema:{type:"object",additionalProperties:false,properties:{label:{type:"string",maxLength:120},reason:{type:"string",maxLength:500}}}}}},responses:{"201":{description:"Candidate snapshot created with candidate and receipt digests."},"401":{description:"Unauthorized."},"409":{description:"A center is active; stable snapshot not created."},"503":{description:"Runtime context or admin state is incomplete."}}}},
-    "/v1/admin/candidates/validate":{post:{operationId:"validateCandidate",summary:"Validate a stored candidate snapshot",description:"Validate candidate digest, four-center health, idle state, runtime-version identity and source-digest identity. Scope is control-plane consistency only; fresh business E2E is not claimed.",security:[{BearerAuth:[]}],requestBody:{required:true,content:{"application/json":{schema:{type:"object",additionalProperties:false,required:["candidate_id"],properties:{candidate_id:{type:"string",minLength:1,maxLength:160}}}}}},responses:{"200":{description:"Control-plane candidate validation PASS receipt."},"401":{description:"Unauthorized."},"404":{description:"Candidate not found."},"422":{description:"Candidate validation failed; FAIL receipt was stored."},"503":{description:"Admin state or runtime context unavailable."}}}},
-    "/v1/admin/acceptance":{get:{operationId:"getAcceptanceResult",summary:"Read a stored candidate acceptance result",description:"Read a previously stored candidate validation receipt by run_id. The returned query receipt embeds the immutable acceptance receipt and does not create deployment or promotion state.",security:[{BearerAuth:[]}],parameters:[{name:"run_id",in:"query",required:true,schema:{type:"string",minLength:1,maxLength:200}}],responses:{"200":{description:"Stored acceptance result and receipt digest."},"400":{description:"run_id required."},"401":{description:"Unauthorized."},"404":{description:"Acceptance result not found."},"503":{description:"Admin state unavailable."}}}}
+    "/v1/admin/candidates":{post:{operationId:"createCandidateVersion",summary:"Create an immutable control-plane candidate snapshot",description:"Store an immutable snapshot of the four current production runtime versions and source digests. This writes admin metadata only; it never deploys, promotes, rolls back, or runs paid tests.",security:[{BearerAuth:[]}],requestBody:{required:false,content:{"application/json":{schema:{type:"object",additionalProperties:false,properties:{label:{type:"string",maxLength:120},reason:{type:"string",maxLength:500}}}}}},responses:{"201":{description:"Candidate snapshot created with candidate and receipt digests."},"400":{description:"Invalid request body."},"401":{description:"Unauthorized."},"409":{description:"A center is active; stable snapshot not created."},"503":{description:"Runtime context or admin state is incomplete."}}}},
+    "/v1/admin/candidates/validate":{post:{operationId:"validateCandidate",summary:"Validate a stored candidate snapshot",description:"Validate candidate digest, four-center health, idle state, runtime-version identity and source-digest identity. Scope is control-plane consistency only; fresh business E2E is not claimed.",security:[{BearerAuth:[]}],requestBody:{required:true,content:{"application/json":{schema:{type:"object",additionalProperties:false,required:["candidate_id"],properties:{candidate_id:{type:"string",minLength:1,maxLength:160}}}}}},responses:{"200":{description:"Control-plane candidate validation PASS receipt."},"400":{description:"Invalid candidate_id."},"401":{description:"Unauthorized."},"404":{description:"Candidate not found."},"422":{description:"Candidate validation failed; FAIL receipt was stored."},"503":{description:"Admin state or runtime context unavailable."}}}},
+    "/v1/admin/acceptance":{get:{operationId:"getAcceptanceResult",summary:"Read a stored candidate acceptance result",description:"Read a previously stored candidate validation receipt by run_id. The returned query receipt embeds the immutable acceptance receipt and does not create deployment or promotion state.",security:[{BearerAuth:[]}],parameters:[{name:"run_id",in:"query",required:true,schema:{type:"string",minLength:1,maxLength:200}}],responses:{"200":{description:"Stored acceptance result and receipt digest."},"400":{description:"Valid run_id required."},"401":{description:"Unauthorized."},"404":{description:"Acceptance result not found."},"503":{description:"Admin state unavailable."}}}}
   };
 }
 
@@ -215,8 +225,7 @@ export async function getProductionVersions(request,env,ctx,app){
 export async function createCandidateVersion(request,env,ctx,app){
   const auth=authenticate(request,env);if(!auth.ok)return json({ok:false,error:auth.error,http_status:auth.status},auth.status);
   try{
-    const body=await parseBody(request,new Set(["label","reason"]));
-    const label=body.label===undefined?null:String(body.label).trim().slice(0,120),reason=body.reason===undefined?null:String(body.reason).trim().slice(0,500);
+    const body=await parseBody(request,new Set(["label","reason"])),label=optionalString(body,"label",120),reason=optionalString(body,"reason",500);
     const centers=await collectContexts(app,env,ctx),complete=Object.values(centers).every(c=>c?.ok===true),currentProduction=productionSnapshot(centers),allVersionsVerified=Object.values(currentProduction).every(x=>x.verified===true),idle=downstreamIdleState(centers);
     if(!complete||!allVersionsVerified||!idle.state_verified)return json({ok:false,error:"CANDIDATE_SNAPSHOT_NOT_VERIFIABLE",http_status:503,context_complete:complete,versions_verified:allVersionsVerified,active_state_verified:idle.state_verified},503);
     if(!idle.idle)return json({ok:false,error:"ADMIN_BUSY",http_status:409,active_tasks:idle.active},409);
@@ -233,13 +242,13 @@ export async function validateCandidate(request,env,ctx,app){
   const auth=authenticate(request,env);if(!auth.ok)return json({ok:false,error:auth.error,http_status:auth.status},auth.status);
   const startedAt=new Date().toISOString();
   try{
-    const body=await parseBody(request,new Set(["candidate_id"])),candidateId=String(body.candidate_id||"").trim();
-    if(!candidateId)return json({ok:false,error:"INVALID_REQUEST",http_status:400},400);
+    const body=await parseBody(request,new Set(["candidate_id"])),candidateId=requiredString(body,"candidate_id",160);
     const loaded=await stateCall(env,`/candidate/${encodeURIComponent(candidateId)}`);
     if(loaded.http_status===404)return json({ok:false,error:"CANDIDATE_NOT_FOUND",http_status:404},404);
     if(loaded.http_status!==200||loaded.body?.ok!==true)return json({ok:false,error:loaded.body?.error||"ADMIN_STATE_UNAVAILABLE",http_status:loaded.http_status||503},loaded.http_status||503);
     const candidate=loaded.body.candidate,expectedDigest=await sha256Text(JSON.stringify(candidate?.manifest||{}));
     const centers=await collectContexts(app,env,ctx),complete=Object.values(centers).every(c=>c?.ok===true),currentProduction=productionSnapshot(centers),idle=downstreamIdleState(centers),healthy=Object.values(centers).every(centerHealthy),versionsVerified=Object.values(currentProduction).every(x=>x.verified===true);
+    const versionIdentity=sameVersionSnapshot(candidate?.manifest?.production_snapshot,currentProduction),sourceIdentity=sameSourceSnapshot(candidate?.manifest?.production_snapshot,currentProduction);
     const checks=[
       {name:"candidate_digest_match",ok:Boolean(candidate?.candidate_digest)&&candidate.candidate_digest===expectedDigest,observed:candidate?.candidate_digest===expectedDigest},
       {name:"context_complete",ok:complete,observed:complete},
@@ -247,8 +256,8 @@ export async function validateCandidate(request,env,ctx,app){
       {name:"runtime_versions_verified",ok:versionsVerified,observed:versionsVerified},
       {name:"active_states_verified",ok:idle.state_verified,observed:idle.state_verified},
       {name:"centers_idle",ok:idle.idle,observed:idle.active},
-      {name:"runtime_version_identity",ok:sameVersionSnapshot(candidate?.manifest?.production_snapshot,currentProduction),observed:sameVersionSnapshot(candidate?.manifest?.production_snapshot,currentProduction)},
-      {name:"source_digest_identity",ok:sameSourceSnapshot(candidate?.manifest?.production_snapshot,currentProduction),observed:sameSourceSnapshot(candidate?.manifest?.production_snapshot,currentProduction)}
+      {name:"runtime_version_identity",ok:versionIdentity,observed:versionIdentity},
+      {name:"source_digest_identity",ok:sourceIdentity,observed:sourceIdentity}
     ];
     const acceptance=await acceptanceReceipt({candidate,checks,currentProduction,startedAt});
     const stored=await stateCall(env,"/acceptance","POST",{run_id:acceptance.run_id,candidate_id:candidateId,record:acceptance});
@@ -259,9 +268,9 @@ export async function validateCandidate(request,env,ctx,app){
 
 export async function getAcceptanceResult(request,env){
   const auth=authenticate(request,env);if(!auth.ok)return json({ok:false,error:auth.error,http_status:auth.status},auth.status);
-  const url=new URL(request.url),runId=String(url.searchParams.get("run_id")||"").trim();
-  if(!runId)return json({ok:false,error:"INVALID_REQUEST",message:"run_id required",http_status:400},400);
-  const loaded=await stateCall(env,`/acceptance/${encodeURIComponent(runId)}`);
+  const url=new URL(request.url),raw=url.searchParams.get("run_id");
+  if(raw===null||typeof raw!=="string"||!raw.trim()||raw.length>200)return json({ok:false,error:"INVALID_REQUEST",message:"valid run_id required",http_status:400},400);
+  const runId=raw.trim(),loaded=await stateCall(env,`/acceptance/${encodeURIComponent(runId)}`);
   if(loaded.http_status===404)return json({ok:false,error:"ACCEPTANCE_NOT_FOUND",http_status:404},404);
   if(loaded.http_status!==200||loaded.body?.ok!==true)return json({ok:false,error:loaded.body?.error||"ADMIN_STATE_UNAVAILABLE",http_status:loaded.http_status||503},loaded.http_status||503);
   const acceptance=loaded.body.acceptance,receipt=await readReceipt("getAcceptanceResult",{query_run_id:runId,acceptance_receipt_digest:acceptance.receipt_digest,acceptance});
