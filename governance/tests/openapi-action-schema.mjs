@@ -39,9 +39,10 @@ const assist = spec.paths?.["/v1/assist"]?.post;
 assert.equal(assist?.operationId, "runGovernanceAssist");
 assert.match(assist?.summary || "", /Default-on auxiliary collaboration/i);
 assert.match(assist?.description || "", /every substantive work item/i);
-assert.match(assist?.description || "", /any governed repository resource/i);
-assert.match(assist?.description || "", /any Cloudflare-hosted capability/i);
-assert.match(assist?.description || "", /Only the controlling web GPT may explicitly set auxiliary_mode=cancel/i);
+assert.match(assist?.description || "", /governed repository/i);
+assert.match(assist?.description || "", /Cloudflare-hosted capability/i);
+assert.match(assist?.description || "", /Only the controlling web GPT may set auxiliary_mode=cancel/i);
+assert.ok((assist?.description || "").length <= 300, "runGovernanceAssist description must stay within GPT Actions 300-character limit");
 assert.deepEqual(assist?.security, [{ BearerAuth: [] }]);
 const requestSchema = assist?.requestBody?.content?.["application/json"]?.schema;
 assert.deepEqual(requestSchema?.required, ["prompt"]);
@@ -63,6 +64,9 @@ for (const pathItem of Object.values(spec.paths)) {
   for (const operation of Object.values(pathItem)) {
     assert.equal(typeof operation.operationId, "string");
     assert.ok(operation.operationId.length > 0, "every exposed Action operation must have operationId");
+    if (operation.description !== undefined) {
+      assert.ok(operation.description.length <= 300, `${operation.operationId} description exceeds GPT Actions 300-character limit`);
+    }
   }
 }
 
@@ -80,6 +84,7 @@ console.log(JSON.stringify({
   work_item_handshake_required: true,
   repository_use_requires_collaboration: true,
   cloudflare_use_requires_collaboration: true,
+  operation_description_max_chars: 300,
   parser_safe_components_schemas: true,
   only_callable_action_paths_exposed: true
 }));
