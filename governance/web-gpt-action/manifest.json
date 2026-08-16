@@ -1,6 +1,6 @@
 {
   "schema": "web-gpt-action-canonical-v1",
-  "snapshot_version": "2026-08-16.1",
+  "snapshot_version": "2026-08-16.2",
   "status": "LATEST",
   "canonical_file": "governance/web-gpt-action/LATEST.openapi.json",
   "source_entry": "governance/src/admin-entry.js",
@@ -19,11 +19,18 @@
     "runLiteratureProductionSelftest",
     "getAdminContext",
     "getSystemHealth",
-    "getProductionVersions"
+    "getProductionVersions",
+    "createCandidateVersion",
+    "validateCandidate",
+    "getAcceptanceResult"
   ],
   "copy_paste_ready": true,
   "secret_free": true,
   "history_policy": "Git history only; do not keep competing latest files",
   "update_policy": "Any Action surface change must update LATEST.openapi.json in the same PR and pass web-gpt-action-snapshot.mjs",
-  "updated_at": "2026-08-16T12:30:00+08:00"
+  "phase": "phase-2-candidate-control-plane-acceptance",
+  "production_mutation_actions": 0,
+  "promote_enabled": false,
+  "rollback_enabled": false,
+  "updated_at": "2026-08-16T12:36:00+08:00"
 }
