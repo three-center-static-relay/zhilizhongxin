@@ -1,8 +1,8 @@
 import { buildGovernanceSystem, deterministicPolicyDecision, validateModelContent } from "./assist-policy.js";
 
 // Governance routing priority: strongest validated Workers Free-plan model first.
-// Order is intentionally deterministic; a model is attempted only after every stronger
-// predecessor failed. Shared-quota exhaustion skips the remaining Cloudflare pool.
+// Order is intentionally deterministic; every Cloudflare free candidate is attempted in
+// sequence before entering the paid-only OpenRouter fallback.
 const FREE_MODELS_STRONGEST_FIRST = Object.freeze([
   "@cf/nvidia/nemotron-3-120b-a12b",
   "@cf/google/gemma-4-26b-a4b-it",
@@ -84,11 +84,6 @@ function extractContent(output) {
   throw new Error("EMPTY_MODEL_OUTPUT");
 }
 
-function looksLikeSharedQuota(error) {
-  const text = String(error?.message || error || "").toLowerCase();
-  return text.includes("neuron") || text.includes("daily quota") || text.includes("quota exceeded") || text.includes("limit exceeded");
-}
-
 function workersAiParameters(model, messages, maxTokens) {
   const params = {
     messages,
@@ -153,13 +148,18 @@ export function assistRoutingInfo() {
       selection: "strongest-first-sequential",
       ranking: "governance-intelligence-high-to-low",
       free_only: true,
+      paid_models_allowed: false,
       deterministic_order: true,
+      quota_failure_behavior: "continue-remaining-free-models",
+      exhaust_free_pool_before_openrouter: true,
       model_count: FREE_MODELS_STRONGEST_FIRST.length,
       models: [...FREE_MODELS_STRONGEST_FIRST]
     },
     openrouter: {
       free_models: false,
+      free_models_allowed: false,
       paid_only: true,
+      entry_condition: "cloudflare-free-pool-exhausted",
       ranking: "intelligence-high-to-low",
       sequential: true,
       reasoning_effort: "high",
@@ -268,7 +268,6 @@ export async function runAssist(request, env) {
         });
       } catch (error) {
         attempts.push({ provider: "cloudflare-workers-ai", rank: rank + 1, model, status: "failed", error: String(error?.message || error), elapsed_ms: Date.now() - started });
-        if (looksLikeSharedQuota(error)) break;
       }
     }
 
