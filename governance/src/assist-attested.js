@@ -23,6 +23,24 @@ function attestedJson(body, status = 200) {
   });
 }
 
+function constantTimeEqual(a, b) {
+  a = String(a || "");
+  b = String(b || "");
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+function authenticateController(request, env) {
+  const authorization = request.headers.get("authorization") || "";
+  if (!authorization.startsWith("Bearer ")) return { ok: false, status: 401, error: "UNAUTHORIZED" };
+  if (!env.ADMIN_GPT_TOKEN) return { ok: false, status: 503, error: "ADMIN_TOKEN_NOT_CONFIGURED" };
+  const token = authorization.slice(7).trim();
+  if (!constantTimeEqual(token, env.ADMIN_GPT_TOKEN)) return { ok: false, status: 401, error: "UNAUTHORIZED" };
+  return { ok: true };
+}
+
 export function runtimeSelftestResponse() {
   return attestedJson({
     ok: true,
@@ -99,9 +117,58 @@ async function compatibilitySelftest(request) {
   return null;
 }
 
+async function controllerCollaborationOverride(request, env) {
+  const body = await request.clone().json().catch(() => null);
+  if (!body || typeof body !== "object") return null;
+  const mode = body.auxiliary_mode === undefined ? "active" : String(body.auxiliary_mode || "").trim();
+  if (mode === "active") return null;
+
+  const auth = authenticateController(request, env);
+  if (!auth.ok) return attestedJson({ ok: false, error: auth.error }, auth.status);
+
+  if (mode !== "cancel") {
+    return attestedJson({
+      ok: false,
+      error: "INVALID_AUXILIARY_MODE",
+      message: "auxiliary_mode must be active or cancel"
+    }, 400);
+  }
+
+  const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+  if (!prompt) {
+    return attestedJson({ ok: false, error: "INVALID_REQUEST", message: "prompt required" }, 400);
+  }
+
+  const cancelReason = typeof body.cancel_reason === "string" && body.cancel_reason.trim()
+    ? body.cancel_reason.trim().slice(0, 500)
+    : null;
+
+  return attestedJson({
+    ok: true,
+    provider: "governance-collaboration-control",
+    selection: "explicit-controller-cancel",
+    model: null,
+    content: "Auxiliary model collaboration was explicitly cancelled by the controlling web GPT for this work item.",
+    usage: null,
+    attempts: [],
+    ai_called: false,
+    cost_incurred: false,
+    auxiliary_called: false,
+    collaboration_required: true,
+    collaboration_default: "active",
+    collaboration_status: "cancelled-by-controller",
+    collaboration_cancel_authority: "web-gpt-only",
+    collaboration_cancel_explicit: true,
+    cancel_reason: cancelReason
+  });
+}
+
 export async function runAttestedAssist(request, env) {
   const compatibility = await compatibilitySelftest(request);
   if (compatibility) return compatibility;
+
+  const override = await controllerCollaborationOverride(request, env);
+  if (override) return override;
 
   const response = await runAssist(request, env);
   const body = await response.clone().json().catch(() => null);
