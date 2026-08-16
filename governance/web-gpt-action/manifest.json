@@ -1,6 +1,6 @@
 {
   "schema": "web-gpt-action-canonical-v1",
-  "snapshot_version": "2026-08-16.2",
+  "snapshot_version": "2026-08-16.3",
   "status": "LATEST",
   "canonical_file": "governance/web-gpt-action/LATEST.openapi.json",
   "source_entry": "governance/src/admin-entry.js",
@@ -27,10 +27,20 @@
   "copy_paste_ready": true,
   "secret_free": true,
   "history_policy": "Git history only; do not keep competing latest files",
-  "update_policy": "Any Action surface change must update LATEST.openapi.json in the same PR and pass web-gpt-action-snapshot.mjs",
-  "phase": "phase-2-candidate-control-plane-acceptance",
+  "update_policy": "Any Action surface change must update LATEST.openapi.json in the same change and pass web-gpt-action-snapshot.mjs",
+  "phase": "phase-2-cloudflare-preview-build-acceptance",
+  "candidate_kind": "cloudflare-preview-build-set",
+  "candidate_deploy_command_required": "npx wrangler versions upload",
+  "candidate_branch_main_allowed": false,
+  "fresh_business_e2e": false,
   "production_mutation_actions": 0,
   "promote_enabled": false,
   "rollback_enabled": false,
-  "updated_at": "2026-08-16T12:36:00+08:00"
+  "cloudflare_builds_runtime_requirements": {
+    "account_id_var": "CLOUDFLARE_ACCOUNT_ID",
+    "api_token_secret": "CLOUDFLARE_BUILDS_API_TOKEN",
+    "api_token_user_scoped": true,
+    "production_secret_value_stored_in_repository": false
+  },
+  "updated_at": "2026-08-16T12:44:00+08:00"
 }
