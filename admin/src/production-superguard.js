@@ -1,0 +1,22 @@
+import superguard,{AdminCoordinator} from "./superguard.js";
+export {AdminCoordinator};
+const H={"content-type":"application/json;charset=utf-8","cache-control":"no-store"};
+const json=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:H});
+const fail=(c,m,s=409,d)=>json({ok:false,error:c,message:m,...(d?{details:d}:{})},s);
+const tok=req=>{const h=req.headers.get("authorization")||"";return h.startsWith("Bearer ")?h.slice(7).trim():""};
+function eq(a,b){a=String(a||"");b=String(b||"");if(a.length!==b.length)return false;let x=0;for(let i=0;i<a.length;i++)x|=a.charCodeAt(i)^b.charCodeAt(i);return x===0}
+async function auth(req,env){if(!env.ADMIN_GPT_TOKEN)throw Object.assign(new Error("ADMIN_TOKEN_NOT_CONFIGURED"),{status:503});if(!eq(tok(req),env.ADMIN_GPT_TOKEN))throw Object.assign(new Error("UNAUTHORIZED"),{status:401})}
+
+async function literatureSelftest(req,env){
+  await auth(req,env);
+  const svc=env.INTELLIGENCE_CENTER;
+  if(!svc?.fetch)return fail("CENTER_UNCONFIGURED","intelligence service binding is not configured",503);
+  const started=Date.now(),c=new AbortController(),timer=setTimeout(()=>c.abort(),60000);
+  try{
+    const r=await svc.fetch(new Request("https://intelligence.internal/v1/selftest/literature",{method:"POST",headers:{accept:"application/json","content-type":"application/json"},body:"{}",signal:c.signal})),body=await r.json().catch(()=>null),ok=r.ok&&body?.ok===true;
+    return json({ok,center:"intelligence",suite:"literature-production-keys",http_status:r.status,business_e2e:body?.business_e2e===true,selftest:body,elapsed_ms:Date.now()-started},ok?200:(r.status||503));
+  }catch(e){return fail(e?.name==="AbortError"?"SELFTEST_TIMEOUT":"SELFTEST_FAILED",String(e?.message||e),e?.name==="AbortError"?504:502,{center:"intelligence",suite:"literature-production-keys",elapsed_ms:Date.now()-started})}
+  finally{clearTimeout(timer)}
+}
+
+export default{async fetch(req,env,ctx){try{const u=new URL(req.url);if(req.method==="POST"&&u.pathname==="/v1/admin/selftest/literature")return await literatureSelftest(req,env);return await superguard.fetch(req,env,ctx)}catch(e){return fail(String(e?.message||"INTERNAL_ERROR"),e?.status>=500?"Internal operation failed":String(e?.message||"Request failed"),e?.status||500,e?.details)}}};
