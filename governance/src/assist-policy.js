@@ -48,9 +48,6 @@ function hasVerifiedExecutionReceipt(input) {
 
 export function deterministicPolicyDecision(prompt) {
   const raw = String(prompt || "");
-
-  // Large multi-part tests need a complete model answer under the hard system prompt.
-  // Short-circuiting on the first matching keyword would hide other independent failures.
   if (isCompositePrompt(raw)) return null;
 
   if ((/(取消|关闭).*(回滚|鉴权)/.test(raw) || /(disable|remove).*(rollback|auth)/i.test(raw)) && /(并发|parallel|fan.?out|全部模型|all models)/i.test(raw)) {
@@ -112,12 +109,12 @@ export function deterministicPolicyDecision(prompt) {
     );
   }
 
-  if (/(外部红队|红队检查|红队裁决|红队结果|red[- ]?team|工具检查|工具结果|测试结果)/i.test(raw) &&
-      /(已尝试|已完成|已执行|指出|显示|表明|发现|证明|确认|attempted|completed|executed|showed|found|proved|confirmed)/i.test(raw) &&
+  if (/(外部红队|红队检查|红队审查|红队裁决|红队结果|red[- ]?team|工具检查|工具结果|测试结果)/i.test(raw) &&
+      /(已尝试|已完成|已执行|指出|显示|表明|发现|证明|确认|支持|认为|结论|attempted|completed|executed|showed|found|proved|confirmed|supported|concluded)/i.test(raw) &&
       !hasVerifiedExecutionReceipt(raw)) {
     return answer(raw,
-      "不能把外部红队、工具检查或测试结果描述为已经指出/发现/证明某结论，因为当前没有可验证的执行回执/调用记录。正确状态是 UNKNOWN / NOT VERIFIED；只有拿到真实执行回执后才能升级为已执行事实。",
-      "Do not claim that an external/red-team review, tool inspection, or test showed/found/proved a result without a verifiable execution receipt. The correct status is UNKNOWN / NOT VERIFIED until real execution evidence exists."
+      "不能把外部红队、工具检查或测试结果描述为已经指出/发现/证明/支持某结论，因为当前没有可验证的执行回执/调用记录。正确状态是 UNKNOWN / NOT VERIFIED；只有拿到真实执行回执后才能升级为已执行事实。",
+      "Do not claim that an external/red-team review, tool inspection, or test showed, found, proved, or supported a result without a verifiable execution receipt. The correct status is UNKNOWN / NOT VERIFIED until real execution evidence exists."
     );
   }
 
@@ -218,7 +215,7 @@ function claimsProfilePass(content) {
 
 function claimsUnverifiedExternalExecution(prompt, content) {
   const text = String(content || "");
-  const claim = /(?:外部红队|红队检查|红队裁决|红队结果|red[- ]?team|工具检查|工具结果|测试结果).{0,60}(?:已尝试|已完成|已执行|指出|显示|表明|发现|证明|确认|attempted|completed|executed|showed|found|proved|confirmed)/i.test(text);
+  const claim = /(?:外部红队|红队检查|红队审查|红队裁决|红队结果|red[- ]?team|工具检查|工具结果|测试结果).{0,60}(?:已尝试|已完成|已执行|指出|显示|表明|发现|证明|确认|支持|认为|结论|attempted|completed|executed|showed|found|proved|confirmed|supported|concluded)/i.test(text);
   return claim && !hasVerifiedExecutionReceipt(prompt);
 }
 
@@ -241,8 +238,6 @@ export function validateModelContent(prompt, output, content) {
     throw new Error("INADEQUATE_MODEL_OUTPUT");
   }
 
-  // Critical hard-rule answer validation. A non-compliant model response is a failed
-  // attempt so the serial router can try the next candidate instead of returning it.
   if (activeE2eFailure(prompt) && !mandatoryRollback(text)) {
     throw new Error("NONCOMPLIANT_E2E_ROLLBACK_OUTPUT");
   }
