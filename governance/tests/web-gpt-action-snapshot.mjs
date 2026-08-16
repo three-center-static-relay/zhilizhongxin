@@ -20,10 +20,18 @@ assert.equal(manifest.canonical_file,"governance/web-gpt-action/LATEST.openapi.j
 assert.equal(manifest.source_entry,"governance/src/admin-entry.js");
 assert.equal(manifest.copy_paste_ready,true);
 assert.equal(manifest.secret_free,true);
-assert.equal(manifest.phase,"phase-2-candidate-control-plane-acceptance");
+assert.equal(manifest.phase,"phase-2-cloudflare-preview-build-acceptance");
+assert.equal(manifest.candidate_kind,"cloudflare-preview-build-set");
+assert.equal(manifest.candidate_deploy_command_required,"npx wrangler versions upload");
+assert.equal(manifest.candidate_branch_main_allowed,false);
+assert.equal(manifest.fresh_business_e2e,false);
 assert.equal(manifest.production_mutation_actions,0);
 assert.equal(manifest.promote_enabled,false);
 assert.equal(manifest.rollback_enabled,false);
+assert.equal(manifest.cloudflare_builds_runtime_requirements.account_id_var,"CLOUDFLARE_ACCOUNT_ID");
+assert.equal(manifest.cloudflare_builds_runtime_requirements.api_token_secret,"CLOUDFLARE_BUILDS_API_TOKEN");
+assert.equal(manifest.cloudflare_builds_runtime_requirements.api_token_user_scoped,true);
+assert.equal(manifest.cloudflare_builds_runtime_requirements.production_secret_value_stored_in_repository,false);
 assert.equal(snapshot.servers?.length,1);
 assert.equal(snapshot.servers?.[0]?.url,server);
 assert.deepEqual(snapshot.components?.schemas,{});
@@ -43,9 +51,21 @@ assert.equal(operations.length,10);
 for(const required of ["createCandidateVersion","validateCandidate","getAcceptanceResult"])assert.ok(operations.includes(required));
 for(const forbidden of ["promoteCandidate","rollbackProduction"])assert.equal(operations.includes(forbidden),false);
 
+const candidate=snapshot.paths?.["/v1/admin/candidates"]?.post;
+assert.equal(candidate?.requestBody?.required,true);
+const candidateSchema=candidate?.requestBody?.content?.["application/json"]?.schema;
+assert.deepEqual(candidateSchema?.required,["branch","commits"]);
+assert.deepEqual(candidateSchema?.properties?.commits?.required,["governance","intelligence","compute","expert"]);
+assert.ok(candidate?.responses?.["202"]);
+assert.equal(candidate?.responses?.["201"],undefined);
+const candidateValidate=snapshot.paths?.["/v1/admin/candidates/validate"]?.post;
+assert.ok(candidateValidate?.responses?.["202"]);
+assert.match(candidateValidate?.description||"",/No runtime E2E is claimed/i);
+
 const raw=JSON.stringify(snapshot);
 assert.equal(raw.includes("ADMIN_GPT_TOKEN"),false,"Action snapshot must never contain the controller secret name/value");
+assert.equal(raw.includes("CLOUDFLARE_BUILDS_API_TOKEN"),false,"Action schema must not expose the Cloudflare Builds secret name/value");
 assert.equal(/Bearer\s+[A-Za-z0-9._~-]{16,}/.test(raw),false,"Action snapshot appears to contain a bearer credential");
 assert.equal(/sk-[A-Za-z0-9_-]{12,}/.test(raw),false,"Action snapshot appears to contain an API credential");
 
-console.log(JSON.stringify({ok:true,suite:"web-gpt-action-canonical-latest",snapshot_version:manifest.snapshot_version,server,operations,operation_count:operations.length,phase:manifest.phase,production_mutation_actions:0,promote_enabled:false,rollback_enabled:false,drift_guard:true,secret_free:true,copy_paste_ready:true}));
+console.log(JSON.stringify({ok:true,suite:"web-gpt-action-canonical-latest",snapshot_version:manifest.snapshot_version,server,operations,operation_count:operations.length,phase:manifest.phase,candidate_kind:manifest.candidate_kind,fresh_business_e2e:false,production_mutation_actions:0,promote_enabled:false,rollback_enabled:false,drift_guard:true,secret_free:true,copy_paste_ready:true}));
