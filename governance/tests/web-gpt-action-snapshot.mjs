@@ -25,6 +25,7 @@ assert.equal(manifest.candidate_kind,"cloudflare-preview-build-set");
 assert.equal(manifest.candidate_deploy_command_required,"npx wrangler versions upload");
 assert.equal(manifest.candidate_branch_main_allowed,false);
 assert.equal(manifest.fresh_business_e2e,false);
+assert.equal(manifest.provider_fresh_e2e_action,true);
 assert.equal(manifest.production_mutation_actions,0);
 assert.equal(manifest.promote_enabled,false);
 assert.equal(manifest.rollback_enabled,false);
@@ -47,10 +48,15 @@ for(const [path,pathItem] of Object.entries(snapshot.paths||{}))for(const [metho
 }
 assert.equal(new Set(operations).size,operations.length,"operationId values must be unique");
 assert.deepEqual([...operations].sort(),[...manifest.required_operation_ids].sort(),"manifest operation list must exactly match the canonical Action schema");
-assert.equal(operations.length,10);
-for(const required of ["createCandidateVersion","validateCandidate","getAcceptanceResult"])assert.ok(operations.includes(required));
+assert.equal(operations.length,11);
+for(const required of ["runProviderFreshE2E","createCandidateVersion","validateCandidate","getAcceptanceResult"])assert.ok(operations.includes(required));
 for(const forbidden of ["promoteCandidate","rollbackProduction"])assert.equal(operations.includes(forbidden),false);
 
+const providerE2E=snapshot.paths?.["/v1/intelligence/provider-selftest"]?.post;
+assert.equal(providerE2E?.operationId,"runProviderFreshE2E");
+assert.equal(providerE2E?.requestBody?.required,false);
+assert.ok(providerE2E?.responses?.["200"]);
+assert.ok(providerE2E?.responses?.["503"]);
 const candidate=snapshot.paths?.["/v1/admin/candidates"]?.post;
 assert.equal(candidate?.requestBody?.required,true);
 const candidateSchema=candidate?.requestBody?.content?.["application/json"]?.schema;
@@ -68,4 +74,4 @@ assert.equal(raw.includes("CLOUDFLARE_BUILDS_API_TOKEN"),false,"Action schema mu
 assert.equal(/Bearer\s+[A-Za-z0-9._~-]{16,}/.test(raw),false,"Action snapshot appears to contain a bearer credential");
 assert.equal(/sk-[A-Za-z0-9_-]{12,}/.test(raw),false,"Action snapshot appears to contain an API credential");
 
-console.log(JSON.stringify({ok:true,suite:"web-gpt-action-canonical-latest",snapshot_version:manifest.snapshot_version,server,operations,operation_count:operations.length,phase:manifest.phase,candidate_kind:manifest.candidate_kind,fresh_business_e2e:false,production_mutation_actions:0,promote_enabled:false,rollback_enabled:false,drift_guard:true,secret_free:true,copy_paste_ready:true}));
+console.log(JSON.stringify({ok:true,suite:"web-gpt-action-canonical-latest",snapshot_version:manifest.snapshot_version,server,operations,operation_count:operations.length,phase:manifest.phase,candidate_kind:manifest.candidate_kind,fresh_business_e2e:false,provider_fresh_e2e_action:true,production_mutation_actions:0,promote_enabled:false,rollback_enabled:false,drift_guard:true,secret_free:true,copy_paste_ready:true}));
