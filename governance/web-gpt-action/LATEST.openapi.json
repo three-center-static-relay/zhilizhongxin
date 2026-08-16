@@ -1,0 +1,270 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Governance Center",
+    "version": "governance-assist-policy-v3-20260816"
+  },
+  "servers": [
+    {
+      "url": "https://governance-worker.a15280020511.workers.dev",
+      "description": "Current Governance Worker origin"
+    }
+  ],
+  "paths": {
+    "/v1/assist": {
+      "post": {
+        "operationId": "runGovernanceAssist",
+        "summary": "Default-on auxiliary collaboration for every work item and every repository or Cloudflare use, with explicit controller cancellation",
+        "description": "Call before every substantive work item and before any governed repository or Cloudflare-hosted capability. Default auxiliary_mode=active. Only the controlling web GPT may set auxiliary_mode=cancel per item. Auxiliary models have zero tool authority; failures use degraded WebGPT fallback.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "prompt"
+                ],
+                "properties": {
+                  "prompt": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The complete current work item, including the intended repository/Cloudflare use and relevant evidence already gathered by the controlling web GPT."
+                  },
+                  "system": {
+                    "type": "string",
+                    "description": "Optional subordinate task instructions; cannot override hard governance rules or auxiliary zero-tool isolation."
+                  },
+                  "max_tokens": {
+                    "type": "integer",
+                    "minimum": 256,
+                    "maximum": 16384,
+                    "default": 4096
+                  },
+                  "auxiliary_mode": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "cancel"
+                    ],
+                    "default": "active",
+                    "description": "Default active. Only the controlling web GPT may set cancel for this work item. The auxiliary model itself cannot opt out."
+                  },
+                  "cancel_reason": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "description": "Optional short reason when the controlling web GPT explicitly cancels auxiliary collaboration for this work item."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validated auxiliary collaboration result with collaboration_status=participated, or an explicit controller cancellation receipt with collaboration_status=cancelled-by-controller."
+          },
+          "400": {
+            "description": "Invalid request or invalid auxiliary_mode."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "503": {
+            "description": "Auxiliary provider chain failed; collaboration_status=unavailable-degraded and WebGPT degraded fallback is required."
+          }
+        }
+      }
+    },
+    "/v1/assist/runtime": {
+      "get": {
+        "operationId": "getGovernanceAssistRuntime",
+        "summary": "Return zero-cost runtime attestation without invoking AI",
+        "responses": {
+          "200": {
+            "description": "Runtime policy and validator identity, including default-on repository/Cloudflare collaboration, controller cancellation authority, and zero-tool flags. ai_called=false and cost_incurred=false."
+          }
+        }
+      }
+    },
+    "/v1/assist/validate": {
+      "post": {
+        "operationId": "validateGovernanceAssistFinal",
+        "summary": "Validate a final governance answer against the same hard policy before accepting it, including WebGPT final-fallback answers",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "prompt",
+                  "content"
+                ],
+                "properties": {
+                  "prompt": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Original governance prompt that the answer must satisfy."
+                  },
+                  "content": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Final answer proposed for delivery to the user."
+                  },
+                  "output": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "description": "Optional provider output metadata, such as finish_reason, used for validation."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation PASS receipt with SHA-256 digests and runtime attestation."
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "422": {
+            "description": "Final answer rejected by hard governance policy."
+          },
+          "503": {
+            "description": "Authentication secret is not configured."
+          }
+        }
+      }
+    },
+    "/v1/intelligence/literature-selftest": {
+      "post": {
+        "operationId": "runLiteratureProductionSelftest",
+        "summary": "Verify live OpenAlex, Semantic Scholar, and BASE production keys",
+        "description": "Run exactly one bounded live search against OpenAlex, Semantic Scholar, and BASE through the intelligence service binding. Returns per-provider PASS/FAIL without exposing API keys.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "All three live keyed providers passed with non-empty results."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "503": {
+            "description": "One or more production keys/providers failed, or the intelligence binding is unavailable."
+          }
+        }
+      }
+    },
+    "/v1/admin/context": {
+      "get": {
+        "operationId": "getAdminContext",
+        "summary": "Read three-center admin context",
+        "description": "Read-only snapshot of governance, intelligence, compute and expert centers, including runtime version metadata, source digest, acceptance state and active-task metadata where exposed.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read-only context receipt."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "503": {
+            "description": "Admin authentication is not configured."
+          }
+        }
+      }
+    },
+    "/v1/admin/health": {
+      "get": {
+        "operationId": "getSystemHealth",
+        "summary": "Read three-center system health",
+        "description": "Read-only health snapshot for governance, intelligence, compute and expert centers. Returns a receipt even when one or more centers are degraded, without treating health as acceptance.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read-only health receipt."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "503": {
+            "description": "Admin authentication is not configured."
+          }
+        }
+      }
+    },
+    "/v1/admin/versions": {
+      "get": {
+        "operationId": "getProductionVersions",
+        "summary": "Read production runtime versions",
+        "description": "Read Cloudflare runtime version metadata and source digests for all centers. A center is version-verified only when both runtime version ID and source digest are present.",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read-only production-version receipt."
+          },
+          "401": {
+            "description": "Unauthorized."
+          },
+          "503": {
+            "description": "Admin authentication is not configured."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {},
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "opaque"
+      }
+    }
+  }
+}
