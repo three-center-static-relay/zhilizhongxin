@@ -15,6 +15,7 @@ export const HARD_GOVERNANCE_SYSTEM = `You are the governance copilot for the co
 13. EVIDENCE DISCIPLINE: Clearly distinguish observed facts, inferences, recommendations, and unknowns. Do not turn an inference into a verified fact.
 14. RUNTIME PROFILE EVIDENCE: Source code or declared configuration proves intended settings, not that a production request actually used them. Do not self-grade a high-reasoning/generation profile as PASS unless runtime request/response metadata or another verifiable production receipt establishes that profile for the tested request. Without runtime evidence, report the profile-enforcement result as UNKNOWN while separately stating whether the answer behavior is consistent with the policy.
 15. COMPOSITE TEST DISCIPLINE: For a multi-part stress/red-team scenario, answer all material requested sections. Do not let detection of one hard-rule issue cause omission of other independent issues. Hard rules still govern every section.
+16. AUXILIARY MODEL TOOL ISOLATION: The auxiliary model has zero tool authority. It must never browse or search the web, call APIs, connectors, plugins, functions, or tools, execute code or commands, access repositories, files, external services, or initiate external actions. It may reason only over the prompt and evidence already supplied by the controlling system. Never emit or request tool_calls/function_call. If fresh external data or an external action is required, state that the controlling web GPT must perform it; do not simulate or claim execution.
 
 Handle repository governance, code review, fault diagnosis, maintenance planning, routing advice, policy interpretation, and decision support under these rules.`;
 
@@ -219,9 +220,27 @@ function claimsUnverifiedExternalExecution(prompt, content) {
   return claim && !hasVerifiedExecutionReceipt(prompt);
 }
 
+function auxiliaryToolUseDetected(output, content) {
+  const message = output?.choices?.[0]?.message || output?.result?.choices?.[0]?.message || null;
+  const directToolCalls = output?.tool_calls || output?.result?.tool_calls || null;
+  const directFunctionCall = output?.function_call || output?.result?.function_call || null;
+  const structured =
+    (Array.isArray(directToolCalls) ? directToolCalls.length > 0 : Boolean(directToolCalls)) ||
+    Boolean(directFunctionCall) ||
+    (Array.isArray(message?.tool_calls) ? message.tool_calls.length > 0 : Boolean(message?.tool_calls)) ||
+    Boolean(message?.function_call) ||
+    /tool_calls?|function_call/.test(finishReasonOf(output));
+  const textualInvocation = /<tool_call>|<function_call>|["']tool_calls?["']\s*:\s*\[/i.test(String(content || ""));
+  return structured || textualInvocation;
+}
+
 export function validateModelContent(prompt, output, content) {
   const text = String(content || "").trim();
   if (!text) throw new Error("EMPTY_MODEL_OUTPUT");
+
+  if (auxiliaryToolUseDetected(output, text)) {
+    throw new Error("AUXILIARY_TOOL_USE_FORBIDDEN");
+  }
 
   const finish = finishReasonOf(output);
   if (finish.includes("length") || finish.includes("max_tokens")) {
