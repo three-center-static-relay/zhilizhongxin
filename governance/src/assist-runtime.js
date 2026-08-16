@@ -7,6 +7,8 @@ export function assistRuntimeIdentity() {
     policy_version: ASSIST_POLICY_VERSION,
     validator_version: ASSIST_VALIDATOR_VERSION,
     runtime_schema: ASSIST_RUNTIME_SCHEMA,
-    runtime_attested: true
+    runtime_attested: true,
+    auxiliary_tool_access: "none",
+    auxiliary_tools_allowed: false
   };
 }
