@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { validateModelContent } from "../src/assist-policy.js";
+import { HARD_GOVERNANCE_SYSTEM, validateModelContent } from "../src/assist-policy.js";
 
 // 1) Active production E2E failure cannot be labeled merely DEGRADED even if rollback is mentioned later.
 const e2ePrompt = "新版本已经部署生产，真实业务 E2E 失败，健康检查仍为 200。请给出总体状态和处理。";
@@ -61,6 +61,33 @@ assert.doesNotThrow(() => validateModelContent(
   "根据已提供并验证的工具回执，红队结果显示失败版本必须回滚。"
 ));
 
+// 5) Auxiliary models have zero tool authority. Structured tool/function calls are rejected.
+assert.match(HARD_GOVERNANCE_SYSTEM, /AUXILIARY MODEL TOOL ISOLATION/);
+assert.match(HARD_GOVERNANCE_SYSTEM, /zero tool authority/i);
+assert.throws(
+  () => validateModelContent(
+    "请分析当前配置。",
+    { choices: [{ finish_reason: "tool_calls", message: { content: "我准备读取配置。", tool_calls: [{ id: "x", type: "function", function: { name: "read_config", arguments: "{}" } }] } }] },
+    "我准备读取配置。"
+  ),
+  /AUXILIARY_TOOL_USE_FORBIDDEN/,
+  "tool_calls must never be accepted from an auxiliary model"
+);
+assert.throws(
+  () => validateModelContent(
+    "请分析当前配置。",
+    { choices: [{ message: { content: "我准备调用函数。", function_call: { name: "read_config", arguments: "{}" } } }] },
+    "我准备调用函数。"
+  ),
+  /AUXILIARY_TOOL_USE_FORBIDDEN/,
+  "function_call must never be accepted from an auxiliary model"
+);
+assert.doesNotThrow(() => validateModelContent(
+  "请分析当前配置。",
+  {},
+  "仅根据已提供的配置文本进行分析，不调用任何外部工具或服务。"
+));
+
 console.log(JSON.stringify({
   ok: true,
   suite: "governance-policy-hardening-second-layer",
@@ -68,6 +95,7 @@ console.log(JSON.stringify({
     "active-e2e-state-must-be-fail-closed",
     "non2xx-content-cannot-be-rescued",
     "runtime-profile-pass-requires-receipt",
-    "broaden-unverified-execution-claims"
+    "broaden-unverified-execution-claims",
+    "auxiliary-model-zero-tool-authority"
   ]
 }));
