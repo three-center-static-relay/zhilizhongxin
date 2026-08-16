@@ -28,8 +28,9 @@ const auth={authorization:`Bearer ${TOKEN}`};
 {
   const response=await worker.fetch(new Request("https://governance.test/openapi.json"),env,{}),spec=await response.json(),operations=[];
   for(const [path,item] of Object.entries(spec.paths))for(const [method,op] of Object.entries(item)){operations.push(op.operationId);assert.ok(["get","post"].includes(method));if(op.description!==undefined)assert.ok(op.description.length<=300,`${op.operationId} description exceeds 300 characters`);}
-  assert.deepEqual(operations.sort(),["getAdminContext","getGovernanceAssistRuntime","getProductionVersions","getSystemHealth","runGovernanceAssist","runLiteratureProductionSelftest","validateGovernanceAssistFinal"].sort());
-  for(const path of ["/v1/admin/context","/v1/admin/health","/v1/admin/versions"]){assert.deepEqual(spec.paths[path].get.security,[{BearerAuth:[]}]);assert.equal(spec.paths[path].post,undefined);}
+  assert.deepEqual(operations.sort(),["getAdminContext","getGovernanceAssistRuntime","getProductionVersions","getSystemHealth","runGovernanceAssist","runLiteratureProductionSelftest","validateGovernanceAssistFinal","createCandidateVersion","validateCandidate","getAcceptanceResult"].sort());
+  for(const path of ["/v1/admin/context","/v1/admin/health","/v1/admin/versions"]){assert.deepEqual(spec.paths[path].get.security,[{BearerAuth:[]}]);assert.equal(spec.paths[path].post,undefined,"phase-1 read routes remain read-only");}
+  assert.equal(operations.includes("promoteCandidate"),false);assert.equal(operations.includes("rollbackProduction"),false);
 }
 
-console.log(JSON.stringify({ok:true,suite:"governance-admin-gateway-readonly",admin_operations:3,total_production_operations:7,receipt_schema:"three-center-admin-read-receipt-v1",mutation_actions:0,literature_action_preserved:true}));
+console.log(JSON.stringify({ok:true,suite:"governance-admin-gateway-readonly",admin_read_operations:3,total_production_operations:10,receipt_schema:"three-center-admin-read-receipt-v1",production_mutation_actions:0,literature_action_preserved:true}));
