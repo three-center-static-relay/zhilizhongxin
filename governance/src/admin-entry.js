@@ -1,5 +1,7 @@
 import app from "./production-entry.js";
-import {adminOpenApiPaths,getAdminContext,getProductionVersions,getSystemHealth} from "./admin-gateway.js";
+import {AdminState} from "./admin-state.js";
+import {adminOpenApiPaths,createCandidateVersion,getAcceptanceResult,getAdminContext,getProductionVersions,getSystemHealth,validateCandidate} from "./admin-gateway.js";
+export {AdminState};
 
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
 
@@ -17,6 +19,9 @@ export default{
     if(request.method==="GET"&&url.pathname==="/v1/admin/context")return getAdminContext(request,env,ctx,app);
     if(request.method==="GET"&&url.pathname==="/v1/admin/health")return getSystemHealth(request,env,ctx,app);
     if(request.method==="GET"&&url.pathname==="/v1/admin/versions")return getProductionVersions(request,env,ctx,app);
+    if(request.method==="POST"&&url.pathname==="/v1/admin/candidates")return createCandidateVersion(request,env,ctx,app);
+    if(request.method==="POST"&&url.pathname==="/v1/admin/candidates/validate")return validateCandidate(request,env,ctx,app);
+    if(request.method==="GET"&&url.pathname==="/v1/admin/acceptance")return getAcceptanceResult(request,env);
     if(request.method==="GET"&&url.pathname==="/openapi.json")return openApiWithAdmin(request,env,ctx);
     return app.fetch(request,env,ctx);
   }
