@@ -107,15 +107,15 @@ function centerVersion(center){
 async function receipt(operation,data){
   const run_id=`admin-${operation}-${crypto.randomUUID()}`;
   const observed_at=new Date().toISOString();
-  const base={receipt_schema:RECEIPT_SCHEMA,run_id,operation,observed_at,read_only:true,tested_candidate:null,rollback_target:null,data};
+  const base={ok:true,http_status:200,receipt_schema:RECEIPT_SCHEMA,run_id,operation,observed_at,read_only:true,tested_candidate:null,rollback_target:null,data};
   const receipt_digest=await sha256Text(JSON.stringify(base));
   return {...base,receipt_digest};
 }
 
 async function authorized(request,env,fn){
   const auth=authenticate(request,env);
-  if(!auth.ok)return json({ok:false,error:auth.error},auth.status);
-  try{return json(await fn(),200);}catch(error){return json({ok:false,error:String(error?.message||"ADMIN_GATEWAY_FAILED")},500);}
+  if(!auth.ok)return json({ok:false,error:auth.error,http_status:auth.status},auth.status);
+  try{return json(await fn(),200);}catch(error){return json({ok:false,error:String(error?.message||"ADMIN_GATEWAY_FAILED"),http_status:500},500);}
 }
 
 export function adminOpenApiPaths(){
@@ -130,7 +130,7 @@ export async function getAdminContext(request,env,ctx,app){
   return authorized(request,env,async()=>{
     const centers=await collectContexts(app,env,ctx);
     const complete=Object.values(centers).every(c=>c?.ok===true);
-    return receipt("getAdminContext",{status:complete?"VERIFIED":"PARTIAL",centers});
+    return receipt("getAdminContext",{status:complete?"COMPLETE":"PARTIAL",centers,context_is_not_acceptance:true});
   });
 }
 
