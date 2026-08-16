@@ -1,0 +1,45 @@
+{
+  "version": "domain-capability-fabric-v1-20260816",
+  "architecture": {
+    "stable_centers": ["governance", "intelligence", "compute", "expert"],
+    "domain_modules_are_not_repositories": true,
+    "cross_domain_data_sharing": "shared-evidence-envelope",
+    "cross_domain_model_reuse": "capability-tags",
+    "direct_domain_to_domain_private_code_imports": false,
+    "unknown_domain_policy": "fail-closed",
+    "new_domain_requires": ["owner-center", "domain-id", "capability-tags", "evidence-contract", "tests"]
+  },
+  "shared_capabilities": [
+    "statistics",
+    "optimization",
+    "causal",
+    "bayesian",
+    "simulation",
+    "time-series",
+    "graph",
+    "geospatial",
+    "machine-learning",
+    "retrieval",
+    "evidence-provenance"
+  ],
+  "domains": [
+    {"id":"medicine","status":"active","default_centers":["intelligence","compute","expert"],"tags":["clinical","biomedical","epidemiology","health-economics"]},
+    {"id":"geospatial","status":"active","default_centers":["intelligence","compute"],"tags":["gis","earth-observation","routing","spatial-statistics"]},
+    {"id":"commercial","status":"active","default_centers":["intelligence","compute","expert"],"tags":["market","site-selection","demand","competition","pricing"]},
+    {"id":"finance-quant","status":"active","default_centers":["intelligence","compute","expert"],"tags":["markets","portfolio","risk","factors","backtest"]},
+    {"id":"legal-policy","status":"active","default_centers":["intelligence","expert"],"tags":["law","regulation","policy","compliance"]},
+    {"id":"macro-industry","status":"active","default_centers":["intelligence","compute","expert"],"tags":["macro","industry","trade","labor","energy-economics"]},
+    {"id":"social-behavior","status":"active","default_centers":["intelligence","compute","expert"],"tags":["demography","networks","diffusion","behavior"]},
+    {"id":"logistics-supply-chain","status":"active","default_centers":["intelligence","compute"],"tags":["routing","facility-location","inventory","network-flow"]},
+    {"id":"climate-environment","status":"active","default_centers":["intelligence","compute"],"tags":["climate","weather","hazard","earth-observation"]},
+    {"id":"technology-innovation","status":"active","default_centers":["intelligence","compute","expert"],"tags":["patents","research","technology","innovation"]}
+  ],
+  "extension_policy": {
+    "repository_count_should_not_scale_with_domain_count": true,
+    "prefer_new_domain_module_over_new_repository": true,
+    "prefer_shared_primitive_over_duplicate_domain_model": true,
+    "evidence_may_be_reused_across_domains_when_license_and_policy_allow": true,
+    "domain_specific_logic_must_not_relabel_proxy_data_as_observed_data": true,
+    "breaking_contract_changes_require_version_bump": true
+  }
+}
