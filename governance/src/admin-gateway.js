@@ -1,5 +1,5 @@
 import {assistRuntimeIdentity} from "./assist-runtime.js";
-import {inspectCandidateBuilds,triggerCandidateBuilds} from "./cloudflare-builds.js";
+import {cancelCandidateBuilds,inspectCandidateBuilds,triggerCandidateBuilds} from "./cloudflare-builds.js";
 
 const READ_RECEIPT_SCHEMA="three-center-admin-read-receipt-v1";
 const CANDIDATE_RECEIPT_SCHEMA="three-center-admin-candidate-receipt-v2";
@@ -283,7 +283,10 @@ export async function createCandidateVersion(request,env,ctx,app){
     };
     const candidate_digest=await sha256Text(JSON.stringify(manifest)),record={candidate_id,manifest,candidate_digest,status:"building",latest_acceptance_run_id:null,latest_acceptance_validation:null};
     const stored=await stateCall(env,"/candidate","POST",{candidate_id,record});
-    if(stored.http_status!==201||stored.body?.ok!==true)return json({ok:false,error:stored.body?.error||"CANDIDATE_STORE_FAILED",http_status:stored.http_status||503,builds_triggered:true,candidate_untracked:true},stored.http_status||503);
+    if(stored.http_status!==201||stored.body?.ok!==true){
+      const compensation=await cancelCandidateBuilds(env,triggered.builds);
+      return json({ok:false,error:stored.body?.error||"CANDIDATE_STORE_FAILED",http_status:stored.http_status||503,builds_triggered:true,candidate_untracked:true,compensation_cancel:compensation},stored.http_status||503);
+    }
     return json(await candidateReceipt(record),202);
   }catch(error){
     return json({ok:false,error:String(error?.message||"CREATE_CANDIDATE_FAILED"),http_status:error?.status||500,details:error?.details||undefined},error?.status||500);
