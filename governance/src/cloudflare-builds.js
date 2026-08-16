@@ -1,6 +1,7 @@
 const API_BASE="https://api.cloudflare.com/client/v4";
 const MAX_RESPONSE_BYTES=524288;
 const REQUEST_TIMEOUT_MS=12000;
+const ADMIN_OPERATION_LEASE_SECONDS=180;
 
 export const CANDIDATE_CENTERS=Object.freeze([
   ["governance","governance-worker"],
@@ -52,6 +53,36 @@ async function api(env,path,{method="GET",body}={}){
   }finally{clearTimeout(timer)}
 }
 
+function adminState(env){
+  if(!env.ADMIN_STATE?.get||!env.ADMIN_STATE?.idFromName)throw Object.assign(new Error("ADMIN_STATE_UNAVAILABLE"),{status:503});
+  return env.ADMIN_STATE.get(env.ADMIN_STATE.idFromName("global"));
+}
+async function stateJson(env,path,{method="GET",body}={}){
+  const stub=adminState(env),init={method,headers:{accept:"application/json",...(body!==undefined?{"content-type":"application/json"}:{})};
+  if(body!==undefined)init.body=JSON.stringify(body);
+  const response=await stub.fetch(new Request(`https://admin-state.internal${path}`,init));
+  const payload=await response.json().catch(()=>({ok:false,error:"ADMIN_STATE_BAD_RESPONSE"}));
+  return {http_status:response.status,body:payload};
+}
+async function acquireOperation(env,kind){
+  const owner=`${kind}-${crypto.randomUUID()}`;
+  const result=await stateJson(env,"/operation-lock/acquire",{method:"POST",body:{owner,kind,lease_seconds:ADMIN_OPERATION_LEASE_SECONDS}});
+  if(result.http_status===409)throw Object.assign(new Error("ADMIN_OPERATION_BUSY"),{status:409,details:{active:result.body?.active||null}});
+  if(result.http_status!==200||result.body?.ok!==true)throw Object.assign(new Error(result.body?.error||"ADMIN_STATE_UNAVAILABLE"),{status:result.http_status||503});
+  return owner;
+}
+async function releaseOperation(env,owner){
+  if(!owner)return false;
+  try{const result=await stateJson(env,"/operation-lock/release",{method:"POST",body:{owner}});return result.http_status===200&&result.body?.ok===true}catch{return false}
+}
+async function releaseCurrentCandidateOperation(env){
+  try{
+    const current=await stateJson(env,"/operation-lock"),active=current.body?.active;
+    if(current.http_status!==200||!active||!["candidate-build","candidate-validation"].includes(String(active.kind||"")))return false;
+    return releaseOperation(env,String(active.owner||""));
+  }catch{return false}
+}
+
 function safePreviewTrigger(trigger){
   const deploy=String(trigger?.deploy_command||"").toLowerCase();
   const excludes=Array.isArray(trigger?.branch_excludes)?trigger.branch_excludes.map(String):[];
@@ -93,6 +124,7 @@ export async function cancelCandidateBuilds(env,builds){
     if(!buildUuid)continue;
     results.push({center,build_uuid:buildUuid,cancelled:await cancelBuild(env,buildUuid)});
   }
+  await releaseCurrentCandidateOperation(env);
   return results;
 }
 
@@ -101,21 +133,25 @@ export async function triggerCandidateBuilds(env,{branch,commits}){
   const normalizedCommits={};
   for(const [center] of CANDIDATE_CENTERS)normalizedCommits[center]=validateCommit(commits?.[center]);
   configuration(env);
-  const builds={};
-  const triggered=[];
+  const lockOwner=await acquireOperation(env,"candidate-build");
+  const builds={},triggered=[];
   try{
     for(const [center,scriptName] of CANDIDATE_CENTERS){
       const trigger=await resolvePreviewTrigger(env,scriptName);
       const result=await api(env,`/builds/triggers/${encodeURIComponent(trigger.trigger_uuid)}/builds`,{method:"POST",body:{branch:candidateBranch,commit_hash:normalizedCommits[center]}});
+      if(result?.already_exists===true)throw Object.assign(new Error("CANDIDATE_BRANCH_BUILD_ALREADY_PENDING"),{status:409,details:{center,script_name:scriptName,existing_build_uuid:String(result?.build_uuid||"")||null}});
       const buildUuid=String(result?.build_uuid||"");
       if(!buildUuid)throw Object.assign(new Error("BUILD_UUID_MISSING"),{status:502,details:{center,script_name:scriptName}});
       builds[center]={center,script_name:scriptName,worker_tag:trigger.worker_tag,trigger_uuid:trigger.trigger_uuid,branch:candidateBranch,commit_hash:normalizedCommits[center],build_uuid:buildUuid,created_on:result?.created_on||null,deploy_command:trigger.deploy_command};
       triggered.push(buildUuid);
     }
-    return {branch:candidateBranch,commits:normalizedCommits,builds};
+    // Keep the lock until AdminState persists the candidate record. AdminState releases
+    // candidate-build locks atomically after successful candidate storage.
+    return {branch:candidateBranch,commits:normalizedCommits,builds,operation_lock_owner:lockOwner};
   }catch(error){
     const cancelled=[];
     for(const buildUuid of triggered)cancelled.push({build_uuid:buildUuid,cancelled:await cancelBuild(env,buildUuid)});
+    await releaseOperation(env,lockOwner);
     throw Object.assign(error,{details:{...(error?.details||{}),partial_builds_cancelled:cancelled}});
   }
 }
@@ -145,13 +181,21 @@ function buildState(build,expected){
 
 export async function inspectCandidateBuilds(env,builds){
   configuration(env);
-  const states={};
-  for(const [center] of CANDIDATE_CENTERS){
-    const expected=builds?.[center];
-    if(!expected?.build_uuid)throw Object.assign(new Error("CANDIDATE_BUILD_RECORD_INCOMPLETE"),{status:500,details:{center}});
-    const result=await api(env,`/builds/builds/${encodeURIComponent(expected.build_uuid)}`);
-    states[center]=buildState(result,expected);
+  const lockOwner=await acquireOperation(env,"candidate-validation");
+  try{
+    const states={};
+    for(const [center] of CANDIDATE_CENTERS){
+      const expected=builds?.[center];
+      if(!expected?.build_uuid)throw Object.assign(new Error("CANDIDATE_BUILD_RECORD_INCOMPLETE"),{status:500,details:{center}});
+      const result=await api(env,`/builds/builds/${encodeURIComponent(expected.build_uuid)}`);
+      states[center]=buildState(result,expected);
+    }
+    const pending=Object.values(states).some(item=>!item.terminal);
+    if(pending)await releaseOperation(env,lockOwner);
+    // Terminal validation keeps the lock until AdminState stores the immutable acceptance.
+    return {pending,states,operation_lock_owner:pending?null:lockOwner};
+  }catch(error){
+    await releaseOperation(env,lockOwner);
+    throw error;
   }
-  const pending=Object.values(states).some(item=>!item.terminal);
-  return {pending,states};
 }
