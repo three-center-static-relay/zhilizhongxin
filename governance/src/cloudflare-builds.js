@@ -58,7 +58,7 @@ function adminState(env){
   return env.ADMIN_STATE.get(env.ADMIN_STATE.idFromName("global"));
 }
 async function stateJson(env,path,{method="GET",body}={}){
-  const stub=adminState(env),init={method,headers:{accept:"application/json",...(body!==undefined?{"content-type":"application/json"}:{})};
+  const stub=adminState(env),init={method,headers:{accept:"application/json",...(body!==undefined?{"content-type":"application/json"}:{})}};
   if(body!==undefined)init.body=JSON.stringify(body);
   const response=await stub.fetch(new Request(`https://admin-state.internal${path}`,init));
   const payload=await response.json().catch(()=>({ok:false,error:"ADMIN_STATE_BAD_RESPONSE"}));
