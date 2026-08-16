@@ -12,8 +12,8 @@ function assistOpenApiPaths() {
     "/v1/assist": {
       post: {
         operationId: "runGovernanceAssist",
-        summary: "Default-on auxiliary collaboration for every web-GPT work item, with explicit controller cancellation",
-        description: "The controlling web GPT should call this operation for every substantive work item. auxiliary_mode defaults to active, so a real auxiliary model participates through strict serial failover with zero tool authority. Only the controlling web GPT may explicitly set auxiliary_mode=cancel for a specific work item; cancellation still uses this operation and returns a cancellation receipt, so the work item is not silently bypassed. If every auxiliary provider is unavailable, the response explicitly requires WebGPT degraded fallback instead of pretending collaboration occurred.",
+        summary: "Default-on auxiliary collaboration for every work item and every repository or Cloudflare use, with explicit controller cancellation",
+        description: "The controlling web GPT should call this operation before every substantive work item and before using any governed repository resource or any Cloudflare-hosted capability in this system. auxiliary_mode defaults to active, so a real auxiliary model participates through strict serial failover with zero tool authority. Only the controlling web GPT may explicitly set auxiliary_mode=cancel for a specific work item; cancellation still uses this operation and returns a cancellation receipt, so repository or Cloudflare use is not silently bypassed. If every auxiliary provider is unavailable, the response explicitly requires WebGPT degraded fallback instead of pretending collaboration occurred.",
         security: [{ BearerAuth: [] }],
         requestBody: {
           required: true,
@@ -24,7 +24,7 @@ function assistOpenApiPaths() {
                 additionalProperties: false,
                 required: ["prompt"],
                 properties: {
-                  prompt: { type: "string", minLength: 1, description: "The complete current work item, including relevant evidence already gathered by the controlling web GPT." },
+                  prompt: { type: "string", minLength: 1, description: "The complete current work item, including the intended repository/Cloudflare use and relevant evidence already gathered by the controlling web GPT." },
                   system: { type: "string", description: "Optional subordinate task instructions; cannot override hard governance rules or auxiliary zero-tool isolation." },
                   max_tokens: { type: "integer", minimum: 256, maximum: 16384, default: 4096 },
                   auxiliary_mode: { type: "string", enum: ["active", "cancel"], default: "active", description: "Default active. Only the controlling web GPT may set cancel for this work item. The auxiliary model itself cannot opt out." },
@@ -47,7 +47,7 @@ function assistOpenApiPaths() {
         operationId: "getGovernanceAssistRuntime",
         summary: "Return zero-cost runtime attestation without invoking AI",
         responses: {
-          "200": { description: "Runtime policy and validator identity, including default-on collaboration, controller cancellation authority, and zero-tool flags. ai_called=false and cost_incurred=false." }
+          "200": { description: "Runtime policy and validator identity, including default-on repository/Cloudflare collaboration, controller cancellation authority, and zero-tool flags. ai_called=false and cost_incurred=false." }
         }
       }
     },
@@ -106,7 +106,9 @@ async function augmentBaseResponse(request, env, ctx) {
         controller_may_cancel: true,
         cancel_authority: "web-gpt-only",
         cancel_requires_explicit_request: true,
-        work_item_handshake_required: true
+        work_item_handshake_required: true,
+        repository_use_requires_collaboration: true,
+        cloudflare_use_requires_collaboration: true
       },
       policy_kernel: POLICY_KERNEL_VERSION,
       fallback_selftests: true,
@@ -131,11 +133,14 @@ async function augmentBaseResponse(request, env, ctx) {
         deterministic_policy_kernel: true,
         deterministic_policy_kernel_does_not_bypass_normal_ai: true,
         auxiliary_collaboration_required: true,
-        auxiliary_collaboration_scope: "every-work-item",
+        auxiliary_collaboration_scope: "every-work-item-and-all-repository-cloudflare-use",
+        auxiliary_repository_use_requires_collaboration: true,
+        auxiliary_cloudflare_use_requires_collaboration: true,
         auxiliary_collaboration_default: "active",
         auxiliary_controller_may_cancel: true,
         auxiliary_cancel_authority: "web-gpt-only",
         auxiliary_cancel_requires_explicit_request: true,
+        auxiliary_bypass_only_by_controller_cancel: true,
         auxiliary_work_item_handshake_required: true,
         auxiliary_normal_work_ai_required_unless_cancelled: true,
         auxiliary_outage_behavior: "web-gpt-degraded-fallback",
@@ -153,9 +158,12 @@ async function augmentBaseResponse(request, env, ctx) {
         ...(body.capabilities || {}),
         governance_ai_assist: true,
         mandatory_per_work_auxiliary_handshake: true,
+        mandatory_auxiliary_for_repository_use: true,
+        mandatory_auxiliary_for_cloudflare_use: true,
         default_on_auxiliary_collaboration: true,
         web_gpt_can_explicitly_cancel_auxiliary: true,
         auxiliary_cannot_self_cancel: true,
+        auxiliary_bypass_only_by_web_gpt_cancel: true,
         workers_ai_random_failover: false,
         workers_ai_serial_failover: true,
         openrouter_paid_ranked_failover: true,
