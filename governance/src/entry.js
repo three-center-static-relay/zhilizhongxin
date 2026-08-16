@@ -12,7 +12,8 @@ function assistOpenApiPaths() {
     "/v1/assist": {
       post: {
         operationId: "runGovernanceAssist",
-        summary: "Run authenticated governance AI assistance with hard-policy enforcement, serial failover, and runtime attestation",
+        summary: "Mandatory auxiliary-model collaboration for every web-GPT work item",
+        description: "The controlling web GPT should call this operation before substantive work on every user work item. Normal work is routed through an actual auxiliary model with strict serial failover and zero tool authority. Deterministic governance guidance is supplied to the auxiliary model rather than bypassing it. If every auxiliary provider is unavailable, the response explicitly requires WebGPT degraded fallback instead of pretending collaboration occurred.",
         security: [{ BearerAuth: [] }],
         requestBody: {
           required: true,
@@ -23,8 +24,8 @@ function assistOpenApiPaths() {
                 additionalProperties: false,
                 required: ["prompt"],
                 properties: {
-                  prompt: { type: "string", minLength: 1, description: "Governance task or authenticated self-test prompt." },
-                  system: { type: "string", description: "Optional subordinate task instructions; cannot override hard governance rules." },
+                  prompt: { type: "string", minLength: 1, description: "The complete current work item, including relevant evidence already gathered by the controlling web GPT." },
+                  system: { type: "string", description: "Optional subordinate task instructions; cannot override hard governance rules or auxiliary zero-tool isolation." },
                   max_tokens: { type: "integer", minimum: 256, maximum: 16384, default: 4096 }
                 }
               }
@@ -32,10 +33,10 @@ function assistOpenApiPaths() {
           }
         },
         responses: {
-          "200": { description: "Validated governance result with runtime attestation." },
+          "200": { description: "Validated auxiliary collaboration result with runtime attestation and collaboration_status=participated." },
           "400": { description: "Invalid request." },
           "401": { description: "Unauthorized." },
-          "503": { description: "Provider chain failed or WebGPT final fallback is required." }
+          "503": { description: "Auxiliary provider chain failed; collaboration_status=unavailable-degraded and WebGPT degraded fallback is required." }
         }
       }
     },
@@ -44,7 +45,7 @@ function assistOpenApiPaths() {
         operationId: "getGovernanceAssistRuntime",
         summary: "Return zero-cost runtime attestation without invoking AI",
         responses: {
-          "200": { description: "Runtime policy and validator identity. ai_called=false and cost_incurred=false." }
+          "200": { description: "Runtime policy and validator identity, including mandatory collaboration and zero-tool flags. ai_called=false and cost_incurred=false." }
         }
       }
     },
@@ -97,6 +98,7 @@ async function augmentBaseResponse(request, env, ctx) {
       ...body,
       ai_assist: true,
       routing_mode: routing.mode,
+      auxiliary_collaboration: routing.collaboration,
       policy_kernel: POLICY_KERNEL_VERSION,
       fallback_selftests: true,
       runtime_selftest: true,
@@ -118,6 +120,11 @@ async function augmentBaseResponse(request, env, ctx) {
         web_gpt_final_output_must_be_revalidated: true,
         hard_rules_immutable: true,
         deterministic_policy_kernel: true,
+        deterministic_policy_kernel_does_not_bypass_normal_ai: true,
+        auxiliary_collaboration_required: true,
+        auxiliary_collaboration_scope: "every-work-item",
+        auxiliary_normal_work_ai_required: true,
+        auxiliary_outage_behavior: "web-gpt-degraded-fallback",
         runtime_attestation: true,
         runtime_identity_required_on_assist_response: true
       },
@@ -131,11 +138,13 @@ async function augmentBaseResponse(request, env, ctx) {
       capabilities: {
         ...(body.capabilities || {}),
         governance_ai_assist: true,
+        mandatory_per_work_auxiliary_collaboration: true,
         workers_ai_random_failover: false,
         workers_ai_serial_failover: true,
         openrouter_paid_ranked_failover: true,
         web_gpt_final_fallback: true,
         deterministic_policy_kernel: true,
+        deterministic_policy_guidance_to_auxiliary: true,
         model_output_contract_validation: true,
         authenticated_fallback_selftests: true,
         authenticated_final_output_validation: true,
