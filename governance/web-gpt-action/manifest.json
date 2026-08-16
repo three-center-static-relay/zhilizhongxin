@@ -1,6 +1,6 @@
 {
   "schema": "web-gpt-action-canonical-v1",
-  "snapshot_version": "2026-08-16.4",
+  "snapshot_version": "2026-08-16.5",
   "status": "LATEST",
   "canonical_file": "governance/web-gpt-action/LATEST.openapi.json",
   "source_entry": "governance/src/admin-entry.js",
@@ -44,5 +44,5 @@
     "api_token_user_scoped": true,
     "production_secret_value_stored_in_repository": false
   },
-  "updated_at": "2026-08-16T14:02:00+08:00"
+  "updated_at": "2026-08-16T19:25:00+08:00"
 }
