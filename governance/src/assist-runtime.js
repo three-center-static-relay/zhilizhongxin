@@ -9,6 +9,10 @@ export function assistRuntimeIdentity() {
     runtime_schema: ASSIST_RUNTIME_SCHEMA,
     runtime_attested: true,
     auxiliary_tool_access: "none",
-    auxiliary_tools_allowed: false
+    auxiliary_tools_allowed: false,
+    auxiliary_collaboration_required: true,
+    auxiliary_collaboration_scope: "every-work-item",
+    auxiliary_normal_work_ai_required: true,
+    auxiliary_outage_behavior: "web-gpt-degraded-fallback"
   };
 }
