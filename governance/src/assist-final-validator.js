@@ -2,7 +2,7 @@ import { validateModelContent } from "./assist-policy.js";
 import { assistRuntimeIdentity } from "./assist-runtime.js";
 
 const MAX_BODY_BYTES = 65536;
-const json = (body, status = 200) => Response.json(body, { status, headers: { "cache-control": "no-store" } });
+const json = (body, status = 200) => Response.json({ ...body, http_status: status }, { status, headers: { "cache-control": "no-store" } });
 
 function constantTimeEqual(a, b) {
   a = String(a || "");
