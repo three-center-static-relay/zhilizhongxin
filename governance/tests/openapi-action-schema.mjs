@@ -34,6 +34,7 @@ assert.deepEqual(Object.keys(spec.paths).sort(), [
   "/v1/assist/runtime",
   "/v1/assist/validate",
   "/v1/intelligence/literature-selftest",
+  "/v1/intelligence/provider-selftest",
   "/v1/admin/context",
   "/v1/admin/health",
   "/v1/admin/versions",
@@ -73,6 +74,17 @@ assert.equal(literature?.requestBody?.required, false);
 assert.match(literature?.description || "", /OpenAlex/i);
 assert.match(literature?.description || "", /Semantic Scholar/i);
 assert.match(literature?.description || "", /BASE/i);
+
+const providerE2E = spec.paths?.["/v1/intelligence/provider-selftest"]?.post;
+assert.equal(providerE2E?.operationId, "runProviderFreshE2E");
+assert.deepEqual(providerE2E?.security, [{ BearerAuth: [] }]);
+assert.equal(providerE2E?.requestBody?.required, false);
+assert.match(providerE2E?.description || "", /zero-AI/i);
+assert.match(providerE2E?.description || "", /BigQuery metadata/i);
+assert.match(providerE2E?.description || "", /Google Patents/i);
+assert.match(providerE2E?.description || "", /PKULaw/i);
+assert.ok(providerE2E?.responses?.["200"]);
+assert.ok(providerE2E?.responses?.["503"]);
 
 for (const [path,operationId] of Object.entries({
   "/v1/admin/context":"getAdminContext",
@@ -124,7 +136,9 @@ for (const pathItem of Object.values(spec.paths)) {
     operationIds.push(operation.operationId);
   }
 }
+assert.equal(operationIds.length,11);
 assert.equal(new Set(operationIds).size,operationIds.length,"operationId values must remain unique");
+assert.equal(operationIds.includes("runProviderFreshE2E"),true);
 assert.equal(operationIds.includes("promoteCandidate"),false,"phase 2 must not expose promote");
 assert.equal(operationIds.includes("rollbackProduction"),false,"phase 2 must not expose rollback");
 
@@ -137,6 +151,7 @@ console.log(JSON.stringify({
   phase_2_candidate_acceptance: true,
   candidate_kind: "cloudflare-preview-build-set",
   fresh_business_e2e: false,
+  provider_fresh_e2e_action: true,
   production_mutation_actions: 0,
   operation_description_max_chars: 300,
   parser_safe_components_schemas: true,
