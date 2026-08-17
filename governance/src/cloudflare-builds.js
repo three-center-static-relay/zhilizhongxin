@@ -84,10 +84,15 @@ async function releaseCurrentCandidateOperation(env){
 }
 
 export function isSafePreviewDeployCommand(value){
-  const deploy=String(value||"").toLowerCase();
-  const versionUpload=/wrangler\s+versions\s+upload\b/.test(deploy);
-  const dryRunDeploy=/wrangler\s+deploy\b/.test(deploy)&&/--dry-run\b/.test(deploy);
-  return versionUpload||dryRunDeploy;
+  const command=String(value||"").trim().toLowerCase();
+  if(!command||/[;&|`\n\r]|\$\(/.test(command))return false;
+  const tokens=command.split(/\s+/);
+  let i=0;
+  if(tokens[i]==="npx")i+=1;
+  if(tokens[i]!=="wrangler")return false;
+  if(tokens[i+1]==="versions"&&tokens[i+2]==="upload")return true;
+  if(tokens[i+1]!=="deploy")return false;
+  return tokens.slice(i+2).includes("--dry-run");
 }
 
 function safePreviewTrigger(trigger){
