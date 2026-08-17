@@ -83,17 +83,19 @@ async function releaseCurrentCandidateOperation(env){
   }catch{return false}
 }
 
-export function isSafePreviewDeployCommand(value){
+export function previewDeployCommandKind(value){
   const command=String(value||"").trim().toLowerCase();
-  if(!command||/[;&|`\n\r]|\$\(/.test(command))return false;
+  if(!command||/[;&|`\n\r]|\$\(/.test(command))return null;
   const tokens=command.split(/\s+/);
   let i=0;
   if(tokens[i]==="npx")i+=1;
-  if(tokens[i]!=="wrangler")return false;
-  if(tokens[i+1]==="versions"&&tokens[i+2]==="upload")return true;
-  if(tokens[i+1]!=="deploy")return false;
-  return tokens.slice(i+2).includes("--dry-run");
+  if(tokens[i]!=="wrangler")return null;
+  if(tokens[i+1]==="deploy"&&tokens.slice(i+2).includes("--dry-run"))return "dry-run";
+  if(tokens[i+1]==="versions"&&tokens[i+2]==="upload")return "legacy-version-upload";
+  return null;
 }
+
+export function isSafePreviewDeployCommand(value){return previewDeployCommandKind(value)!==null;}
 
 function safePreviewTrigger(trigger){
   const excludes=Array.isArray(trigger?.branch_excludes)?trigger.branch_excludes.map(String):[];
@@ -108,9 +110,10 @@ async function resolvePreviewTrigger(env,scriptName){
   if(!tag)throw Object.assign(new Error("WORKER_TAG_NOT_FOUND"),{status:503,details:{script_name:scriptName}});
   const triggers=await api(env,`/builds/workers/${encodeURIComponent(tag)}/triggers`);
   const triggerList=Array.isArray(triggers)?triggers:Array.isArray(triggers?.result)?triggers.result:[];
-  const preview=triggerList.find(safePreviewTrigger);
+  const safe=triggerList.filter(safePreviewTrigger);
+  const preview=safe.find(item=>previewDeployCommandKind(item?.deploy_command)==="dry-run")||safe[0];
   if(!preview)throw Object.assign(new Error("SAFE_PREVIEW_TRIGGER_NOT_FOUND"),{status:503,details:{script_name:scriptName,worker_tag:tag}});
-  return {script_name:scriptName,worker_tag:tag,trigger_uuid:String(preview.trigger_uuid),deploy_command:String(preview.deploy_command||""),branch_excludes:Array.isArray(preview.branch_excludes)?preview.branch_excludes:[]};
+  return {script_name:scriptName,worker_tag:tag,trigger_uuid:String(preview.trigger_uuid),deploy_command:String(preview.deploy_command||""),deploy_command_kind:previewDeployCommandKind(preview.deploy_command),branch_excludes:Array.isArray(preview.branch_excludes)?preview.branch_excludes:[]};
 }
 
 function validateBranch(branch){
@@ -153,7 +156,7 @@ export async function triggerCandidateBuilds(env,{branch,commits}){
       if(result?.already_exists===true)throw Object.assign(new Error("CANDIDATE_BRANCH_BUILD_ALREADY_PENDING"),{status:409,details:{center,script_name:scriptName,existing_build_uuid:String(result?.build_uuid||"")||null}});
       const buildUuid=String(result?.build_uuid||"");
       if(!buildUuid)throw Object.assign(new Error("BUILD_UUID_MISSING"),{status:502,details:{center,script_name:scriptName}});
-      builds[center]={center,script_name:scriptName,worker_tag:trigger.worker_tag,trigger_uuid:trigger.trigger_uuid,branch:candidateBranch,commit_hash:normalizedCommits[center],build_uuid:buildUuid,created_on:result?.created_on||null,deploy_command:trigger.deploy_command};
+      builds[center]={center,script_name:scriptName,worker_tag:trigger.worker_tag,trigger_uuid:trigger.trigger_uuid,branch:candidateBranch,commit_hash:normalizedCommits[center],build_uuid:buildUuid,created_on:result?.created_on||null,deploy_command:trigger.deploy_command,deploy_command_kind:trigger.deploy_command_kind};
       triggered.push(buildUuid);
     }
     // Keep the lock until AdminState persists the candidate record. AdminState releases
@@ -185,6 +188,7 @@ function buildState(build,expected){
     branch_matches:String(metadata?.branch||"")===String(expected?.branch||""),
     commit_matches:String(metadata?.commit_hash||"").toLowerCase()===String(expected?.commit_hash||"").toLowerCase(),
     safe_preview_deploy:isSafePreviewDeployCommand(deploy),
+    deploy_command_kind:previewDeployCommandKind(deploy),
     created_on:build?.created_on||null,
     stopped_on:build?.stopped_on||null
   };
