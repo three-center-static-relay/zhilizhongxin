@@ -1,6 +1,6 @@
 {
   "schema": "web-gpt-action-canonical-v1",
-  "snapshot_version": "2026-08-16.6",
+  "snapshot_version": "2026-08-16.7",
   "status": "LATEST",
   "canonical_file": "governance/web-gpt-action/LATEST.openapi.json",
   "source_entry": "governance/src/admin-entry.js",
@@ -18,6 +18,7 @@
     "validateGovernanceAssistFinal",
     "runLiteratureProductionSelftest",
     "runProviderFreshE2E",
+    "runGeospatialToolDiscovery",
     "runCommercialSpatialFusion",
     "getCommercialSpatialFusionStatus",
     "getAdminContext",
@@ -37,6 +38,10 @@
   "candidate_branch_main_allowed": false,
   "fresh_business_e2e": false,
   "provider_fresh_e2e_action": true,
+  "geospatial_tool_discovery_action": true,
+  "geospatial_tool_discovery_providers": ["exa","tavily","firecrawl","jina"],
+  "geospatial_tool_discovery_only": true,
+  "geospatial_tool_discovery_auto_install": false,
   "commercial_spatial_action": true,
   "commercial_spatial_model_fixed": "location_intelligence.commercial_spatial_fusion",
   "commercial_spatial_provider_fixed": "kaggle",
@@ -52,5 +57,5 @@
     "api_token_user_scoped": true,
     "production_secret_value_stored_in_repository": false
   },
-  "updated_at": "2026-08-16T20:10:00+08:00"
+  "updated_at": "2026-08-16T23:45:00+08:00"
 }
