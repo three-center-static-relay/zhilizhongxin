@@ -1,4 +1,4 @@
-# Domain Capability Fabric v1
+# Domain Capability Fabric v2
 
 ## Purpose
 
@@ -15,6 +15,34 @@ Domains such as medicine, geospatial, commercial, finance/quant, legal/policy, m
 5. **Cross-domain exchange uses contracts, not private imports.** Centers and domain modules exchange bounded evidence/model envelopes with provenance and SHA-256 digests.
 6. **Unknown domains and breaking contract changes fail closed.** A new domain must declare its identifier, owner centers, capability tags, evidence contract, and tests.
 7. **Proxy data must stay labeled as proxy/model/synthetic.** No domain may relabel modeled mobility, inferred demand, or other proxies as observed phone footfall, observed sales, or other ground truth.
+8. **Combinations are dynamic, not fixed.** No branch pair, center pair, or domain bundle is permanently bound. The controller composes the minimum sufficient compatible capabilities for each task and releases the composition when the task ends.
+9. **Every compatible branch may participate.** A task may combine any policy-approved branches across Intelligence, Compute, Expert, and Governance when their contracts match; default centers are routing preferences, not hard bindings.
+10. **Unused branches are not invoked.** Dynamic composition must remain least-privilege, cost-bounded, evidence-traceable, and fail-closed.
+
+## Dynamic composition model
+
+The runtime model is a governed capability graph / DAG rather than a catalog of fixed bundles.
+
+```text
+Task
+  -> capability requirements
+  -> Governance route/policy check
+  -> select minimum sufficient compatible branches
+  -> compose serial and/or parallel stages
+  -> exchange only versioned evidence/model envelopes
+  -> Compute and/or Expert only where required
+  -> result + provenance + digest
+  -> release task-scoped composition
+```
+
+Examples are illustrative only, never permanent bindings:
+
+- commercial site selection may use network intelligence + geospatial + legal/policy + compute;
+- medical policy analysis may use medicine + legal/policy + macro-industry + expert;
+- supply-chain shock analysis may use logistics + climate + finance + geospatial + compute;
+- a simple retrieval task may use only one Intelligence branch.
+
+The planner must not hard-code combinations such as `network-intelligence + geospatial-commercial + compute`. It selects branches from declared capability tags, contract compatibility, evidence requirements, freshness, licensing, cost and runtime policy.
 
 ## Repository boundaries
 
@@ -51,12 +79,26 @@ Provider / dataset / MCP / API
         -> Intelligence normalization
         -> Shared Evidence Envelope
         -> Governance policy/route check
-        -> one or more domain recipes
-        -> Compute / Expert as required
+        -> one or more dynamically selected domain recipes
+        -> Compute / Expert only as required
         -> result + provenance + digest
 ```
 
 A single evidence envelope may carry multiple `domain_tags`. The consuming domain remains responsible for validating fitness-for-use.
+
+## Composition acceptance rules
+
+A dynamic composition is allowed only when all selected stages satisfy:
+
+- policy allowlist / no constitutional prohibition;
+- version-compatible contracts;
+- least-privilege tool and secret scope;
+- explicit evidence kind and provenance;
+- bounded cost, retries, concurrency and runtime;
+- no prohibited network access in Compute/Expert;
+- no proxy-to-observed relabeling;
+- deterministic rollback / failure isolation;
+- task-scoped release after completion.
 
 ## Extension checklist
 
