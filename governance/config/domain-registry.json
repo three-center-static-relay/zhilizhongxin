@@ -1,5 +1,5 @@
 {
-  "version": "domain-capability-fabric-v1-20260816",
+  "version": "domain-capability-fabric-v2-20260817",
   "architecture": {
     "stable_centers": ["governance", "intelligence", "compute", "expert"],
     "domain_modules_are_not_repositories": true,
@@ -7,7 +7,14 @@
     "cross_domain_model_reuse": "capability-tags",
     "direct_domain_to_domain_private_code_imports": false,
     "unknown_domain_policy": "fail-closed",
-    "new_domain_requires": ["owner-center", "domain-id", "capability-tags", "evidence-contract", "tests"]
+    "new_domain_requires": ["owner-center", "domain-id", "capability-tags", "evidence-contract", "tests"],
+    "dynamic_task_scoped_composition": true,
+    "fixed_branch_pairings": false,
+    "default_centers_are_preferences_not_bindings": true,
+    "any_compatible_branch_may_compose": true,
+    "composition_may_cross_domains_and_centers": true,
+    "composition_lifetime": "task-scoped",
+    "composition_requires": ["policy-allow", "contract-compatibility", "least-privilege", "evidence-provenance", "cost-budget", "fail-closed-route-check"]
   },
   "shared_capabilities": [
     "statistics",
@@ -40,6 +47,10 @@
     "prefer_shared_primitive_over_duplicate_domain_model": true,
     "evidence_may_be_reused_across_domains_when_license_and_policy_allow": true,
     "domain_specific_logic_must_not_relabel_proxy_data_as_observed_data": true,
-    "breaking_contract_changes_require_version_bump": true
+    "breaking_contract_changes_require_version_bump": true,
+    "do_not_hardcode_domain_combinations": true,
+    "planner_selects_minimum_sufficient_capabilities_per_task": true,
+    "unused_branches_are_not_invoked": true,
+    "composition_is_released_after_task_completion": true
   }
 }
