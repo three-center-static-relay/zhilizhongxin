@@ -221,10 +221,10 @@ try {
     for(const pathItem of Object.values(spec.paths))for(const operation of Object.values(pathItem))operationIds.push(operation.operationId);
     for(const required of ["runProviderFreshE2E","createCandidateVersion","validateCandidate","getAcceptanceResult"])assert.ok(operationIds.includes(required));
     for(const forbidden of ["promoteCandidate","rollbackProduction"])assert.equal(operationIds.includes(forbidden),false);
-    assert.equal(operationIds.length,11);
+    assert.equal(operationIds.length,13);
   }
 
-  console.log(JSON.stringify({ok:true,suite:"governance-admin-candidate-acceptance",candidate_kind:"cloudflare-preview-build-set",acceptance_scope:"cloudflare-preview-build-control-plane-v1",fresh_business_e2e:false,provider_fresh_e2e_action:true,promotion_enabled:false,rollback_enabled:false,total_action_operations:11,runtime_contract_strict:true,safe_preview_only:true}));
+  console.log(JSON.stringify({ok:true,suite:"governance-admin-candidate-acceptance",candidate_kind:"cloudflare-preview-build-set",acceptance_scope:"cloudflare-preview-build-control-plane-v1",fresh_business_e2e:false,provider_fresh_e2e_action:true,promotion_enabled:false,rollback_enabled:false,total_action_operations:13,runtime_contract_strict:true,safe_preview_only:true}));
 } finally {
   globalThis.fetch=originalFetch;
 }

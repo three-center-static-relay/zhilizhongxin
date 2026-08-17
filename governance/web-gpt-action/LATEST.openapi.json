@@ -101,8 +101,8 @@
     "/v1/intelligence/provider-selftest": {
       "post": {
         "operationId": "runProviderFreshE2E",
-        "summary": "Run fresh production E2E for approved providers",
-        "description": "Authenticated zero-AI canary through the intelligence service binding for the approved provider set. Returns only redacted receipts and does not expose credentials.",
+        "summary": "Run fresh Google, PKULaw, and Wind AIFin production E2E",
+        "description": "Authenticated zero-AI canary through the intelligence service binding for the approved provider set: BigQuery, Earth Engine, Google Patents, PKULaw, and Wind AIFin. Returns only redacted receipts and does not expose credentials.",
         "security": [{"BearerAuth": []}],
         "requestBody": {"required": false, "content": {"application/json": {"schema": {"type": "object", "additionalProperties": false}}}},
         "responses": {

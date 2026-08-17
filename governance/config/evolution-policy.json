@@ -1,0 +1,9 @@
+{
+  "version": "evolution-policy-v1-20260818",
+  "mode": "foundation-canary",
+  "allowed": ["discover", "normalize", "validate", "plan", "benchmark-propose", "entropy-observe"],
+  "disabled": ["automatic-install", "automatic-promote", "automatic-delete", "automatic-production-mutation", "meta-evolution"],
+  "candidate_lifecycle": ["discover", "fingerprint", "normalize", "quarantine", "contract-test", "security-test", "benchmark", "shadow", "canary", "promote"],
+  "promotion_requires_explicit_gate": true,
+  "rollback_required": true
+}
