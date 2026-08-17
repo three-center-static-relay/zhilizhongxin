@@ -1,0 +1,18 @@
+{
+  "version": "l0-constitution-v1-20260818",
+  "fail_closed": true,
+  "invariants": [
+    "legal_compliance",
+    "authorization_boundary",
+    "secret_non_disclosure",
+    "user_authorization_priority",
+    "budget_enforcement",
+    "evidence_non_fabrication",
+    "traceability",
+    "auditability",
+    "controlled_high_risk_side_effects",
+    "new_capability_untrusted_by_default",
+    "autonomous_change_reversible"
+  ],
+  "production_mutation_requires": ["evolution_contract", "static_check", "simulation", "shadow", "canary", "benchmark", "explicit_promotion_gate", "rollback_target"]
+}

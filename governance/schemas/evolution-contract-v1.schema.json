@@ -1,0 +1,17 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"urn:three-center:evolution-contract-v1",
+  "title":"Evolution Contract v1",
+  "type":"object",
+  "additionalProperties":true,
+  "required":["candidate_id","parent_id","reason","hypothesis","affected_components","expected_gain","complexity_delta","risk_delta","benchmark","rollback_target"],
+  "properties":{
+    "candidate_id":{"type":"string","minLength":1}, "parent_id":{"type":"string","minLength":1},
+    "reason":{"type":"string","minLength":1}, "hypothesis":{"type":"string","minLength":1},
+    "affected_components":{"type":"array","minItems":1,"items":{"type":"string"}},
+    "expected_gain":{"type":"object"}, "complexity_delta":{"type":"number"}, "risk_delta":{"type":"number"},
+    "benchmark":{"type":"object","required":["static_check","simulation","shadow","canary"]},
+    "rollback_target":{"type":"string","minLength":1},
+    "production_mutation":{"const":false}
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"urn:three-center:receipt-envelope-v1",
+  "title":"Receipt Envelope v1",
+  "type":"object",
+  "additionalProperties":false,
+  "required":["run_id","task_id","capability_id","provider","version","input_digest","output_digest","evidence_refs","policy_version","start","end","cost","retry","status"],
+  "properties":{
+    "run_id":{"type":"string","minLength":1}, "task_id":{"type":"string","minLength":1}, "capability_id":{"type":"string","minLength":1},
+    "provider":{"type":"string","minLength":1}, "version":{"type":"string","minLength":1},
+    "input_digest":{"type":"string","pattern":"^[a-f0-9]{64}$"}, "output_digest":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+    "evidence_refs":{"type":"array","items":{"type":"string"}}, "policy_version":{"type":"string","minLength":1},
+    "start":{"type":"string","format":"date-time"}, "end":{"type":"string","format":"date-time"},
+    "cost":{"type":"object"}, "retry":{"type":"integer","minimum":0}, "status":{"type":"string","enum":["accepted","running","pass","fail","cancelled","blocked"]}
+  }
+}

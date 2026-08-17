@@ -1,6 +1,7 @@
 import app from "./production-entry.js";
 import {AdminState} from "./admin-state.js";
 import {adminOpenApiPaths,createCandidateVersion,getAcceptanceResult,getAdminContext,getProductionVersions,getSystemHealth,validateCandidate} from "./admin-gateway.js";
+import {handleEvolutionRoute} from "./evolution-router.js";
 export {AdminState};
 
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
@@ -16,6 +17,7 @@ async function openApiWithAdmin(request,env,ctx){
 export default{
   async fetch(request,env,ctx){
     const url=new URL(request.url);
+    const evolution=await handleEvolutionRoute(request,env,ctx);if(evolution)return evolution;
     if(request.method==="GET"&&url.pathname==="/v1/admin/context")return getAdminContext(request,env,ctx,app);
     if(request.method==="GET"&&url.pathname==="/v1/admin/health")return getSystemHealth(request,env,ctx,app);
     if(request.method==="GET"&&url.pathname==="/v1/admin/versions")return getProductionVersions(request,env,ctx,app);
