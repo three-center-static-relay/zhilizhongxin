@@ -22,7 +22,7 @@ assert.equal(manifest.copy_paste_ready,true);
 assert.equal(manifest.secret_free,true);
 assert.equal(manifest.phase,"phase-2-cloudflare-preview-build-acceptance");
 assert.equal(manifest.candidate_kind,"cloudflare-preview-build-set");
-assert.equal(manifest.candidate_deploy_command_required,"npx wrangler versions upload");
+assert.equal(manifest.candidate_deploy_command_required,"npm run cf:build && wrangler versions upload");
 assert.equal(manifest.candidate_branch_main_allowed,false);
 assert.equal(manifest.fresh_business_e2e,false);
 assert.equal(manifest.provider_fresh_e2e_action,true);

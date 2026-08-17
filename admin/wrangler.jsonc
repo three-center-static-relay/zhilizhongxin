@@ -2,7 +2,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "admin-worker",
   "main": "src/production-superguard.js",
-  "compatibility_date": "2026-08-14",
+  "compatibility_date": "2026-08-18",
+  "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "durable_objects": {
     "bindings": [

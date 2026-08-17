@@ -46,7 +46,7 @@ Wrangler supports structured command output through `WRANGLER_OUTPUT_FILE_PATH` 
 Before Phase 3 is enabled, each preview trigger should be changed to a deterministic wrapper that:
 
 1. sets a Wrangler structured output file path;
-2. runs `npx wrangler versions upload`;
+2. runs `npm run cf:build && wrangler versions upload`;
 3. emits only the bounded structured `version-upload` record into the Workers Build log;
 4. leaves production traffic unchanged.
 
