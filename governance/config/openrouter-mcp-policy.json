@@ -1,0 +1,58 @@
+{
+  "version": "openrouter-mcp-governance-layer-v1-20260817",
+  "provider": "openrouter",
+  "transport": "remote-mcp-http",
+  "endpoint": "https://mcp.openrouter.ai/mcp",
+  "role": "governance-maintenance-assistant",
+  "production_inference_path": false,
+  "expert_center_runtime_dependency": false,
+  "authentication": {
+    "mode": "oauth",
+    "credential_class": "short-lived-dedicated-capped-key",
+    "unattended_production_allowed": false,
+    "reason": "MCP authentication is intended for interactive/development-agent use and must not become a hard dependency of expert production execution."
+  },
+  "allowed_capabilities": [
+    "list-models",
+    "get-model",
+    "list-model-endpoints",
+    "list-benchmarks",
+    "list-daily-model-rankings",
+    "get-generation",
+    "search-docs",
+    "get-credits",
+    "list-providers",
+    "list-app-rankings"
+  ],
+  "restricted_capabilities": {
+    "send-message": {
+      "default": "deny",
+      "allow_only_for": "explicit-bounded-maintenance-canary",
+      "production_routing": false,
+      "reason": "Billable test inference must not silently become a second expert execution path."
+    }
+  },
+  "hard_boundaries": {
+    "may_select_or_recommend_models": true,
+    "may_supply_live_model_metadata": true,
+    "may_supply_benchmark_or_pricing_evidence": true,
+    "may_supply_provider_status_metadata": true,
+    "may_modify_expert_runtime": false,
+    "may_execute_expert_business_tasks": false,
+    "may_enable_expert_tools_or_web": false,
+    "may_bypass_governance": false,
+    "fail_closed_on_auth_or_session_failure": true,
+    "fallback": "continue-production-on-openrouter-rest-without-mcp"
+  },
+  "production_contract": {
+    "expert_transport": "openrouter-rest",
+    "catalog_endpoint": "https://openrouter.ai/api/v1/models",
+    "chat_endpoint": "https://openrouter.ai/api/v1/chat/completions",
+    "mcp_endpoint_forbidden_in_expert_runtime": true
+  },
+  "source_of_truth": {
+    "checked_at": "2026-08-17",
+    "official_announcement": "https://openrouter.ai/blog/announcements/openrouter-mcp-server/",
+    "official_api_quickstart": "https://openrouter.ai/docs/quickstart"
+  }
+}
