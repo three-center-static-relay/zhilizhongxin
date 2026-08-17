@@ -30,7 +30,7 @@ async function openApiWithAdmin(request,env,ctx){
   if(!response.ok)return response;
   const spec=await response.json().catch(()=>null);
   if(!spec||typeof spec!=="object")return response;
-  return json({...spec,paths:{...(spec.paths||{}),...adminOpenApiPaths(),"/v1/intelligence/modelscope-selftest":modelScopePath("runModelScopeIntelligenceSelftest","Verify live ModelScope intelligence token and read APIs"),"/v1/compute/modelscope-selftest":modelScopePath("runModelScopeComputeSelftest","Verify live ModelScope compute token and free-hardware discovery")}});
+  return json({...spec,paths:{...(spec.paths||{}),...adminOpenApiPaths()}});
 }
 
 export default{
