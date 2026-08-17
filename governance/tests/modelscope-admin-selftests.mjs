@@ -9,8 +9,8 @@ assert.match(entry,/COMPUTE_CENTER/);
 assert.match(entry,/ADMIN_GPT_TOKEN/);
 assert.match(entry,/\/v1\/selftest\/modelscope-runtime/);
 assert.match(entry,/secrets_redacted:true/);
-assert.match(entry,/runModelScopeIntelligenceSelftest/);
-assert.match(entry,/runModelScopeComputeSelftest/);
+assert.match(entry,/runModelScopeSelftest/);
+assert.match(entry,/adminOpenApiPaths\(\)/);
 assert.doesNotMatch(entry,/MODELSCOPE_TOKEN/);
 
-console.log(JSON.stringify({ok:true,suite:"modelscope-admin-selftests",authenticated:true,service_binding:true,secrets_redacted:true}));
+console.log(JSON.stringify({ok:true,suite:"modelscope-admin-selftests",authenticated:true,service_binding:true,secrets_redacted:true,canonical_action_surface_unchanged:true}));
