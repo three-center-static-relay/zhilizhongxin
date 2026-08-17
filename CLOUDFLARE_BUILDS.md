@@ -6,9 +6,9 @@ Cloudflare Workers Builds currently ignores Wrangler custom-build configuration.
 
 | Worker | Root directory | Build watch include | Production branch | Build command | Production deploy command | Non-production deploy command |
 |---|---|---|---|---|---|---|
-| `governance-worker` | `governance` | `governance/*` | `main` | empty | `npm run cf:build && wrangler deploy` | `npm run cf:build && wrangler versions upload` |
-| `admin-worker` | `admin` | `admin/*` | `main` | empty | `npm run cf:build && wrangler deploy` | `npm run cf:build && wrangler versions upload` |
-| `maintenance-worker` | `maintenance` | `maintenance/*` | `main` | empty | `npm run cf:build && wrangler deploy` | `npm run cf:build && wrangler versions upload` |
+| `governance-worker` | `governance` | `governance/*` | `main` | empty | `npm run cf:build && npx wrangler deploy` | `npm run cf:build && npx wrangler versions upload` |
+| `admin-worker` | `admin` | `admin/*` | `main` | empty | `npm run cf:build && npx wrangler deploy` | `npm run cf:build && npx wrangler versions upload` |
+| `maintenance-worker` | `maintenance` | `maintenance/*` | `main` | empty | `npm run cf:build && npx wrangler deploy` | `npm run cf:build && npx wrangler versions upload` |
 
 Branch rules:
 

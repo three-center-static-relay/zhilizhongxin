@@ -26,7 +26,7 @@ globalThis.fetch=async(input,init={})=>{
   const url=new URL(String(input)),method=String(init.method||"GET").toUpperCase(),prefix="/client/v4/accounts/account-test",path=url.pathname.slice(prefix.length);
   if(method==="GET"&&path==="/workers/scripts")return Response.json({success:true,result:scripts.map(([id,,tag])=>({id,tag}))});
   let m=path.match(/^\/builds\/workers\/([^/]+)\/triggers$/);
-  if(method==="GET"&&m){const tag=decodeURIComponent(m[1]);return Response.json({success:true,result:[{trigger_uuid:`preview-${tag}`,deploy_command:"npm run cf:build && wrangler versions upload",branch_includes:["*"],branch_excludes:["main"]}]});}
+  if(method==="GET"&&m){const tag=decodeURIComponent(m[1]);return Response.json({success:true,result:[{trigger_uuid:`preview-${tag}`,deploy_command:"npm run cf:build && npx wrangler versions upload",branch_includes:["*"],branch_excludes:["main"]}]});}
   m=path.match(/^\/builds\/triggers\/preview-(tag-[^/]+)\/builds$/);
   if(method==="POST"&&m){
     const tag=decodeURIComponent(m[1]),{center}=byTag.get(tag),body=JSON.parse(init.body);assert.equal(body.commit_hash,COMMITS[center]);

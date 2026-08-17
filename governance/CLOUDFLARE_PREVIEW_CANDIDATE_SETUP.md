@@ -36,7 +36,7 @@ Use the narrowest account/resource scope that covers the four Workers. Do not st
 Each of the four Workers must have a non-production/preview trigger with all of the following properties:
 
 - `main` is excluded from the trigger.
-- deploy/version command is `npm run cf:build && wrangler versions upload`.
+- deploy/version command is `npm run cf:build && npx wrangler versions upload`.
 - the trigger is connected to the correct Git repository.
 - the trigger can build the requested non-main candidate branch and exact commit.
 
@@ -117,7 +117,7 @@ Before attempting a live candidate:
 - [ ] `CLOUDFLARE_ACCOUNT_ID` is configured on `governance-worker`.
 - [ ] `CLOUDFLARE_BUILDS_API_TOKEN` is configured as a Cloudflare secret on `governance-worker`.
 - [ ] The token is user-scoped and limited to the required permissions/resources.
-- [ ] All four Workers have a preview trigger that excludes `main` and uses `npm run cf:build && wrangler versions upload`.
+- [ ] All four Workers have a preview trigger that excludes `main` and uses `npm run cf:build && npx wrangler versions upload`.
 - [ ] GPT Action schema has been refreshed from the latest `/openapi.json` and shows 10 operations.
 - [ ] `promoteCandidate` and `rollbackProduction` are absent.
 - [ ] A first live candidate is created with a disposable non-main candidate branch and known exact commit SHAs.

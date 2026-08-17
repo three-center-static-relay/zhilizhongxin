@@ -3,8 +3,8 @@
   "private": true,
   "scripts": {
     "cf:build": "node --check src/guard.js && node --check src/index.js && node --check src/production-superguard.js && node --check src/protection.js && node --check src/superguard.js && node -e \"JSON.parse(require('node:fs').readFileSync('openapi.json','utf8'))\"",
-    "cf:preview": "npm run cf:build && wrangler versions upload",
-    "cf:deploy": "npm run cf:build && wrangler deploy"
+    "cf:preview": "npm run cf:build && npx wrangler versions upload",
+    "cf:deploy": "npm run cf:build && npx wrangler deploy"
   },
   "devDependencies": {"wrangler": "^4.0.0"}
 }

@@ -58,7 +58,7 @@ globalThis.fetch=async (input,init={})=>{
     const tag=decodeURIComponent(m[1]),script=SCRIPT_BY_TAG[tag];
     return Response.json({success:true,result:[
       {trigger_uuid:`prod-${tag}`,deploy_command:"npx wrangler deploy",branch_includes:["main"],branch_excludes:[]},
-      {trigger_uuid:`preview-${tag}`,deploy_command:unsafePreview&&script==="governance-worker"?"npm run cf:build && wrangler deploy":"npm run cf:build && wrangler versions upload",branch_includes:["*"],branch_excludes:["main"]}
+      {trigger_uuid:`preview-${tag}`,deploy_command:unsafePreview&&script==="governance-worker"?"npm run cf:build && npx wrangler deploy":"npm run cf:build && npx wrangler versions upload",branch_includes:["*"],branch_excludes:["main"]}
     ]});
   }
 
@@ -85,8 +85,8 @@ globalThis.fetch=async (input,init={})=>{
       build_outcome:running?null:(failed?"fail":"success"),
       created_on:"2026-08-16T00:00:00.000Z",
       stopped_on:running?null:"2026-08-16T00:01:00.000Z",
-      build_trigger_metadata:{branch:record.branch,commit_hash:record.commit_hash,deploy_command:"npm run cf:build && wrangler versions upload"},
-      trigger:{deploy_command:"npm run cf:build && wrangler versions upload",branch_excludes:["main"]}
+      build_trigger_metadata:{branch:record.branch,commit_hash:record.commit_hash,deploy_command:"npm run cf:build && npx wrangler versions upload"},
+      trigger:{deploy_command:"npm run cf:build && npx wrangler versions upload",branch_excludes:["main"]}
     }});
   }
 
