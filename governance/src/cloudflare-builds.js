@@ -83,10 +83,16 @@ async function releaseCurrentCandidateOperation(env){
   }catch{return false}
 }
 
+export function isSafePreviewDeployCommand(value){
+  const deploy=String(value||"").toLowerCase();
+  const versionUpload=/wrangler\s+versions\s+upload\b/.test(deploy);
+  const dryRunDeploy=/wrangler\s+deploy\b/.test(deploy)&&/--dry-run\b/.test(deploy);
+  return versionUpload||dryRunDeploy;
+}
+
 function safePreviewTrigger(trigger){
-  const deploy=String(trigger?.deploy_command||"").toLowerCase();
   const excludes=Array.isArray(trigger?.branch_excludes)?trigger.branch_excludes.map(String):[];
-  return Boolean(trigger?.trigger_uuid)&&excludes.includes("main")&&/wrangler\s+versions\s+upload/.test(deploy);
+  return Boolean(trigger?.trigger_uuid)&&excludes.includes("main")&&isSafePreviewDeployCommand(trigger?.deploy_command);
 }
 
 async function resolvePreviewTrigger(env,scriptName){
@@ -173,7 +179,7 @@ function buildState(build,expected){
     commit_hash:String(metadata?.commit_hash||"").toLowerCase(),
     branch_matches:String(metadata?.branch||"")===String(expected?.branch||""),
     commit_matches:String(metadata?.commit_hash||"").toLowerCase()===String(expected?.commit_hash||"").toLowerCase(),
-    safe_preview_deploy:/wrangler\s+versions\s+upload/.test(deploy),
+    safe_preview_deploy:isSafePreviewDeployCommand(deploy),
     created_on:build?.created_on||null,
     stopped_on:build?.stopped_on||null
   };
