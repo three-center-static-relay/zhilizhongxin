@@ -11,16 +11,20 @@ assert.equal(isSafePreviewDeployCommand("npx wrangler deploy --dry-run"),true);
 assert.equal(isSafePreviewDeployCommand("npx wrangler deploy --dry-run --outdir dist"),true);
 assert.equal(isSafePreviewDeployCommand("npx wrangler deploy --outdir dist --dry-run"),true);
 
-// Production-mutating or unrelated commands must remain rejected.
+// Production-mutating, unrelated, or shell-wrapped commands must remain rejected.
 assert.equal(isSafePreviewDeployCommand("npx wrangler deploy"),false);
 assert.equal(isSafePreviewDeployCommand("npx wrangler deploy --yes"),false);
 assert.equal(isSafePreviewDeployCommand("npx wrangler versions deploy"),false);
 assert.equal(isSafePreviewDeployCommand("echo wrangler deploy"),false);
+assert.equal(isSafePreviewDeployCommand("echo wrangler deploy --dry-run"),false);
+assert.equal(isSafePreviewDeployCommand("npx wrangler deploy --dry-run && echo unsafe"),false);
+assert.equal(isSafePreviewDeployCommand("npx wrangler deploy --dry-run; echo unsafe"),false);
 
 console.log(JSON.stringify({
   ok:true,
   suite:"cloudflare-preview-command-policy",
   transition_mode:"versions-upload-or-dry-run",
   preferred_nonproduction_command:"npx wrangler deploy --dry-run",
-  production_deploy_rejected:true
+  production_deploy_rejected:true,
+  shell_wrappers_rejected:true
 }));
