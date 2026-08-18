@@ -2,8 +2,10 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maintenance-worker",
   "main": "src/index.js",
-  "compatibility_date": "2026-08-14",
-  "workers_dev": true,
+  "compatibility_date": "2026-08-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
   "durable_objects": {
     "bindings": [
       {"name": "MAINTENANCE_STATE", "class_name": "MaintenanceState"}
@@ -18,5 +20,6 @@
     {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
     {"binding": "EXPERT_CENTER", "service": "expert-worker"}
   ],
-  "triggers": {"crons": ["*/15 * * * *"]}
+  "triggers": {"crons": ["*/15 * * * *"]},
+  "observability": {"enabled":true,"logs":{"enabled":true,"head_sampling_rate":0.25},"traces":{"enabled":true,"head_sampling_rate":0.01}}
 }

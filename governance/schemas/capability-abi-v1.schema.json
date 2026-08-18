@@ -4,7 +4,7 @@
   "title": "Capability ABI v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id","type","domain","operations","input_schema","output_schema","provider","protocol","version","auth_scope","permission_scope","network_scope","write_scope","dependencies","substitutes","compatible_with","conflicts_with","cost","latency","throughput","reliability","accuracy","freshness","health","fitness","trust","license","jurisdiction","first_seen","last_verified"],
+  "required": ["id","type","domain","operations","input_schema","output_schema","provider","protocol","version","auth_scope","permission_scope","network_scope","write_scope","dependencies","substitutes","compatible_with","conflicts_with","cost","latency","throughput","reliability","accuracy","freshness","health","fitness","trust","verification","license","jurisdiction","first_seen","last_verified"],
   "properties": {
     "id": {"type":"string","pattern":"^[a-z0-9][a-z0-9._:-]{2,159}$"},
     "type": {"type":"string","enum":["atomic","composite","model","tool","api","dataset","algorithm","resource","workflow"]},
@@ -15,7 +15,7 @@
     "auth_scope": {"type":"string"}, "permission_scope": {"type":"string"}, "network_scope": {"type":"string"},
     "write_scope": {"type":"string","enum":["none","read","write","destructive"]},
     "dependencies": {"$ref":"#/$defs/stringList"}, "substitutes": {"$ref":"#/$defs/stringList"}, "compatible_with": {"$ref":"#/$defs/stringList"}, "conflicts_with": {"$ref":"#/$defs/stringList"},
-    "cost": {"type":"object","required":["class","currency","unit_cost"],"properties":{"class":{"type":"string"},"currency":{"type":"string"},"unit_cost":{"type":"number","minimum":0}}},
+    "cost": {"type":"object","required":["class","currency","unit_cost","estimate_status"],"properties":{"class":{"type":"string"},"currency":{"type":"string"},"unit_cost":{"type":["number","null"],"minimum":0},"estimate_status":{"type":"string"}}},
     "latency": {"type":"object","required":["class","timeout_ms"],"properties":{"class":{"type":"string"},"timeout_ms":{"type":"number","exclusiveMinimum":0}}},
     "throughput": {"type":"object","required":["class","max_concurrency"],"properties":{"class":{"type":"string"},"max_concurrency":{"type":"integer","minimum":1}}},
     "reliability": {"$ref":"#/$defs/scored"}, "accuracy": {"$ref":"#/$defs/scored"},
@@ -23,7 +23,8 @@
     "health": {"type":"object","required":["status","checked_at"],"properties":{"status":{"type":"string"},"checked_at":{"type":"string","format":"date-time"}}},
     "fitness": {"type":"object","required":["quality","reliability","cost","latency","security","adaptability","complexity"],"additionalProperties":{"type":"number","minimum":0,"maximum":1}},
     "trust": {"type":"object","required":["level","status"],"properties":{"level":{"type":"string","enum":["T0","T1","T2","T3","T4"]},"status":{"type":"string"}}},
-    "license": {"type":"string"}, "jurisdiction": {"$ref":"#/$defs/stringList"}, "first_seen": {"type":"string","format":"date-time"}, "last_verified": {"type":"string","format":"date-time"}
+    "verification": {"type":"object","required":["status","scope","verified_at","receipt_digest","sample_size"],"properties":{"status":{"type":"string"},"scope":{"type":"string"},"verified_at":{"type":["string","null"],"format":"date-time"},"receipt_digest":{"type":["string","null"],"pattern":"^[A-Fa-f0-9]{64}$"},"sample_size":{"type":"integer","minimum":0}}},
+    "license": {"type":"string"}, "jurisdiction": {"$ref":"#/$defs/stringList"}, "first_seen": {"type":"string","format":"date-time"}, "last_verified": {"type":["string","null"],"format":"date-time"}
   },
   "$defs": {
     "stringList": {"type":"array","uniqueItems":true,"items":{"type":"string"}},

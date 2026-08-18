@@ -78,8 +78,23 @@ export function validateEvolutionContract(candidate){
 async function boundedJson(response){
   const declared=Number(response.headers.get("content-length")||0);
   if(declared>MAX_MANIFEST_BYTES)throw new Error("MANIFEST_TOO_LARGE");
-  const raw=await response.text();
-  if(new TextEncoder().encode(raw).length>MAX_MANIFEST_BYTES)throw new Error("MANIFEST_TOO_LARGE");
+  if(!response.body)return null;
+  const reader=response.body.getReader(),chunks=[];
+  let total=0;
+  try{
+    for(;;){
+      const {done,value}=await reader.read();
+      if(done)break;
+      if(!value)continue;
+      total+=value.byteLength;
+      if(total>MAX_MANIFEST_BYTES){await reader.cancel().catch(()=>{});throw new Error("MANIFEST_TOO_LARGE")}
+      chunks.push(value);
+    }
+  }finally{try{reader.releaseLock()}catch{}}
+  const joined=new Uint8Array(total);
+  let offset=0;
+  for(const chunk of chunks){joined.set(chunk,offset);offset+=chunk.byteLength}
+  const raw=new TextDecoder().decode(joined);
   try{return raw?JSON.parse(raw):null}catch{throw new Error("MANIFEST_BAD_JSON")}
 }
 
@@ -122,7 +137,8 @@ function permitted(capability,task){
   if(constraints.write_scope&&constraints.write_scope!==capability.write_scope&&capability.write_scope!=="none")return false;
   const maxTrust=TRUST_LEVELS.includes(risk.max_trust_level)?trustRank(risk.max_trust_level):trustRank("T2");
   if(trustRank(capability.trust.level)>maxTrust)return false;
-  return !["failed","deprecated","revoked"].includes(capability.health.status)&&capability.trust.status!=="rejected";
+  if(capability.verification?.status!=="verified"||!capability.verification?.verified_at||!/^[a-f0-9]{64}$/i.test(String(capability.verification?.receipt_digest||""))||capability.verification?.sample_size<1)return false;
+  return capability.health.status==="ready"&&capability.trust.status==="verified";
 }
 
 export function buildGapModel(requiredCapabilities,capabilities){

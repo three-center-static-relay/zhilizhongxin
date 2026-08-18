@@ -28,7 +28,7 @@ const call=async(path,method="GET",body)=>{
 
 {
   await call("/operation-lock/acquire","POST",{owner:"candidate-owner",kind:"candidate-build",lease_seconds:30});
-  const record={candidate_id:"candidate-1",manifest:{candidate_kind:"cloudflare-preview-build-set"},candidate_digest:"a".repeat(64)};
+  const record={candidate_id:"candidate-1",manifest:{candidate_kind:"cloudflare-dry-run-build-set"},candidate_digest:"a".repeat(64)};
   const stored=await call("/candidate","POST",{candidate_id:"candidate-1",record});
   assert.equal(stored.status,201);assert.equal(stored.body.operation_lock_released,true);
   const lock=await call("/operation-lock");assert.equal(lock.body.active,null);

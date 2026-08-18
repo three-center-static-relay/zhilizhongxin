@@ -5,7 +5,10 @@
   "compatibility_date": "2026-08-18",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "preview_urls": false,
   "version_metadata": {"binding": "CF_VERSION_METADATA"},
+  "secrets": {"required": ["ADMIN_GPT_TOKEN", "CLOUDFLARE_BUILDS_API_TOKEN"]},
+  "vars": {"ENVIRONMENT": "production", "CLOUDFLARE_ACCOUNT_ID": "e3aec027af13c557bbcb831d29c1e7b4"},
   "ai": {"binding": "AI"},
   "services": [
     {"binding": "OPENROUTER_RELAY", "service": "expert-worker"},
@@ -15,6 +18,5 @@
   ],
   "durable_objects": {"bindings": [{"name": "ADMIN_STATE", "class_name": "AdminState"}]},
   "exports": {"AdminState": {"type":"durable-object","storage":"sqlite"}},
-  "build": {"command": "node tests/evolution-kernel-contract.mjs && node tests/domain-architecture-contract.mjs && node tests/openrouter-mcp-boundary.mjs && node tests/policy-regression.mjs && node tests/policy-hardening-second-layer.mjs && node tests/runtime-attestation.mjs && node tests/openapi-action-schema.mjs && node tests/literature-action-route.mjs && node tests/provider-fresh-e2e-route.mjs && node tests/commercial-spatial-action.mjs && node tests/final-output-validation.mjs && node tests/legacy-action-compat-selftests.mjs && node tests/assist-profile.mjs && node tests/stress.mjs && node tests/admin-gateway-readonly.mjs && node tests/admin-operation-lock.mjs && node tests/admin-candidate-acceptance.mjs && node tests/admin-candidate-compensation.mjs && node tests/cloudflare-preview-build-guard.mjs && node tests/web-gpt-action-snapshot.mjs"},
   "observability": {"enabled": true,"logs":{"enabled":true,"head_sampling_rate":1},"traces":{"enabled":true,"head_sampling_rate":0.05}}
 }

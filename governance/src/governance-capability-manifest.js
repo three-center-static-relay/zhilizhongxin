@@ -1,7 +1,7 @@
 import {buildManifest,makeCapability} from "./capability-abi.js";
 
 const verified="2026-08-18T00:00:00.000Z";
-const base={provider:"governance-worker",protocol:"service-binding",version:"1.0.0",auth_scope:"bearer-or-service-binding",network_scope:"cloudflare-service-bindings",write_scope:"none",license:"internal",jurisdiction:["global"],last_verified:verified,health:{status:"ready",checked_at:verified},reliability:{score:0.9,basis:"deterministic-contract-tests"},accuracy:{score:0.9,basis:"schema-validation"},trust:{level:"T0",status:"verified"}};
+const base={provider:"governance-worker",protocol:"service-binding",version:"1.0.0",auth_scope:"bearer-or-service-binding",network_scope:"cloudflare-service-bindings",write_scope:"none",license:"internal",jurisdiction:["global"],last_verified:null,health:{status:"static-verified",checked_at:verified},reliability:{score:0.9,basis:"deterministic-contract-tests"},accuracy:{score:0.9,basis:"schema-validation"},trust:{level:"T0",status:"static-verified"},verification:{status:"static-verified",scope:"repository-contract-tests",verified_at:verified,receipt_digest:null,sample_size:0}};
 
 export function governanceCapabilityManifest(){
   const capabilities=[

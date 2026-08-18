@@ -6,34 +6,31 @@ This phase must not be implemented as a production mutation until Phase 2 has pr
 
 ## Why Phase 3 is separate
 
-Phase 2 proves that four exact Git commits can be built through safe non-production Workers Builds triggers using `wrangler versions upload`. Build success is necessary but is not fresh business runtime E2E.
+Phase 2 proves that four exact Git commits pass the repository gate and `wrangler deploy --dry-run`. It intentionally uploads no Worker version. Build success is necessary but is not fresh business runtime E2E.
 
 The current Workers use Durable Objects. Cloudflare does not generate Preview URLs for Workers that implement Durable Objects, so candidate runtime testing cannot rely on normal preview URLs.
 
-Cloudflare Version Overrides can route a request to a specific Worker version, including a version assigned 0% normal traffic, but the target version must already be part of the Worker's current deployment. Adding a new 0% version to the current deployment is therefore a production deployment mutation even though normal traffic remains on the stable version.
+Runtime canary therefore requires a separately provisioned staging topology. Reusing a production Durable Object namespace, service binding, secret, queue, workflow, route, or storage bucket would invalidate isolation and is forbidden.
 
 ## Required sequence
 
 Phase 3 must use the following strict order for each candidate set:
 
-1. Phase 2 `createCandidateVersion` triggers four exact preview builds.
+1. Phase 2 `createCandidateVersion` triggers four exact dry-run builds.
 2. Phase 2 `validateCandidate` reaches terminal PASS.
-3. Resolve the immutable Cloudflare Worker `version_id` created by each successful preview build.
+3. Verify a staging manifest maps every center to a distinct staging Worker name and distinct stateful resource identifiers.
 4. Re-read current production versions and source digests. Abort if they drifted from the candidate baseline.
-5. Verify all downstream task locks are visible and idle.
-6. Create a two-version deployment for the center under test:
-   - current verified stable version: 100%
-   - candidate version: 0%
-7. Run only bounded canary requests with `Cloudflare-Workers-Version-Overrides` targeting the candidate version.
-8. Every canary response must return/version-attest the expected `CF_VERSION_METADATA.id`.
-9. Run center-specific business E2E under the override.
-10. On any canary failure, remove the candidate from the deployment and restore the prior stable deployment before returning FAIL.
-11. Only after all required center canaries PASS may a candidate become `promotion_eligible=true`.
-12. Promotion remains a separate explicit operation; no canary endpoint may promote implicitly.
+5. Verify all production task locks are visible and idle; staging must use independent locks.
+6. Deploy the exact commits to the isolated staging topology through a protected `wrangler deploy --env staging` path.
+7. Attest each staging response against the expected Git commit, Worker version metadata, environment name, and source digest.
+8. Run center-specific bounded business E2E only against staging routes/service bindings.
+9. On any canary failure, stop the staging test, retain the failure receipt, and leave production untouched.
+10. Only after all required center canaries PASS may a candidate become `promotion_eligible=true`.
+11. Promotion remains a separate explicit operation; no canary endpoint may promote implicitly.
 
-## Reliable candidate version ID capture
+## Reliable staging identity capture
 
-Do not infer a version ID from timestamps or "latest version" ordering.
+Do not infer identity from timestamps or "latest version" ordering.
 
 Cloudflare Workers Builds injects these build environment variables:
 
@@ -41,14 +38,14 @@ Cloudflare Workers Builds injects these build environment variables:
 - `WORKERS_CI_COMMIT_SHA`
 - `WORKERS_CI_BRANCH`
 
-Wrangler supports structured command output through `WRANGLER_OUTPUT_FILE_PATH` / `WRANGLER_OUTPUT_FILE_DIRECTORY`. A `version-upload` record contains the uploaded Worker version ID.
+Wrangler supports structured command output through `WRANGLER_OUTPUT_FILE_PATH` / `WRANGLER_OUTPUT_FILE_DIRECTORY`. The protected staging deployment wrapper must retain bounded structured output and the staging Worker version ID.
 
-Before Phase 3 is enabled, each preview trigger should be changed to a deterministic wrapper that:
+Before Phase 3 is enabled, each staging deployment should use a deterministic wrapper that:
 
 1. sets a Wrangler structured output file path;
-2. runs `npx wrangler versions upload`;
-3. emits only the bounded structured `version-upload` record into the Workers Build log;
-4. leaves production traffic unchanged.
+2. runs `npm run cf:build && npx wrangler deploy --env staging` against an audited staging configuration;
+3. emits only bounded deployment identity records into the protected build log;
+4. proves that every stateful binding resolves to a staging resource and leaves production traffic/state unchanged.
 
 The Admin Gateway can then fetch the build log by `build_uuid`, parse the structured record, and require all of these identities to agree:
 
@@ -58,21 +55,11 @@ The Admin Gateway can then fetch the build log by `build_uuid`, parse the struct
 - Worker name/tag
 - uploaded Worker version ID
 
-If the structured version ID record is absent, duplicated, malformed, or inconsistent, candidate runtime canary must remain `NOT_VERIFIABLE`.
+If the structured identity record is absent, duplicated, malformed, inconsistent, or points to a production resource, candidate runtime canary must remain `NOT_VERIFIABLE`.
 
 ## Canary request invariant
 
-For an HTTP fetch canary:
-
-```text
-Cloudflare-Workers-Version-Overrides: <worker-name>="<candidate-version-id>"
-```
-
-The response must prove the override was actually applied by returning or internally attesting the same version ID through `CF_VERSION_METADATA`.
-
-A 200 response from the wrong version is a FAIL.
-
-For service-binding calls, the override header may be attached to `fetch()` subrequests. RPC service-binding calls are not suitable because version override headers cannot be attached to RPC calls.
+Every canary must target an allowlisted staging hostname or staging service binding and must return or internally attest the same staging identity through `CF_VERSION_METADATA`, source digest, and environment metadata. A 200 response from a production Worker, wrong commit, or wrong state namespace is a FAIL.
 
 ## Center-specific minimum canary
 

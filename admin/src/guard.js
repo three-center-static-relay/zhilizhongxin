@@ -1,14 +1,13 @@
 import base,{AdminCoordinator} from "./index.js";
+import {verifyBearer} from "./security.js";
 export {AdminCoordinator};
 const H={"content-type":"application/json;charset=utf-8","cache-control":"no-store"};
 const json=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:H});
 const redact=v=>{if(Array.isArray(v))return v.map(redact);if(v&&typeof v==="object"){const o={};for(const[k,x]of Object.entries(v))o[k]=/token|secret|password|authorization|cookie|api.?key/i.test(k)?"[REDACTED]":redact(x);return o}return v};
 const fail=(c,m,s=409,d)=>json({ok:false,error:c,message:m,...(d?{details:redact(d)}:{})},s);
-const tok=req=>{const h=req.headers.get("authorization")||"";return h.startsWith("Bearer ")?h.slice(7).trim():""};
-function eq(a,b){a=String(a||"");b=String(b||"");if(a.length!==b.length)return false;let x=0;for(let i=0;i<a.length;i++)x|=a.charCodeAt(i)^b.charCodeAt(i);return x===0}
 function st(env){return env.ADMIN_COORDINATOR.get(env.ADMIN_COORDINATOR.idFromName("global"))}
 async function sc(env,p,m="GET",d){const i={method:m,headers:{"content-type":"application/json"}};if(d!==undefined)i.body=JSON.stringify(d);const r=await st(env).fetch(new Request(`https://state.internal${p}`,i)),x=await r.json().catch(()=>({ok:false,error:"STATE_BAD_RESPONSE"}));if(!r.ok)throw Object.assign(new Error(x.error||"STATE_ERROR"),{status:r.status,details:x});return x}
-async function auth(req,env){if(!env.ADMIN_GPT_TOKEN)throw Object.assign(new Error("ADMIN_TOKEN_NOT_CONFIGURED"),{status:503});if(!eq(tok(req),env.ADMIN_GPT_TOKEN))throw Object.assign(new Error("UNAUTHORIZED"),{status:401})}
+async function auth(req,env){if(!env.ADMIN_GPT_TOKEN)throw Object.assign(new Error("ADMIN_TOKEN_NOT_CONFIGURED"),{status:503});if(!await verifyBearer(req,env.ADMIN_GPT_TOKEN))throw Object.assign(new Error("UNAUTHORIZED"),{status:401})}
 async function cf(env,p,init={}){if(!env.CF_ACCOUNT_ID||!env.CF_API_TOKEN)throw Object.assign(new Error("CF_API_NOT_CONFIGURED"),{status:503});const headers={authorization:`Bearer ${env.CF_API_TOKEN}`,accept:"application/json",...(init.headers||{})};if(init.body)headers["content-type"]="application/json";const r=await fetch(`https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}${p}`,{...init,headers}),x=await r.json().catch(()=>null);if(!r.ok||x?.success===false)throw Object.assign(new Error("CLOUDFLARE_API_ERROR"),{status:502,details:x});return x}
 async function current(env,s){const d=await cf(env,`/workers/scripts/${encodeURIComponent(s)}/deployments`),ds=d?.result?.deployments||d?.result||[];for(const dep of ds){const vs=dep?.versions||[],v=vs.find(x=>Number(x.percentage)===100)||vs[0];if(v?.version_id)return v.version_id}return null}
 async function previous(env,s,cur){const d=await cf(env,`/workers/scripts/${encodeURIComponent(s)}/deployments`),ds=d?.result?.deployments||d?.result||[];for(const dep of ds.slice(1)){const vs=dep?.versions||[],v=vs.find(x=>Number(x.percentage)===100)||vs[0];if(v?.version_id&&v.version_id!==cur)return v.version_id}return null}

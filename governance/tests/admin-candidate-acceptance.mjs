@@ -58,7 +58,7 @@ globalThis.fetch=async (input,init={})=>{
     const tag=decodeURIComponent(m[1]),script=SCRIPT_BY_TAG[tag];
     return Response.json({success:true,result:[
       {trigger_uuid:`prod-${tag}`,deploy_command:"npx wrangler deploy",branch_includes:["main"],branch_excludes:[]},
-      {trigger_uuid:`preview-${tag}`,deploy_command:unsafePreview&&script==="governance-worker"?"npx wrangler deploy":"npx wrangler versions upload",branch_includes:["*"],branch_excludes:["main"]}
+      {trigger_uuid:`preview-${tag}`,deploy_command:unsafePreview&&script==="governance-worker"?"npm run cf:build && npx wrangler deploy":"npm run cf:build && npx wrangler deploy --dry-run",branch_includes:["*"],branch_excludes:["main"]}
     ]});
   }
 
@@ -85,8 +85,8 @@ globalThis.fetch=async (input,init={})=>{
       build_outcome:running?null:(failed?"fail":"success"),
       created_on:"2026-08-16T00:00:00.000Z",
       stopped_on:running?null:"2026-08-16T00:01:00.000Z",
-      build_trigger_metadata:{branch:record.branch,commit_hash:record.commit_hash,deploy_command:"npx wrangler versions upload"},
-      trigger:{deploy_command:"npx wrangler versions upload",branch_excludes:["main"]}
+      build_trigger_metadata:{branch:record.branch,commit_hash:record.commit_hash,deploy_command:"npm run cf:build && npx wrangler deploy --dry-run"},
+      trigger:{deploy_command:"npm run cf:build && npx wrangler deploy --dry-run",branch_excludes:["main"]}
     }});
   }
 
@@ -151,7 +151,7 @@ try {
     const response=await worker.fetch(new Request("https://governance.test/v1/admin/candidates",{method:"POST",headers:auth,body:JSON.stringify({branch:"candidate/phase-2",commits:COMMITS,label:"phase-2",reason:"preview build acceptance"})}),env,{}),body=await response.json();
     assert.equal(response.status,202);assert.equal(body.ok,true);assert.equal(body.operation,"createCandidateVersion");
     assert.equal(body.receipt_schema,"three-center-admin-candidate-receipt-v2");
-    assert.equal(body.production_write,false);assert.equal(body.data.candidate_kind,"cloudflare-preview-build-set");
+    assert.equal(body.production_write,false);assert.equal(body.data.candidate_kind,"cloudflare-dry-run-build-set");
     assert.equal(body.data.candidate_state,"BUILDING");assert.equal(body.data.branch,"candidate/phase-2");
     assert.deepEqual(body.data.commits,COMMITS);assert.equal(Object.keys(body.data.build_uuids).length,4);
     assert.equal(body.data.fresh_business_e2e,false);assert.equal(body.data.promotion_eligible,false);
@@ -172,7 +172,7 @@ try {
     const response=await worker.fetch(new Request("https://governance.test/v1/admin/candidates/validate",{method:"POST",headers:auth,body:JSON.stringify({candidate_id:candidateId})}),env,{}),body=await response.json();
     assert.equal(response.status,200);assert.equal(body.ok,true);assert.equal(body.validation,"PASS");
     assert.equal(body.receipt_schema,"three-center-admin-acceptance-receipt-v2");
-    assert.equal(body.acceptance_scope,"cloudflare-preview-build-control-plane-v1");
+    assert.equal(body.acceptance_scope,"cloudflare-dry-run-build-control-plane-v1");
     assert.equal(body.fresh_business_e2e,false);assert.equal(body.promotion_eligible,false);
     assert.equal(body.promotion_block_reason,"runtime-canary-not-verified");assert.equal(body.candidate_digest,candidateDigest);
     assert.equal(body.checks.length,13);assert.equal(body.checks.every(x=>x.ok===true),true);
@@ -224,7 +224,7 @@ try {
     assert.equal(operationIds.length,13);
   }
 
-  console.log(JSON.stringify({ok:true,suite:"governance-admin-candidate-acceptance",candidate_kind:"cloudflare-preview-build-set",acceptance_scope:"cloudflare-preview-build-control-plane-v1",fresh_business_e2e:false,provider_fresh_e2e_action:true,promotion_enabled:false,rollback_enabled:false,total_action_operations:13,runtime_contract_strict:true,safe_preview_only:true}));
+  console.log(JSON.stringify({ok:true,suite:"governance-admin-candidate-acceptance",candidate_kind:"cloudflare-dry-run-build-set",acceptance_scope:"cloudflare-dry-run-build-control-plane-v1",fresh_business_e2e:false,provider_fresh_e2e_action:true,promotion_enabled:false,rollback_enabled:false,total_action_operations:13,runtime_contract_strict:true,safe_dry_run_only:true}));
 } finally {
   globalThis.fetch=originalFetch;
 }
