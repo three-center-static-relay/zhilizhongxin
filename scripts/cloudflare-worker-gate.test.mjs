@@ -4,6 +4,7 @@ import {
   isRelevantPath,
   relevantPaths,
   validateInvocation,
+  validatePostAllowScript,
   validateWranglerVersion,
   wranglerCommand,
 } from "./cloudflare-worker-gate.mjs";
@@ -36,6 +37,19 @@ assert.throws(() => validateInvocation("admin", "preview", { ...previewEnv, WORK
 
 assert.equal(validateWranglerVersion("4.123.0"), "4.123.0");
 assert.throws(() => validateWranglerVersion("^4.123.0"), /EXACT_WRANGLER_VERSION_REQUIRED/);
+assert.equal(validatePostAllowScript("maintenance", "preview", null), null);
+assert.equal(
+  validatePostAllowScript("maintenance", "preview", "scripts/run-immediate-refresh.mjs"),
+  "scripts/run-immediate-refresh.mjs",
+);
+assert.throws(
+  () => validatePostAllowScript("admin", "preview", "scripts/run-immediate-refresh.mjs"),
+  /POST_ALLOW_SCRIPT_NOT_ALLOWED/,
+);
+assert.throws(
+  () => validatePostAllowScript("maintenance", "deploy", "scripts/run-immediate-refresh.mjs"),
+  /POST_ALLOW_SCRIPT_NOT_ALLOWED/,
+);
 
 const maintenancePreview = wranglerCommand("maintenance","preview","4.123.0",previewContext);
 assert.deepEqual(maintenancePreview.slice(0,4),["--yes","wrangler@4.123.0","versions","upload"]);
@@ -69,6 +83,8 @@ console.log(JSON.stringify({
   fail_closed_context: true,
   exact_wrangler_pin: true,
   per_worker_path_isolation: true,
+  post_allow_is_allowlisted: true,
+  skipped_scope_cannot_execute_post_allow: true,
   maintenance_preview_creates_version_without_production_deploy: true,
   other_preview_scopes_remain_dry_run: true,
 }));

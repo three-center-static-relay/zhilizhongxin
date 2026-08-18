@@ -12,6 +12,9 @@ const SHARED_BUILD_PATHS = new Set([
   "scripts/cloudflare-worker-gate.mjs",
   "scripts/cloudflare-worker-gate.test.mjs",
 ]);
+const POST_ALLOW = new Map([
+  ["maintenance:preview", "scripts/run-immediate-refresh.mjs"],
+]);
 const SHA_PATTERN = /^[a-f0-9]{40,64}$/i;
 const BRANCH_PATTERN = /^[0-9A-Za-z._/-]{1,255}$/;
 const EXACT_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
@@ -37,6 +40,13 @@ export function validateInvocation(scope, mode, env = process.env) {
 export function validateWranglerVersion(version) {
   if (!EXACT_VERSION_PATTERN.test(version || "")) throw new Error("EXACT_WRANGLER_VERSION_REQUIRED");
   return version;
+}
+
+export function validatePostAllowScript(scope, mode, requested = null) {
+  if (!requested) return null;
+  const allowed = POST_ALLOW.get(`${scope}:${mode}`) || null;
+  if (!allowed || requested !== allowed) throw new Error("POST_ALLOW_SCRIPT_NOT_ALLOWED");
+  return allowed;
 }
 
 export function isRelevantPath(scope, filePath) {
@@ -163,9 +173,10 @@ function emit(payload, stream = process.stdout) {
 }
 
 export function main(argv = process.argv.slice(2), env = process.env) {
-  const [scope, mode] = argv;
+  const [scope, mode, requestedPostAllowScript] = argv;
   try {
     const context = validateInvocation(scope, mode, env);
+    const postAllowScript = validatePostAllowScript(scope, mode, requestedPostAllowScript);
     const repoRoot = repositoryRoot();
     const { parentSha, historyDeepened } = diffContext(repoRoot, context.sha, context.branch);
     const changed = changedPaths(repoRoot, parentSha, context.sha);
@@ -183,6 +194,7 @@ export function main(argv = process.argv.slice(2), env = process.env) {
         parent_sha: parentSha,
         history_deepened: historyDeepened,
         changed_path_count: changed.length,
+        post_allow_executed: false,
       });
       return 0;
     }
@@ -206,6 +218,7 @@ export function main(argv = process.argv.slice(2), env = process.env) {
       relevant_paths: relevant,
       wrangler_version: wranglerVersion,
       preview_semantics: previewSemantics,
+      post_allow_script: postAllowScript,
     });
 
     run(process.execPath, [resolve(repoRoot, "scripts/cloudflare-worker-gate.test.mjs")], {
@@ -214,6 +227,23 @@ export function main(argv = process.argv.slice(2), env = process.env) {
     });
     run("npm", ["run", "cf:build"], { cwd: process.cwd(), stdio: "inherit" });
     run("npx", wranglerCommand(scope, mode, wranglerVersion, context), { cwd: process.cwd(), stdio: "inherit" });
+    if (postAllowScript) {
+      emit({
+        event: "CF_POST_ALLOW_BEGIN",
+        scope,
+        mode,
+        script: postAllowScript,
+        commit_sha: context.sha,
+      });
+      run(process.execPath, [resolve(process.cwd(), postAllowScript)], { cwd: process.cwd(), stdio: "inherit" });
+      emit({
+        event: "CF_POST_ALLOW_COMPLETED",
+        scope,
+        mode,
+        script: postAllowScript,
+        commit_sha: context.sha,
+      });
+    }
     return 0;
   } catch (error) {
     emit(
