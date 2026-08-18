@@ -121,6 +121,10 @@ export function main(argv = process.argv.slice(2), env = process.env) {
       wrangler_version: wranglerVersion,
     });
 
+    run(process.execPath, [resolve(repoRoot, "scripts/cloudflare-worker-gate.test.mjs")], {
+      cwd: repoRoot,
+      stdio: "inherit",
+    });
     run("npm", ["run", "cf:build"], { cwd: process.cwd(), stdio: "inherit" });
     const wranglerArgs = ["--yes", `wrangler@${wranglerVersion}`, "deploy"];
     if (mode === "preview") wranglerArgs.push("--dry-run");
