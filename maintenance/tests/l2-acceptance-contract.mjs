@@ -19,6 +19,10 @@ assert.match(wrapperSource,/function ensureAdminCandidate/);
 assert.match(wrapperSource,/npm",\["run","cf:build"\]/);
 assert.match(wrapperSource,/L2 self-contained admin candidate/);
 assert.match(wrapperSource,/run-l2-candidate-acceptance-core\.mjs/);
+assert.match(wrapperSource,/WRANGLER_CI_OVERRIDE_NAME:ADMIN/);
+assert.match(wrapperSource,/delete env\.WRANGLER_CI_OVERRIDE_NAME/);
+assert.match(wrapperSource,/versions","upload","--name",ADMIN/);
+assert.match(wrapperSource,/stripCiOverride:true/);
 assert.doesNotMatch(wrapperSource,/waitCandidate\(ADMIN/);
 assert.match(coreSource,/adminCandidate=await waitCandidate\(ADMIN,tag\),maintenanceCandidate=await waitCandidate\(MAINTENANCE,tag\)/);
 const a="11111111-1111-4111-8111-111111111111";
@@ -35,4 +39,4 @@ const lanes=Array.from({length:8},(_,i)=>({lane:String(i+1),company:`company-${i
 const body={ok:true,transport:"fetch-version-override",maintenance_transport:"fetch",admin_version:a,maintenance_version:b,result:{ok:true,status:"active",route_family:routes,company_lanes:lanes,free_lane_count:3,plan_digest:"digest",selftest:{ok:true,http_status:200,company_diverse:true,models:["m1","m2"]}},rollback_rehearsal:{ok:true,mismatches:[]}};
 assert.equal(validateReceipt(body,a,b).ok,true);
 assert.throws(()=>validateReceipt({...body,maintenance_version:old},a,b),/MAINTENANCE_VERSION_OVERRIDE_NOT_APPLIED/);
-console.log(JSON.stringify({ok:true,suite:"l2-candidate-acceptance-contract",private_admin_acceptance_entrypoint:true,forced_route_rehearsal:true,explicit_trigger_only:true,tag_resolution:true,deployment_snapshot:true,zero_percent_staging:true,exact_version_receipts:true,route_family_eight:true,rollback_rehearsal_required:true,self_contained_admin_candidate:true,no_cross_build_wait_dependency:true,core_reused_unchanged:true}));
+console.log(JSON.stringify({ok:true,suite:"l2-candidate-acceptance-contract",private_admin_acceptance_entrypoint:true,forced_route_rehearsal:true,explicit_trigger_only:true,tag_resolution:true,deployment_snapshot:true,zero_percent_staging:true,exact_version_receipts:true,route_family_eight:true,rollback_rehearsal_required:true,self_contained_admin_candidate:true,no_cross_build_wait_dependency:true,cloudflare_ci_name_override_isolated:true,remote_harness_name_override_removed:true,core_reused_unchanged:true}));
