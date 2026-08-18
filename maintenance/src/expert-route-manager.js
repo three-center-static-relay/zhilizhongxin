@@ -300,8 +300,11 @@ function selectLanes(ctx) {
 }
 
 function modelNode(id, model, success = "end", fallback = null) {
-  const outputs = { success: { elementId: success } };
-  if (fallback) outputs.fallback = { elementId: fallback };
+  const terminalFallback = fallback || success || "end";
+  const outputs = {
+    success: { elementId: success || "end" },
+    fallback: { elementId: terminalFallback }
+  };
   return { id, type: "model", properties: { provider: "openrouter", model, timeout: 60000, retries: 0 }, outputs };
 }
 
