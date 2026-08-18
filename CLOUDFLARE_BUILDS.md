@@ -29,7 +29,7 @@ Keep `maintenance-worker` disconnected until both directions of the connected-wo
 
 1. rejects missing/invalid CI context;
 2. permits `deploy` only on `main` and permits `preview` only off `main`;
-3. computes the changed paths for the current commit;
+3. verifies that the injected commit is the checked-out HEAD, read-only deepens a shallow clone by one generation when necessary, and computes the diff against the real first parent;
 4. exits successfully with `CF_PATH_SCOPE_SKIPPED` when no path belongs to that Worker;
 5. otherwise verifies the package identity and exact Wrangler pin, runs `cf:build`, and invokes the exact Wrangler version;
 6. adds `--dry-run` for non-production, so no remote upload or traffic mutation occurs.
@@ -48,7 +48,7 @@ The ordinary `cf:preview` and `cf:deploy` scripts remain for explicit local oper
 6. Only after both directions pass, connect `maintenance-worker` with the guarded commands and run a `maintenance/*`-only canary.
 7. Keep the pull request in Draft and do not merge until all three results are recorded.
 
-A skipped envelope still consumes Cloudflare build initialization time. Eliminating that envelope requires Cloudflare's build-watch setting to behave correctly (or splitting the monorepo); the repository gate prevents cross-Worker execution and deployment, not provider-side initialization.
+A skipped envelope still consumes Cloudflare build initialization time. The one-generation `git fetch` is read-only and is required because Workers Builds may provide a depth-one clone; if the real parent remains unavailable, the gate fails closed instead of comparing the whole tree. Eliminating the envelope entirely requires Cloudflare's build-watch setting to behave correctly (or splitting the monorepo); the repository gate prevents cross-Worker execution and deployment, not provider-side initialization.
 
 These Workers use Durable Objects, so the absence of a preview URL is expected. A successful dry run proves packaging and configuration validity only, not runtime business E2E behavior.
 

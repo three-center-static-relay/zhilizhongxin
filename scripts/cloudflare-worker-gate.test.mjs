@@ -30,6 +30,7 @@ assert.throws(() => validateInvocation("admin", "preview", deployEnv), /PREVIEW_
 assert.throws(() => validateInvocation("unknown", "preview", previewEnv), /UNSUPPORTED_SCOPE/);
 assert.throws(() => validateInvocation("admin", "preview", { ...previewEnv, WORKERS_CI: "0" }), /WORKERS_CI_REQUIRED/);
 assert.throws(() => validateInvocation("admin", "preview", { ...previewEnv, WORKERS_CI_COMMIT_SHA: "bad" }), /VALID_COMMIT_SHA_REQUIRED/);
+assert.throws(() => validateInvocation("admin", "preview", { ...previewEnv, WORKERS_CI_BRANCH: "../bad" }), /VALID_WORKERS_CI_BRANCH_REQUIRED/);
 
 assert.equal(validateWranglerVersion("4.123.0"), "4.123.0");
 assert.throws(() => validateWranglerVersion("^4.123.0"), /EXACT_WRANGLER_VERSION_REQUIRED/);

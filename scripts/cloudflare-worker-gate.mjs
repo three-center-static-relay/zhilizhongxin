@@ -13,6 +13,7 @@ const SHARED_BUILD_PATHS = new Set([
   "scripts/cloudflare-worker-gate.test.mjs",
 ]);
 const SHA_PATTERN = /^[a-f0-9]{40,64}$/i;
+const BRANCH_PATTERN = /^[0-9A-Za-z._/-]{1,255}$/;
 const EXACT_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
 export function validateInvocation(scope, mode, env = process.env) {
@@ -20,7 +21,11 @@ export function validateInvocation(scope, mode, env = process.env) {
   if (!MODES.has(mode)) throw new Error(`UNSUPPORTED_MODE:${mode || "missing"}`);
   if (env.WORKERS_CI !== "1") throw new Error("WORKERS_CI_REQUIRED");
   if (!SHA_PATTERN.test(env.WORKERS_CI_COMMIT_SHA || "")) throw new Error("VALID_COMMIT_SHA_REQUIRED");
-  if (!env.WORKERS_CI_BRANCH) throw new Error("WORKERS_CI_BRANCH_REQUIRED");
+  if (
+    !BRANCH_PATTERN.test(env.WORKERS_CI_BRANCH || "") ||
+    env.WORKERS_CI_BRANCH.includes("..") ||
+    env.WORKERS_CI_BRANCH.endsWith("/")
+  ) throw new Error("VALID_WORKERS_CI_BRANCH_REQUIRED");
   if (mode === "deploy" && env.WORKERS_CI_BRANCH !== "main") throw new Error("PRODUCTION_BRANCH_REQUIRED");
   if (mode === "preview" && env.WORKERS_CI_BRANCH === "main") throw new Error("PREVIEW_BRANCH_REQUIRED");
   return {
@@ -65,10 +70,60 @@ function repositoryRoot() {
   return run("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).stdout.trim();
 }
 
-function changedPaths(repoRoot, sha) {
+function gitText(repoRoot, args) {
+  return run("git", args, { cwd: repoRoot, encoding: "utf8" }).stdout.trim();
+}
+
+function gitObjectExists(repoRoot, object) {
+  const result = spawnSync("git", ["cat-file", "-e", object], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: process.env,
+    stdio: "ignore",
+  });
+  return !result.error && result.status === 0;
+}
+
+function fetchParentHistory(repoRoot, sha, branch, parentSha) {
+  const refspecs = [`refs/heads/${branch}`, sha];
+  for (const refspec of refspecs) {
+    const result = spawnSync(
+      "git",
+      ["fetch", "--no-tags", "--depth=2", "origin", refspec],
+      { cwd: repoRoot, encoding: "utf8", env: process.env },
+    );
+    if (!result.error && result.status === 0 && gitObjectExists(repoRoot, `${parentSha}^{commit}`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function diffContext(repoRoot, sha, branch) {
+  const headSha = gitText(repoRoot, ["rev-parse", "HEAD"]);
+  if (headSha !== sha) throw new Error("HEAD_COMMIT_MISMATCH");
+
+  const commitObject = run("git", ["cat-file", "-p", sha], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  }).stdout;
+  const parentSha = commitObject.match(/^parent ([a-f0-9]{40,64})$/im)?.[1];
+  if (!SHA_PATTERN.test(parentSha || "")) throw new Error("PARENT_COMMIT_REQUIRED");
+
+  let historyDeepened = false;
+  if (!gitObjectExists(repoRoot, `${parentSha}^{commit}`)) {
+    historyDeepened = fetchParentHistory(repoRoot, sha, branch, parentSha);
+  }
+  if (!gitObjectExists(repoRoot, `${parentSha}^{commit}`)) {
+    throw new Error("PARENT_COMMIT_UNAVAILABLE");
+  }
+  return { parentSha, historyDeepened };
+}
+
+function changedPaths(repoRoot, parentSha, sha) {
   const output = run(
     "git",
-    ["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "-m", "-z", sha],
+    ["diff", "--name-only", "-z", parentSha, sha],
     { cwd: repoRoot, encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
   ).stdout;
   return output.split("\0").filter(Boolean);
@@ -91,7 +146,8 @@ export function main(argv = process.argv.slice(2), env = process.env) {
   try {
     const context = validateInvocation(scope, mode, env);
     const repoRoot = repositoryRoot();
-    const changed = changedPaths(repoRoot, context.sha);
+    const { parentSha, historyDeepened } = diffContext(repoRoot, context.sha, context.branch);
+    const changed = changedPaths(repoRoot, parentSha, context.sha);
     const relevant = relevantPaths(scope, changed);
 
     if (relevant.length === 0) {
@@ -103,6 +159,8 @@ export function main(argv = process.argv.slice(2), env = process.env) {
         mode,
         branch: context.branch,
         commit_sha: context.sha,
+        parent_sha: parentSha,
+        history_deepened: historyDeepened,
         changed_path_count: changed.length,
       });
       return 0;
@@ -117,6 +175,8 @@ export function main(argv = process.argv.slice(2), env = process.env) {
       mode,
       branch: context.branch,
       commit_sha: context.sha,
+      parent_sha: parentSha,
+      history_deepened: historyDeepened,
       relevant_paths: relevant,
       wrangler_version: wranglerVersion,
     });
