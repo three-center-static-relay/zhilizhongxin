@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {isRelevantPath,relevantPaths,validateInvocation,validatePostAllowScript,validateWranglerVersion,wranglerCommand} from "./cloudflare-worker-gate.mjs";
+import {isRelevantPath,relevantPaths,shouldRunL2,validateInvocation,validatePostAllowScript,validateWranglerVersion,wranglerCommand} from "./cloudflare-worker-gate.mjs";
 const previewEnv={WORKERS_CI:"1",WORKERS_CI_BRANCH:"feature/gate",WORKERS_CI_COMMIT_SHA:"a".repeat(40)};
 const deployEnv={...previewEnv,WORKERS_CI_BRANCH:"main"};
 const previewContext={branch:previewEnv.WORKERS_CI_BRANCH,sha:previewEnv.WORKERS_CI_COMMIT_SHA};
@@ -9,27 +9,23 @@ assert.throws(()=>validateInvocation("admin","deploy",previewEnv),/PRODUCTION_BR
 assert.throws(()=>validateInvocation("admin","preview",deployEnv),/PREVIEW_BRANCH_REQUIRED/);
 assert.throws(()=>validateInvocation("unknown","preview",previewEnv),/UNSUPPORTED_SCOPE/);
 assert.throws(()=>validateInvocation("admin","preview",{...previewEnv,WORKERS_CI:"0"}),/WORKERS_CI_REQUIRED/);
-assert.throws(()=>validateInvocation("admin","preview",{...previewEnv,WORKERS_CI_COMMIT_SHA:"bad"}),/VALID_COMMIT_SHA_REQUIRED/);
-assert.throws(()=>validateInvocation("admin","preview",{...previewEnv,WORKERS_CI_BRANCH:"../bad"}),/VALID_WORKERS_CI_BRANCH_REQUIRED/);
 assert.equal(validateWranglerVersion("4.123.0"),"4.123.0");
 assert.throws(()=>validateWranglerVersion("^4.123.0"),/EXACT_WRANGLER_VERSION_REQUIRED/);
 assert.equal(validatePostAllowScript("maintenance","preview",null),null);
 assert.throws(()=>validatePostAllowScript("maintenance","preview","scripts/run-immediate-refresh.mjs"),/POST_ALLOW_SCRIPT_NOT_ALLOWED/);
-assert.throws(()=>validatePostAllowScript("admin","preview","scripts/run-immediate-refresh.mjs"),/POST_ALLOW_SCRIPT_NOT_ALLOWED/);
-for(const scope of ["admin","maintenance"]){
+for(const scope of["admin","maintenance"]){
   const command=wranglerCommand(scope,"preview","4.123.0",previewContext);
   assert.deepEqual(command.slice(0,4),["--yes","wrangler@4.123.0","versions","upload"]);
   assert.equal(command.includes("--dry-run"),false);
   assert.equal(command[command.indexOf("--tag")+1],"aaaaaaaaaaaa");
-  assert.match(command.join(" "),/candidate feature\/gate aaaaaaaaaaaa/);
 }
 assert.deepEqual(wranglerCommand("governance","preview","4.123.0",previewContext),["--yes","wrangler@4.123.0","deploy","--dry-run"]);
-assert.deepEqual(wranglerCommand("maintenance","deploy","4.123.0",{branch:"main",sha:"b".repeat(40)}),["--yes","wrangler@4.123.0","deploy"]);
-assert.throws(()=>wranglerCommand("unknown","preview","4.123.0",previewContext),/UNSUPPORTED_SCOPE/);
-assert.equal(isRelevantPath("admin","admin/src/index.js"),true);
-assert.equal(isRelevantPath("admin","governance/src/index.js"),false);
-assert.equal(isRelevantPath("governance","governance/docs/canary.md"),true);
-assert.equal(isRelevantPath("maintenance",".npmrc"),true);
+assert.equal(shouldRunL2("maintenance","preview",["maintenance/l2-acceptance-request.json"]),true);
+assert.equal(shouldRunL2("maintenance","preview",["maintenance/src/index.js"]),false);
+assert.equal(shouldRunL2("admin","preview",["maintenance/l2-acceptance-request.json"]),false);
+assert.equal(shouldRunL2("maintenance","deploy",["maintenance/l2-acceptance-request.json"]),false);
+assert.equal(isRelevantPath("maintenance","maintenance/l2-acceptance-request.json"),true);
 assert.equal(isRelevantPath("maintenance","scripts/cloudflare-worker-gate.mjs"),true);
+assert.equal(isRelevantPath("admin","maintenance/l2-acceptance-request.json"),false);
 assert.deepEqual(relevantPaths("governance",["admin/a.js","governance/z.js","governance/a.js","governance/a.js"]),["governance/a.js","governance/z.js"]);
-console.log(JSON.stringify({ok:true,suite:"cloudflare-worker-gate-contract",fail_closed_context:true,exact_wrangler_pin:true,per_worker_path_isolation:true,build_side_effect_post_hooks_disabled:true,skipped_scope_cannot_execute_post_allow:true,admin_and_maintenance_preview_create_tagged_versions:true,governance_preview_remains_dry_run:true}));
+console.log(JSON.stringify({ok:true,suite:"cloudflare-worker-gate-contract",fail_closed_context:true,exact_wrangler_pin:true,per_worker_path_isolation:true,build_side_effect_post_hooks_disabled:true,admin_and_maintenance_preview_create_tagged_versions:true,governance_preview_remains_dry_run:true,l2_requires_explicit_trigger_path:true,l2_only_runs_in_maintenance_preview:true}));

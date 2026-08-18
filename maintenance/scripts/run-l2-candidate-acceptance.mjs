@@ -5,169 +5,167 @@ import {resolve} from "node:path";
 import {pathToFileURL} from "node:url";
 
 const WRANGLER="4.123.0";
+const ADMIN="admin-worker";
+const MAINTENANCE="maintenance-worker";
+const OVERRIDE_HEADER="Cloudflare-Workers-Version-Overrides";
 const TAG_PATTERN=/^[a-f0-9]{12}$/i;
-const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
-function stripAnsi(value){return String(value||"").replace(/\u001b\[[0-9;]*m/g,"")}
-function cleanJson(value){
-  const text=stripAnsi(value).trim();
-  if(!text)throw new Error("WRANGLER_JSON_EMPTY");
-  try{return JSON.parse(text)}catch{}
-  const starts=[text.indexOf("["),text.indexOf("{")].filter(x=>x>=0).sort((a,b)=>a-b);
-  for(const start of starts){
-    for(const end of [text.lastIndexOf("]"),text.lastIndexOf("}")].filter(x=>x>start).sort((a,b)=>b-a)){
-      try{return JSON.parse(text.slice(start,end+1))}catch{}
-    }
-  }
-  throw new Error("WRANGLER_JSON_INVALID");
+function cleanJson(text){
+  const raw=String(text||"").replace(/\x1b\[[0-9;]*m/g,"").trim();
+  const starts=[raw.indexOf("["),raw.indexOf("{")].filter(i=>i>=0).sort((a,b)=>a-b);
+  if(!starts.length)throw new Error("WRANGLER_JSON_MISSING");
+  return JSON.parse(raw.slice(starts[0]));
 }
-function command(cwd,args,{stdio="pipe"}={}){
-  const r=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{cwd,encoding:"utf8",env:process.env,stdio,maxBuffer:8*1024*1024});
-  if(r.error)throw r.error;
-  if(r.status!==0){const e=new Error(`WRANGLER_FAILED:${args.join(" ")}`);e.stderr=stripAnsi(r.stderr);e.stdout=stripAnsi(r.stdout);throw e}
-  return r;
+function runJson(args){
+  const r=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{encoding:"utf8",env:{...process.env,CI:"1"},maxBuffer:4*1024*1024});
+  if(r.error||r.status!==0)throw Object.assign(new Error(`WRANGLER_FAILED:${args.join(" ")}`),{stderr:r.stderr,stdout:r.stdout});
+  return cleanJson(r.stdout);
 }
-function runJson(cwd,args){return cleanJson(command(cwd,[...args,"--json"]).stdout)}
-function gitRoot(){const r=spawnSync("git",["rev-parse","--show-toplevel"],{encoding:"utf8",env:process.env});if(r.status!==0)throw new Error("GIT_ROOT_UNAVAILABLE");return r.stdout.trim()}
-function candidateRows(payload){
+function run(args){
+  const r=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{encoding:"utf8",env:{...process.env,CI:"1"},stdio:"inherit"});
+  if(r.error||r.status!==0)throw new Error(`WRANGLER_FAILED:${args.join(" ")}`);
+}
+function idOf(x){return String(x?.version_id||x?.versionId||x?.id||"").trim()}
+function tagOf(x){return String(x?.tag||x?.annotations?.["workers/tag"]||"").trim()}
+export function findVersionByTag(payload,tag){
+  const rows=Array.isArray(payload)?payload:Array.isArray(payload?.versions)?payload.versions:Array.isArray(payload?.result)?payload.result:[];
+  const hits=rows.filter(x=>tagOf(x)===tag&&UUID_PATTERN.test(idOf(x)));
+  if(hits.length!==1)throw new Error(`CANDIDATE_VERSION_TAG_MATCH:${tag}:${hits.length}`);
+  return idOf(hits[0]);
+}
+function deploymentRows(payload){
   if(Array.isArray(payload))return payload;
-  for(const key of ["versions","result","data"]){if(Array.isArray(payload?.[key]))return payload[key]}
+  if(Array.isArray(payload?.deployments))return payload.deployments;
+  if(Array.isArray(payload?.result))return payload.result;
+  if(payload&&typeof payload==="object")return[payload];
   return[];
 }
-function rowTag(row){return String(row?.tag??row?.version_tag??row?.annotations?.["workers/tag"]??row?.annotations?.tag??"").trim()}
-function rowId(row){return String(row?.id??row?.version_id??"").trim()}
-export function findVersionByTag(payload,tag){
-  const matches=candidateRows(payload).filter(row=>rowTag(row)===tag).map(rowId).filter(Boolean);
-  const unique=[...new Set(matches)];
-  if(unique.length!==1||!UUID_PATTERN.test(unique[0]||""))throw new Error(`CANDIDATE_VERSION_TAG_MATCH:${tag}:${unique.length}`);
-  return unique[0];
-}
-function deploymentCandidates(payload){
-  const roots=[payload,payload?.deployment,payload?.result,payload?.data].filter(Boolean);
-  for(const root of roots){
-    if(Array.isArray(root?.versions))return root.versions;
-    if(Array.isArray(root)&&root.some(x=>x&&typeof x==="object"&&("percentage" in x)))return root;
-  }
+function versionRows(deployment){
+  if(Array.isArray(deployment?.versions))return deployment.versions;
+  if(Array.isArray(deployment?.deployment?.versions))return deployment.deployment.versions;
   return[];
 }
 export function currentDeployment(payload){
-  const rows=deploymentCandidates(payload).map(row=>({id:String(row?.version_id??row?.id??"").trim(),percentage:Number(row?.percentage)})).filter(row=>row.id&&Number.isFinite(row.percentage));
-  if(!rows.length)throw new Error("CURRENT_DEPLOYMENT_EMPTY");
-  const unique=[];for(const row of rows){if(!unique.some(x=>x.id===row.id))unique.push(row)}
-  return unique;
+  const dep=deploymentRows(payload)[0];
+  if(!dep)throw new Error("CURRENT_DEPLOYMENT_MISSING");
+  const rows=versionRows(dep).map(v=>({id:idOf(v),percentage:Number(v.percentage)})).filter(v=>UUID_PATTERN.test(v.id));
+  if(!rows.length){
+    const id=idOf(dep);
+    if(UUID_PATTERN.test(id))return[{id,percentage:100}];
+    throw new Error("CURRENT_DEPLOYMENT_VERSIONS_MISSING");
+  }
+  if(rows.length===1&&!Number.isFinite(rows[0].percentage))rows[0].percentage=100;
+  if(rows.some(v=>!Number.isFinite(v.percentage)))throw new Error("CURRENT_DEPLOYMENT_PERCENTAGE_MISSING");
+  const sum=rows.reduce((s,v)=>s+v.percentage,0);
+  if(Math.abs(sum-100)>0.001)throw new Error("CURRENT_DEPLOYMENT_PERCENTAGE_INVALID");
+  return rows;
 }
 export function stageSpecs(snapshot,candidate){
-  if(!UUID_PATTERN.test(candidate||""))throw new Error("CANDIDATE_VERSION_INVALID");
-  const positive=snapshot.filter(x=>x.percentage>0);
-  if(positive.length!==1||Math.abs(positive[0].percentage-100)>1e-9)throw new Error("CURRENT_DEPLOYMENT_NOT_100_STABLE");
-  if(positive[0].id===candidate)throw new Error("CANDIDATE_ALREADY_STABLE");
-  return[{id:positive[0].id,percentage:100},{id:candidate,percentage:0}];
+  if(!UUID_PATTERN.test(candidate))throw new Error("CANDIDATE_VERSION_INVALID");
+  const stable=snapshot.find(v=>Math.abs(v.percentage-100)<0.001);
+  if(!stable)throw new Error("CURRENT_DEPLOYMENT_NOT_100_STABLE");
+  if(snapshot.some(v=>v.percentage>0&&v.id!==stable.id))throw new Error("CURRENT_DEPLOYMENT_HAS_ACTIVE_SPLIT");
+  if(candidate===stable.id)return snapshot;
+  return[{id:stable.id,percentage:100},{id:candidate,percentage:0}];
 }
-function specsArgs(specs){return specs.map(x=>`${x.id}@${x.percentage}%`)}
-function deploySpecs(cwd,specs,message){command(cwd,["versions","deploy",...specsArgs(specs),"-y","--message",message],{stdio:"inherit"})}
-function versions(cwd){return runJson(cwd,["versions","list"])}
-function deployment(cwd){return currentDeployment(runJson(cwd,["deployments","status"]))}
-function sameDeployment(a,b){
-  const norm=x=>x.slice().sort((m,n)=>m.id.localeCompare(n.id)).map(v=>`${v.id}@${Number(v.percentage)}`);
-  return JSON.stringify(norm(a))===JSON.stringify(norm(b));
-}
-function ensureAdminCandidate(adminDir,tag){
-  try{return findVersionByTag(versions(adminDir),tag)}catch{}
-  const l2tag=`l2-${tag}`;
-  try{return findVersionByTag(versions(adminDir),l2tag)}catch{}
-  command(adminDir,["versions","upload","--tag",l2tag,"--message",`L2 acceptance candidate ${tag}`],{stdio:"inherit"});
-  return findVersionByTag(versions(adminDir),l2tag);
-}
-async function exactCandidate(cwd,tag,attempts=12){
+function specs(rows){return rows.map(v=>`${v.id}@${v.percentage}%`)}
+function deploy(worker,rows,message){run(["versions","deploy",...specs(rows),"-y","--name",worker,"--message",message])}
+async function waitCandidate(worker,tag,timeoutMs=120000){
+  const end=Date.now()+timeoutMs;
   let last;
-  for(let i=0;i<attempts;i++){
-    try{return findVersionByTag(versions(cwd),tag)}catch(e){last=e;await sleep(1000)}
+  while(Date.now()<end){
+    try{return findVersionByTag(runJson(["versions","list","--name",worker,"--json"]),tag)}
+    catch(e){last=e;await sleep(3000)}
   }
-  throw last||new Error(`CANDIDATE_NOT_FOUND:${tag}`);
+  throw last||new Error(`CANDIDATE_NOT_FOUND:${worker}:${tag}`);
 }
-function overrideValue(adminVersion,maintenanceVersion){return `admin-worker="${adminVersion}", maintenance-worker="${maintenanceVersion}"`}
+function snapshot(worker){return currentDeployment(runJson(["deployments","status","--name",worker,"--json"]))}
 export function validateReceipt(body,adminVersion,maintenanceVersion){
-  if(body?.ok!==true)throw new Error(`L2_RECEIPT_NOT_OK:${body?.error||body?.result?.error||"unknown"}`);
+  if(body?.ok!==true)throw new Error(`L2_RESPONSE_NOT_OK:${body?.error||"unknown"}`);
   if(body?.admin_version!==adminVersion)throw new Error("ADMIN_VERSION_OVERRIDE_NOT_APPLIED");
   if(body?.maintenance_version!==maintenanceVersion)throw new Error("MAINTENANCE_VERSION_OVERRIDE_NOT_APPLIED");
-  if(body?.transport!=="fetch-version-override")throw new Error("ADMIN_OVERRIDE_TRANSPORT_NOT_PROVEN");
-  if(body?.maintenance_transport!=="fetch")throw new Error("MAINTENANCE_FETCH_TRANSPORT_NOT_PROVEN");
+  if(body?.transport!=="fetch-version-override")throw new Error("ADMIN_TRANSPORT_NOT_VERSION_OVERRIDE_FETCH");
+  if(body?.maintenance_transport!=="fetch")throw new Error("MAINTENANCE_TRANSPORT_NOT_FETCH");
   const result=body?.result;
-  if(result?.ok!==true||result?.status!=="active")throw new Error(`ROUTE_FAMILY_NOT_ACTIVE:${result?.status||"missing"}`);
-  if(!Array.isArray(result.route_family)||result.route_family.length!==8)throw new Error("ROUTE_FAMILY_COUNT_INVALID");
-  for(const route of result.route_family){if(!route?.route_name||!route?.route_id||!route?.version_id)throw new Error("ROUTE_RECEIPT_INCOMPLETE")}
-  if(!Array.isArray(result.company_lanes)||result.company_lanes.length!==8)throw new Error("COMPANY_LANE_COUNT_INVALID");
-  if(new Set(result.company_lanes.map(x=>x?.company).filter(Boolean)).size!==8)throw new Error("COMPANY_DIVERSITY_INVALID");
-  if(result?.selftest?.ok!==true||Number(result?.selftest?.http_status)!==200||result?.selftest?.company_diverse!==true)throw new Error("EXPERT_SELFTEST_INVALID");
-  if(!Array.isArray(result?.selftest?.models)||result.selftest.models.length===0)throw new Error("EXPERT_SELFTEST_MODELS_EMPTY");
-  if(body?.rollback_rehearsal?.ok!==true||!Array.isArray(body?.rollback_rehearsal?.mismatches)||body.rollback_rehearsal.mismatches.length!==0)throw new Error("ROUTE_ROLLBACK_REHEARSAL_FAILED");
-  return{ok:true,route_count:8,company_count:8,admin_version:adminVersion,maintenance_version:maintenanceVersion,plan_digest:result.plan_digest||null,free_lane_count:result.free_lane_count??null,selftest_models:result.selftest.models};
+  if(result?.ok!==true||result?.status!=="active")throw new Error(`ROUTE_RESULT_NOT_ACTIVE:${result?.status||"missing"}`);
+  if(!Array.isArray(result.route_family)||result.route_family.length!==8)throw new Error("ROUTE_FAMILY_NOT_EIGHT");
+  if(result.route_family.some(r=>!r?.route_id||!r?.version_id))throw new Error("ROUTE_FAMILY_RECEIPT_INCOMPLETE");
+  if(!Array.isArray(result.company_lanes)||result.company_lanes.length!==8)throw new Error("COMPANY_LANES_NOT_EIGHT");
+  const companies=new Set((result.company_lanes||[]).map(x=>String(x?.company||"").toLowerCase()).filter(Boolean));
+  if(companies.size!==8)throw new Error("COMPANY_DIVERSITY_NOT_EIGHT");
+  if(result.selftest?.ok!==true||result.selftest?.http_status!==200||result.selftest?.company_diverse!==true||!Array.isArray(result.selftest?.models)||result.selftest.models.length===0)throw new Error("EXPERT_SELFTEST_NOT_DIVERSE");
+  if(body?.rollback_rehearsal?.ok!==true)throw new Error("ROLLBACK_REHEARSAL_NOT_COMPLETE");
+  if((body.rollback_rehearsal?.mismatches||[]).length!==0)throw new Error("ROLLBACK_SNAPSHOT_MISMATCH");
+  return{
+    ok:true,
+    admin_version:adminVersion,
+    maintenance_version:maintenanceVersion,
+    route_versions:result.route_family.map(r=>({route_name:r.route_name,route_id:r.route_id,version_id:r.version_id,previous_version_id:r.previous_version_id||null})),
+    companies:[...companies],
+    free_lane_count:Number(result.free_lane_count||0),
+    selftest:{ok:true,http_status:result.selftest.http_status||0,company_diverse:true,models:Array.isArray(result.selftest.models)?result.selftest.models:[]},
+    plan_digest:result.plan_digest||null,
+    rollback_rehearsal:{ok:true},
+    secrets_redacted:true
+  };
 }
-function harnessFiles(root){
-  const dir=resolve(root,".l2-remote-harness");rmSync(dir,{recursive:true,force:true});mkdirSync(dir,{recursive:true});
-  const worker=`export default{async fetch(req,env){const u=new URL(req.url);if(u.pathname==="/health")return Response.json({ok:true});const overrides=req.headers.get("x-l2-overrides")||"";const headers={accept:"application/json","Cloudflare-Workers-Version-Overrides":overrides};if(req.method==="GET"&&u.pathname==="/probe")return env.ADMIN_ACCEPTANCE.fetch(new Request("https://admin.acceptance/v1/control/version",{headers}));if(req.method==="POST"&&u.pathname==="/run"){headers["content-type"]="application/json";const body=await req.text();return env.ADMIN_ACCEPTANCE.fetch(new Request("https://admin.acceptance/v1/control/expert-route/refresh",{method:"POST",headers,body}))}return Response.json({ok:false,error:"NOT_FOUND"},{status:404})}};`;
-  const config={name:"expert-l2-acceptance-dev",main:"worker.mjs",compatibility_date:"2026-08-18",services:[{binding:"ADMIN_ACCEPTANCE",service:"admin-worker",entrypoint:"AdminAcceptanceControl",props:{caller:"expert-l2-acceptance",capability:"expert-route-acceptance"}}]};
-  writeFileSync(resolve(dir,"worker.mjs"),worker);writeFileSync(resolve(dir,"wrangler.jsonc"),JSON.stringify(config,null,2));return dir;
-}
-async function waitHttp(url,{method="GET",headers,body,attempts=45,requireOk=true}={}){
-  let last;
-  for(let i=0;i<attempts;i++){
-    try{const r=await fetch(url,{method,headers,body});if(!requireOk||r.ok)return r;last=new Error(`HTTP_${r.status}`)}catch(e){last=e}
-    await sleep(1000);
-  }
-  throw last||new Error("HTTP_WAIT_FAILED");
-}
-async function remoteHarness(root,adminVersion,maintenanceVersion,requestId){
-  const dir=harnessFiles(root),port=8900+(process.pid%500),logs=[];
-  const child=spawn("npx",["--yes",`wrangler@${WRANGLER}`,"dev","--remote","--config","wrangler.jsonc","--ip","127.0.0.1","--port",String(port),"--show-interactive-dev-session=false","--log-level","error"],{cwd:dir,env:{...process.env,WRANGLER_SEND_METRICS:"false"},stdio:["ignore","pipe","pipe"]});
-  child.stdout?.on("data",d=>logs.push(stripAnsi(d).slice(-4000)));child.stderr?.on("data",d=>logs.push(stripAnsi(d).slice(-4000)));
+
+async function remoteHarness(adminVersion,maintenanceVersion,requestId){
+  const dir=resolve(".l2-runtime");
+  rmSync(dir,{recursive:true,force:true});mkdirSync(dir,{recursive:true});
+  writeFileSync(resolve(dir,"worker.mjs"),`export default{async fetch(request,env){const u=new URL(request.url);if(u.pathname==="/health")return Response.json({ok:true});if(request.method==="POST"&&u.pathname==="/run"){const body=await request.text();const h=new Headers({"content-type":"application/json","accept":"application/json"});const o=request.headers.get("${OVERRIDE_HEADER}");if(o)h.set("${OVERRIDE_HEADER}",o);return env.ADMIN_ACCEPTANCE.fetch(new Request("https://admin.accept/v1/control/expert-route/refresh",{method:"POST",headers:h,body}))}return Response.json({ok:false,error:"NOT_FOUND"},{status:404})}};`);
+  writeFileSync(resolve(dir,"wrangler.jsonc"),JSON.stringify({
+    name:`expert-l2-${Date.now().toString(36)}`.slice(0,48),
+    main:"worker.mjs",
+    compatibility_date:"2026-08-18",
+    workers_dev:false,
+    preview_urls:false,
+    services:[{binding:"ADMIN_ACCEPTANCE",service:ADMIN,entrypoint:"AdminAcceptanceControl",props:{caller:"expert-l2-acceptance",capability:"expert-route-acceptance"}}]
+  },null,2));
+  const child=spawn("npx",["--yes",`wrangler@${WRANGLER}`,"dev","--remote","--config",resolve(dir,"wrangler.jsonc"),"--port","8787"],{stdio:["ignore","pipe","pipe"],env:{...process.env,CI:"1"}});
+  let logs=""; child.stdout.on("data",d=>logs+=d);child.stderr.on("data",d=>logs+=d);
   try{
-    await waitHttp(`http://127.0.0.1:${port}/health`);
-    const overrides=overrideValue(adminVersion,maintenanceVersion),probeHeaders={"x-l2-overrides":overrides};
-    let proven=false,lastProbe=null;
-    for(let attempt=1;attempt<=12;attempt++){
-      const r=await waitHttp(`http://127.0.0.1:${port}/probe`,{headers:probeHeaders,attempts:2,requireOk:false});
-      lastProbe=await r.json().catch(()=>null);
-      if(r.ok&&lastProbe?.ok===true&&lastProbe?.admin_version===adminVersion&&lastProbe?.maintenance_version===maintenanceVersion&&lastProbe?.transport==="fetch-version-override"&&lastProbe?.maintenance_transport==="fetch"){proven=true;break}
+    const end=Date.now()+90000;let ready=false;
+    while(Date.now()<end){
+      if(child.exitCode!==null)throw new Error(`REMOTE_DEV_EXITED:${child.exitCode}:${logs.slice(-2000)}`);
+      try{const r=await fetch("http://127.0.0.1:8787/health");if(r.ok){ready=true;break}}catch{}
       await sleep(1500);
     }
-    if(!proven)throw Object.assign(new Error("VERSION_OVERRIDE_PROBE_FAILED"),{details:lastProbe});
-    const r=await fetch(`http://127.0.0.1:${port}/run`,{method:"POST",headers:{"content-type":"application/json","x-l2-overrides":overrides},body:JSON.stringify({request_id:requestId})});
-    const body=await r.json().catch(()=>null);
-    if(!r.ok&&body?.ok!==true)throw Object.assign(new Error(`L2_REMOTE_HTTP_${r.status}`),{details:body});
-    return body;
+    if(!ready)throw new Error(`REMOTE_DEV_NOT_READY:${logs.slice(-2000)}`);
+    const override=`${ADMIN}="${adminVersion}", ${MAINTENANCE}="${maintenanceVersion}"`;
+    const response=await fetch("http://127.0.0.1:8787/run",{method:"POST",headers:{"content-type":"application/json",[OVERRIDE_HEADER]:override},body:JSON.stringify({request_id:requestId})});
+    const body=await response.json().catch(()=>null);
+    if(!response.ok)throw Object.assign(new Error(`L2_HTTP_${response.status}`),{body});
+    return validateReceipt(body,adminVersion,maintenanceVersion);
   }finally{
-    child.kill("SIGTERM");await Promise.race([new Promise(r=>child.once("exit",r)),sleep(3000)]);rmSync(dir,{recursive:true,force:true});
+    child.kill("SIGTERM");await Promise.race([new Promise(r=>child.once("exit",r)),sleep(5000)]);if(child.exitCode===null)child.kill("SIGKILL");
+    rmSync(dir,{recursive:true,force:true});
   }
 }
 
-export async function main(){
-  const trigger=JSON.parse(readFileSync(resolve(process.cwd(),"l2-acceptance-request.json"),"utf8"));
-  if(trigger?.schema!=="expert-l2-acceptance-v1"||trigger?.enabled!==true)throw new Error("L2_TRIGGER_NOT_ENABLED");
-  const requestId=String(trigger.request_id||"").trim();if(!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId))throw new Error("L2_REQUEST_ID_INVALID");
-  const sha=String(process.env.WORKERS_CI_COMMIT_SHA||"").trim(),tag=sha.slice(0,12);if(!TAG_PATTERN.test(tag))throw new Error("L2_COMMIT_TAG_INVALID");
-  const root=gitRoot(),maintenanceDir=resolve(root,"maintenance"),adminDir=resolve(root,"admin");
-  const maintenanceVersion=await exactCandidate(maintenanceDir,tag),adminVersion=ensureAdminCandidate(adminDir,tag);
-  const beforeAdmin=deployment(adminDir),beforeMaintenance=deployment(maintenanceDir);
-  let primaryError=null,result=null;const restoreErrors=[];
+async function main(){
+  const request=JSON.parse(readFileSync("l2-acceptance-request.json","utf8"));
+  if(request?.schema!=="expert-l2-acceptance-v1"||request?.enabled!==true)throw new Error("L2_TRIGGER_INVALID");
+  const tag=String(process.env.WORKERS_CI_COMMIT_SHA||"").slice(0,12);
+  if(!TAG_PATTERN.test(tag))throw new Error("L2_TAG_INVALID");
+  const requestId=String(request.request_id||`l2-${tag}`);
+  if(!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId))throw new Error("L2_REQUEST_ID_INVALID");
+  const adminCandidate=await waitCandidate(ADMIN,tag),maintenanceCandidate=await waitCandidate(MAINTENANCE,tag);
+  const adminSnapshot=snapshot(ADMIN),maintenanceSnapshot=snapshot(MAINTENANCE);
+  let adminStaged=false,maintenanceStaged=false;
   try{
-    deploySpecs(adminDir,stageSpecs(beforeAdmin,adminVersion),`L2 0% candidate ${tag}`);
-    deploySpecs(maintenanceDir,stageSpecs(beforeMaintenance,maintenanceVersion),`L2 0% candidate ${tag}`);
-    await sleep(2500);
-    const body=await remoteHarness(root,adminVersion,maintenanceVersion,requestId);
-    result=validateReceipt(body,adminVersion,maintenanceVersion);
-    console.log(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_PASS",...result,secrets_redacted:true}));
-  }catch(error){primaryError=error;console.error(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_FAIL",error:String(error?.message||error),details:error?.details||null,secrets_redacted:true}))}
-  finally{
-    for(const [name,dir,snapshot] of [["maintenance",maintenanceDir,beforeMaintenance],["admin",adminDir,beforeAdmin]]){
-      try{deploySpecs(dir,snapshot,`Restore pre-L2 ${tag}`);const after=deployment(dir);if(!sameDeployment(snapshot,after))throw new Error("WORKER_DEPLOYMENT_RESTORE_MISMATCH");console.log(JSON.stringify({event:"L2_WORKER_DEPLOYMENT_RESTORED",worker:name,versions:snapshot,secrets_redacted:true}))}
-      catch(error){restoreErrors.push({worker:name,error:String(error?.message||error)});console.error(JSON.stringify({event:"L2_WORKER_DEPLOYMENT_RESTORE_FAILED",worker:name,error:String(error?.message||error)}))}
-    }
+    deploy(ADMIN,stageSpecs(adminSnapshot,adminCandidate),`L2 0% candidate ${tag}`);adminStaged=true;
+    deploy(MAINTENANCE,stageSpecs(maintenanceSnapshot,maintenanceCandidate),`L2 0% candidate ${tag}`);maintenanceStaged=true;
+    await sleep(5000);
+    const receipt=await remoteHarness(adminCandidate,maintenanceCandidate,requestId);
+    console.log(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_PASS",tag,request_id:requestId,...receipt}));
+  }finally{
+    const restoreErrors=[];
+    if(maintenanceStaged){try{deploy(MAINTENANCE,maintenanceSnapshot,`L2 restore ${tag}`)}catch(error){restoreErrors.push({worker:MAINTENANCE,error:String(error?.message||error)})}}
+    if(adminStaged){try{deploy(ADMIN,adminSnapshot,`L2 restore ${tag}`)}catch(error){restoreErrors.push({worker:ADMIN,error:String(error?.message||error)})}}
+    if(restoreErrors.length)throw Object.assign(new Error("WORKER_DEPLOYMENT_RESTORE_FAILED"),{body:{restore_errors:restoreErrors}});
   }
-  if(restoreErrors.length)throw Object.assign(new Error("L2_WORKER_DEPLOYMENT_RESTORE_FAILED"),{details:restoreErrors,cause:primaryError});
-  if(primaryError)throw primaryError;
-  return result;
 }
-const invoked=process.argv[1]?pathToFileURL(resolve(process.argv[1])).href:"";
-if(import.meta.url===invoked)main().catch(error=>{console.error(JSON.stringify({ok:false,event:"L2_EXPERT_ROUTE_ACCEPTANCE_FATAL",error:String(error?.message||error),details:error?.details||null,secrets_redacted:true}));process.exitCode=1});
+if(import.meta.url===pathToFileURL(resolve(process.argv[1]||"")).href)main().catch(error=>{console.error(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_FAIL",error:String(error?.message||error),details:error?.body||null,secrets_redacted:true}));process.exitCode=1});

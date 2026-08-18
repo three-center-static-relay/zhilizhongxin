@@ -23,53 +23,75 @@ async function literatureSelftest(req,env){
 
 function overrideHeader(req){return String(req.headers.get(VERSION_OVERRIDE_HEADER)||"").trim()}
 function validRequestId(value){const id=String(value||"").trim();return /^[A-Za-z0-9._:-]{1,128}$/.test(id)?id:null}
-function authorizeAcceptance(ctx){const props=ctx?.props||{};if(props.caller!=="expert-l2-acceptance"||props.capability!=="expert-route-acceptance")throw new Error("ACCEPTANCE_CALLER_NOT_AUTHORIZED")}
+function authorizeAcceptance(ctx){
+  const props=ctx?.props||{};
+  if(props.caller!=="expert-l2-acceptance"||props.capability!=="expert-route-acceptance")throw new Error("ACCEPTANCE_CALLER_NOT_AUTHORIZED");
+}
 async function fetchMaintenanceControl(req,svc,path,init={}){
   if(typeof svc?.fetch!=="function")throw Object.assign(new Error("MAINTENANCE_CONTROL_FETCH_UNAVAILABLE"),{status:503});
-  const headers=new Headers(init.headers||{}),override=overrideHeader(req);if(override)headers.set(VERSION_OVERRIDE_HEADER,override);
+  const headers=new Headers(init.headers||{});
+  const override=overrideHeader(req);
+  if(override)headers.set(VERSION_OVERRIDE_HEADER,override);
   const response=await svc.fetch(new Request(`https://maintenance.control${path}`,{...init,headers}));
-  const body=await response.json().catch(()=>null);return{response,body};
-}
-async function candidateVersionProbe(req,env){
-  const call=await fetchMaintenanceControl(req,env.MAINTENANCE_CONTROL,"/v1/control/version",{method:"GET",headers:{accept:"application/json"}}),receipt=call.body||{};
-  const ok=call.response.ok&&receipt?.ok===true;
-  return json({...receipt,ok,operation:"candidate-version-probe",transport:"fetch-version-override",maintenance_transport:receipt?.transport||null,admin_version:versionId(env)},ok?200:502);
+  const body=await response.json().catch(()=>null);
+  return{response,body};
 }
 async function runCandidateRefresh(req,env,requestId){
   const call=await fetchMaintenanceControl(req,env.MAINTENANCE_CONTROL,"/v1/control/expert-route/refresh",{method:"POST",headers:{accept:"application/json","content-type":"application/json"},body:JSON.stringify({request_id:requestId})});
-  const receipt=call.body||{ok:false,http_status:call.response.status,error:"MAINTENANCE_CONTROL_BAD_RESPONSE"},ok=receipt?.ok===true,status=ok?200:receipt?.http_status===409?409:502;
-  return json({...receipt,ok,operation:"expert-route-refresh",transport:"fetch-version-override",maintenance_transport:receipt?.transport||null,admin_version:versionId(env)},status);
+  const receipt=call.body||{ok:false,http_status:call.response.status,error:"MAINTENANCE_CONTROL_BAD_RESPONSE"};
+  const ok=receipt?.ok===true,status=ok?200:receipt?.http_status===409?409:502;
+  return json({ ...receipt, ok, operation:"expert-route-refresh", transport:"fetch-version-override", maintenance_transport:receipt?.transport||null, admin_version:versionId(env) },status);
 }
 
 async function expertRouteRefresh(req,env){
-  await auth(req,env);const svc=env.MAINTENANCE_CONTROL,body=await req.json().catch(()=>({})),requestId=validRequestId(body.request_id||crypto.randomUUID());
+  await auth(req,env);
+  const svc=env.MAINTENANCE_CONTROL;
+  const body=await req.json().catch(()=>({})),requestId=validRequestId(body.request_id||crypto.randomUUID());
   if(!requestId)return fail("INVALID_REQUEST","request_id format is invalid",400);
   const started=Date.now(),override=overrideHeader(req);
   try{
     let receipt,transport;
-    if(override){const call=await fetchMaintenanceControl(req,svc,"/v1/control/expert-route/refresh",{method:"POST",headers:{accept:"application/json","content-type":"application/json"},body:JSON.stringify({request_id:requestId})});receipt=call.body||{ok:false,http_status:call.response.status,error:"MAINTENANCE_CONTROL_BAD_RESPONSE"};transport="fetch-version-override"}
-    else{if(typeof svc?.refreshExpertRoute!=="function")return fail("MAINTENANCE_CONTROL_UNCONFIGURED","maintenance RPC control binding is not configured",503);receipt=await svc.refreshExpertRoute(requestId);transport="rpc"}
+    if(override){
+      const call=await fetchMaintenanceControl(req,svc,"/v1/control/expert-route/refresh",{method:"POST",headers:{accept:"application/json","content-type":"application/json"},body:JSON.stringify({request_id:requestId})});
+      receipt=call.body||{ok:false,http_status:call.response.status,error:"MAINTENANCE_CONTROL_BAD_RESPONSE"};
+      transport="fetch-version-override";
+    }else{
+      if(typeof svc?.refreshExpertRoute!=="function")return fail("MAINTENANCE_CONTROL_UNCONFIGURED","maintenance RPC control binding is not configured",503);
+      receipt=await svc.refreshExpertRoute(requestId);
+      transport="rpc";
+    }
     const ok=receipt?.ok===true,status=ok?200:receipt?.http_status===409?409:502;
-    return json({...receipt,ok,operation:"expert-route-refresh",transport,maintenance_transport:receipt?.transport||null,admin_version:versionId(env),elapsed_ms:Date.now()-started},status);
+    return json({ ...receipt, ok, operation:"expert-route-refresh", transport, maintenance_transport:receipt?.transport||null, admin_version:versionId(env), elapsed_ms:Date.now()-started },status);
   }catch(e){return fail("MAINTENANCE_CONTROL_FAILED",String(e?.message||e),e?.status||502,{operation:"expert-route-refresh",request_id:requestId,admin_version:versionId(env),elapsed_ms:Date.now()-started})}
 }
+
 async function expertRouteLatest(req,env){
-  await auth(req,env);const svc=env.MAINTENANCE_CONTROL,override=overrideHeader(req);
+  await auth(req,env);
+  const svc=env.MAINTENANCE_CONTROL,override=overrideHeader(req);
   try{
     let receipt,transport;
-    if(override){const call=await fetchMaintenanceControl(req,svc,"/v1/control/expert-route/latest",{method:"GET",headers:{accept:"application/json"}});receipt=call.body||{ok:false,http_status:call.response.status,error:"MAINTENANCE_CONTROL_BAD_RESPONSE"};transport="fetch-version-override"}
-    else{if(typeof svc?.latestExpertRoute!=="function")return fail("MAINTENANCE_CONTROL_UNCONFIGURED","maintenance RPC control binding is not configured",503);receipt=await svc.latestExpertRoute();transport="rpc"}
-    return json({...receipt,ok:receipt?.ok===true,operation:"expert-route-latest",transport,maintenance_transport:receipt?.transport||null,admin_version:versionId(env)},receipt?.ok===true?200:502);
+    if(override){
+      const call=await fetchMaintenanceControl(req,svc,"/v1/control/expert-route/latest",{method:"GET",headers:{accept:"application/json"}});
+      receipt=call.body||{ok:false,http_status:call.response.status,error:"MAINTENANCE_CONTROL_BAD_RESPONSE"};
+      transport="fetch-version-override";
+    }else{
+      if(typeof svc?.latestExpertRoute!=="function")return fail("MAINTENANCE_CONTROL_UNCONFIGURED","maintenance RPC control binding is not configured",503);
+      receipt=await svc.latestExpertRoute();
+      transport="rpc";
+    }
+    return json({ ...receipt, ok:receipt?.ok===true, operation:"expert-route-latest", transport, maintenance_transport:receipt?.transport||null, admin_version:versionId(env) },receipt?.ok===true?200:502);
   }catch(e){return fail("MAINTENANCE_CONTROL_FAILED",String(e?.message||e),e?.status||502,{operation:"expert-route-latest",admin_version:versionId(env)})}
 }
 
 export class AdminAcceptanceControl extends WorkerEntrypoint{
   async fetch(request){
-    authorizeAcceptance(this.ctx);const url=new URL(request.url);
-    if(request.method==="GET"&&url.pathname==="/v1/control/version"){try{return await candidateVersionProbe(request,this.env)}catch(error){return json({ok:false,error:String(error?.message||error),admin_version:versionId(this.env),secrets_redacted:true},502)}}
+    authorizeAcceptance(this.ctx);
+    const url=new URL(request.url);
     if(request.method==="POST"&&url.pathname==="/v1/control/expert-route/refresh"){
-      const body=await request.json().catch(()=>({})),requestId=validRequestId(body.request_id);if(!requestId)return json({ok:false,error:"INVALID_REQUEST_ID",admin_version:versionId(this.env),secrets_redacted:true},400);
-      try{return await runCandidateRefresh(request,this.env,requestId)}catch(error){return json({ok:false,error:String(error?.message||error),admin_version:versionId(this.env),secrets_redacted:true},502)}
+      const body=await request.json().catch(()=>({})),requestId=validRequestId(body.request_id);
+      if(!requestId)return json({ok:false,error:"INVALID_REQUEST_ID",admin_version:versionId(this.env),secrets_redacted:true},400);
+      try{return await runCandidateRefresh(request,this.env,requestId)}
+      catch(error){return json({ok:false,error:String(error?.message||error),admin_version:versionId(this.env),secrets_redacted:true},502)}
     }
     return json({ok:false,error:"NOT_FOUND",admin_version:versionId(this.env),secrets_redacted:true},404);
   }
