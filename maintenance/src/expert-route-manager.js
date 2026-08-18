@@ -340,15 +340,17 @@ function buildElements(lanes) {
     { id: "start", type: "start", outputs: { next: { elementId: "lane_1" } } },
     { id: "end", type: "end", outputs: {} }
   ];
+  const legacyTargets = {};
   for (let index = 0; index < lanes.length; index++) {
     const lane = lanes[index];
     const n = lane.lane;
-    const nextLane = index < lanes.length - 1 ? `lane_${index + 2}` : "end";
+    const nextLane = index < lanes.length - 1 ? `lane_${index + 2}` : "legacy_expert_1";
     const qualityTarget = addModelChain(elements, `m_${n}_quality`, [...lane.quality, ...lane.balanced, ...lane.free]);
     const balancedTarget = addModelChain(elements, `m_${n}_balanced`, [...lane.balanced, ...lane.quality, ...lane.free]);
     const freeTarget = addModelChain(elements, `m_${n}_free`, [...lane.free, ...lane.balanced, ...lane.quality]) || balancedTarget;
     const fastTarget = addModelChain(elements, `m_${n}_fast`, [...lane.fast, ...lane.balanced, ...lane.quality, ...lane.free]) || balancedTarget;
     const capabilityRoot = addCapabilityChain(elements, n, lane, balancedTarget);
+    legacyTargets[n] = qualityTarget || balancedTarget || freeTarget || fastTarget || "end";
     const root = `lane_${n}`;
     const free = `lane_${n}_free`;
     const quality = `lane_${n}_quality`;
@@ -393,6 +395,24 @@ function buildElements(lanes) {
       outputs: { true: { elementId: fastTarget }, false: { elementId: capabilityRoot } }
     });
   }
+
+  const legacy = [
+    ["expert-1", "1"],
+    ["expert-2", "2"],
+    ["expert-3", "3"],
+    ["judge", "4"],
+    ["governance", "5"]
+  ];
+  legacy.forEach(([slot, lane], index) => {
+    const id = `legacy_${slot.replace(/-/g, "_")}`;
+    const next = index < legacy.length - 1 ? `legacy_${legacy[index + 1][0].replace(/-/g, "_")}` : "end";
+    elements.push({
+      id,
+      type: "conditional",
+      properties: { conditions: { "metadata.expert_slot": { "$eq": slot } } },
+      outputs: { true: { elementId: legacyTargets[lane] || "end" }, false: { elementId: next } }
+    });
+  });
   return elements;
 }
 
@@ -495,11 +515,19 @@ export async function refreshExpertRoute(env, { previous = null, expertBinding =
   const lanes = selectLanes(catalog);
   const elements = buildElements(lanes);
   const plan = {
-    schema: "adaptive-expert-route-v3",
+    schema: "adaptive-expert-route-v3-transition",
     gateway_id: config.gatewayId,
     route_name: config.routeName,
     ranking_signals: SORTS,
     telemetry_samples: catalog.observed.sample_count,
+    legacy_metadata_compatibility: true,
+    legacy_slot_to_lane: {
+      "expert-1": "1",
+      "expert-2": "2",
+      "expert-3": "3",
+      judge: "4",
+      governance: "5"
+    },
     lanes: lanes.map(lane => ({
       lane: lane.lane,
       company: lane.company,
@@ -560,6 +588,7 @@ export async function refreshExpertRoute(env, { previous = null, expertBinding =
     previous_version_id: version.previousVersionId,
     plan_digest: planDigest,
     telemetry_samples: catalog.observed.sample_count,
+    legacy_metadata_compatibility: true,
     company_lanes: lanes.map(lane => ({ lane: lane.lane, company: lane.company })),
     free_lane_count: lanes.filter(lane => lane.free.length > 0).length,
     selftest: {
