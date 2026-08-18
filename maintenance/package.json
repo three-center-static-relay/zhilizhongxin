@@ -1,5 +1,6 @@
 {
   "name": "maintenance-worker",
+  "description": "Governance maintenance and adaptive expert-route lifecycle",
   "private": true,
   "type": "module",
   "scripts": {
