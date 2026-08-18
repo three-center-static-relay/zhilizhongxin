@@ -12,7 +12,8 @@
     "CLOUDFLARE_ACCOUNT_ID": "e3aec027af13c557bbcb831d29c1e7b4",
     "AI_GATEWAY_ID": "test",
     "AI_GATEWAY_ROUTE": "expert-panel-v1",
-    "EXPERT_ROUTE_REFRESH_HOURS": "6"
+    "EXPERT_ROUTE_REFRESH_HOURS": "6",
+    "IMMEDIATE_REFRESH_ENABLED": "false"
   },
   "durable_objects": {
     "bindings": [
