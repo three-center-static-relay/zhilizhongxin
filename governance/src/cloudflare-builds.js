@@ -84,9 +84,9 @@ async function releaseCurrentCandidateOperation(env){
 }
 
 function safePreviewTrigger(trigger){
-  const deploy=String(trigger?.deploy_command||"").toLowerCase();
+  const deploy=String(trigger?.deploy_command||"").toLowerCase().replace(/\s+/g," ").trim();
   const excludes=Array.isArray(trigger?.branch_excludes)?trigger.branch_excludes.map(String):[];
-  return Boolean(trigger?.trigger_uuid)&&excludes.includes("main")&&/wrangler\s+versions\s+upload/.test(deploy);
+  return Boolean(trigger?.trigger_uuid)&&excludes.includes("main")&&deploy==="npm run cf:build && npx wrangler deploy --dry-run";
 }
 
 async function resolvePreviewTrigger(env,scriptName){
@@ -173,7 +173,7 @@ function buildState(build,expected){
     commit_hash:String(metadata?.commit_hash||"").toLowerCase(),
     branch_matches:String(metadata?.branch||"")===String(expected?.branch||""),
     commit_matches:String(metadata?.commit_hash||"").toLowerCase()===String(expected?.commit_hash||"").toLowerCase(),
-    safe_preview_deploy:/wrangler\s+versions\s+upload/.test(deploy),
+    safe_preview_deploy:deploy.replace(/\s+/g," ").trim()==="npm run cf:build && npx wrangler deploy --dry-run",
     created_on:build?.created_on||null,
     stopped_on:build?.stopped_on||null
   };

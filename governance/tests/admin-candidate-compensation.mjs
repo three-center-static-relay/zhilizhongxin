@@ -56,7 +56,7 @@ globalThis.fetch=async (input,init={})=>{
   const prefix="/client/v4/accounts/account-test",path=url.pathname.slice(prefix.length);
   if(method==="GET"&&path==="/workers/scripts")return Response.json({success:true,result:scripts.map(([id,,tag])=>({id,tag}))});
   let m=path.match(/^\/builds\/workers\/([^/]+)\/triggers$/);
-  if(method==="GET"&&m){const tag=decodeURIComponent(m[1]);assert.ok(byTag.has(tag));return Response.json({success:true,result:[{trigger_uuid:`preview-${tag}`,deploy_command:"npm run cf:build && npx wrangler versions upload",branch_includes:["*"],branch_excludes:["main"]}]});}
+  if(method==="GET"&&m){const tag=decodeURIComponent(m[1]);assert.ok(byTag.has(tag));return Response.json({success:true,result:[{trigger_uuid:`preview-${tag}`,deploy_command:"npm run cf:build && npx wrangler deploy --dry-run",branch_includes:["*"],branch_excludes:["main"]}]});}
   m=path.match(/^\/builds\/triggers\/preview-(tag-[^/]+)\/builds$/);
   if(method==="POST"&&m){const tag=decodeURIComponent(m[1]),entry=byTag.get(tag);assert.ok(entry);const body=JSON.parse(init.body);assert.equal(body.branch,"candidate/persistence-failure");assert.equal(body.commit_hash,COMMITS[entry.center]);buildNumber+=1;return Response.json({success:true,result:{build_uuid:`build-${entry.center}-${buildNumber}`,created_on:"2026-08-16T00:00:00.000Z"}});}
   m=path.match(/^\/builds\/builds\/([^/]+)\/cancel$/);

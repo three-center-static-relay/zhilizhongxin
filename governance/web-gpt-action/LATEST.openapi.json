@@ -251,8 +251,8 @@
     "/v1/admin/candidates": {
       "post": {
         "operationId": "createCandidateVersion",
-        "summary": "Trigger pinned Cloudflare preview candidate builds",
-        "description": "Trigger four non-production Workers Builds pinned to exact Git commits. Only preview triggers using wrangler versions upload are allowed; production traffic is never changed.",
+        "summary": "Trigger pinned Cloudflare candidate dry runs",
+        "description": "Trigger four non-production Workers Builds pinned to exact Git commits. Only build-and-package dry runs are allowed; no Worker version is uploaded and production traffic is never changed.",
         "security": [{"BearerAuth": []}],
         "requestBody": {
           "required": true,
@@ -283,19 +283,19 @@
           }
         },
         "responses": {
-          "202": {"description": "All four preview builds accepted; candidate is building."},
+          "202": {"description": "All four candidate dry-run builds accepted."},
           "400": {"description": "Invalid branch, commit SHA, or request body."},
           "401": {"description": "Unauthorized."},
           "409": {"description": "A center is active; candidate not triggered."},
-          "503": {"description": "Runtime context, admin state, Builds API credentials, or safe preview trigger unavailable."}
+          "503": {"description": "Runtime context, admin state, Builds API credentials, or safe dry-run trigger unavailable."}
         }
       }
     },
     "/v1/admin/candidates/validate": {
       "post": {
         "operationId": "validateCandidate",
-        "summary": "Validate Cloudflare preview candidate builds",
-        "description": "Check four preview build outcomes, exact branch and commit identity, safe versions-upload commands, and that production versions/source digests stayed unchanged. No runtime E2E is claimed.",
+        "summary": "Validate Cloudflare candidate dry runs",
+        "description": "Check four dry-run build outcomes, exact branch and commit identity, the non-mutating deploy command, and that production versions/source digests stayed unchanged. No runtime E2E is claimed, and no Worker version is uploaded.",
         "security": [{"BearerAuth": []}],
         "requestBody": {
           "required": true,
@@ -313,7 +313,7 @@
           }
         },
         "responses": {
-          "200": {"description": "Preview-build control-plane validation PASS receipt."},
+          "200": {"description": "Dry-run build control-plane validation PASS receipt."},
           "202": {"description": "One or more candidate builds are still running."},
           "400": {"description": "Invalid candidate_id."},
           "401": {"description": "Unauthorized."},

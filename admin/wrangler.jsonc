@@ -5,6 +5,8 @@
   "compatibility_date": "2026-08-18",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "preview_urls": false,
+  "secrets": {"required": ["ADMIN_GPT_TOKEN", "CF_API_TOKEN"]},
   "durable_objects": {
     "bindings": [
       {"name": "ADMIN_COORDINATOR", "class_name": "AdminCoordinator"}
@@ -28,5 +30,6 @@
     "LOCK_TTL_SECONDS": "1800",
     "RATE_LIMIT_PER_MIN": "120",
     "AUTO_PROMOTE": "false"
-  }
+  },
+  "observability": {"enabled": true,"logs":{"enabled":true,"head_sampling_rate":1},"traces":{"enabled":true,"head_sampling_rate":0.05}}
 }

@@ -1,10 +1,10 @@
-# Cloudflare Preview Candidate Setup
+# Cloudflare Candidate Dry-Run Setup
 
 Status: Phase 2 source contract. This document contains no secret values.
 
 ## Purpose
 
-`createCandidateVersion` creates a real non-production candidate by asking Cloudflare Workers Builds to build four exact Git commits through each Worker's preview trigger. It must not change production traffic.
+`createCandidateVersion` asks Cloudflare Workers Builds to validate four exact Git commits through each Worker's non-production dry-run trigger. It does not upload a Worker version and must not change production traffic.
 
 The four candidate Workers are:
 
@@ -31,16 +31,16 @@ Current Cloudflare Workers Builds documentation requires a **user-scoped API tok
 
 Use the narrowest account/resource scope that covers the four Workers. Do not store or echo the token in GitHub, Action JSON, logs, receipts, or model prompts.
 
-## Preview trigger invariant
+## Dry-run trigger invariant
 
 Each of the four Workers must have a non-production/preview trigger with all of the following properties:
 
 - `main` is excluded from the trigger.
-- deploy/version command is `npm run cf:build && npx wrangler versions upload`.
+- deploy command is exactly `npm run cf:build && npx wrangler deploy --dry-run`.
 - the trigger is connected to the correct Git repository.
 - the trigger can build the requested non-main candidate branch and exact commit.
 
-The Admin Gateway rejects a trigger that does not satisfy these invariants. A production trigger using `wrangler deploy` is never selected by `createCandidateVersion`.
+The Admin Gateway rejects a trigger that does not satisfy these invariants. A production trigger using `wrangler deploy` without `--dry-run` is never selected by `createCandidateVersion`.
 
 ## Candidate request contract
 
@@ -60,7 +60,7 @@ The GPT Action must provide a non-main branch and the exact 40-hex Git SHA for e
 }
 ```
 
-A successful trigger returns HTTP 202 with `candidate_kind=cloudflare-preview-build-set`, four `build_uuid` values, `candidate_digest`, `run_id`, and `receipt_digest`.
+A successful trigger returns HTTP 202 with `candidate_kind=cloudflare-dry-run-build-set`, four `build_uuid` values, `candidate_digest`, `run_id`, and `receipt_digest`.
 
 ## Validation scope
 
@@ -71,7 +71,7 @@ A successful trigger returns HTTP 202 with `candidate_kind=cloudflare-preview-bu
 3. all builds successful
 4. exact branch identity
 5. exact commit identity
-6. safe `wrangler versions upload` deployment command
+6. exact non-mutating `wrangler deploy --dry-run` command
 7. four-center context completeness
 8. center health
 9. production runtime metadata availability
@@ -93,7 +93,7 @@ Phase 2 proves the candidate **build/control-plane** chain only. It does not cla
 - `promoteCandidate` is not exposed
 - `rollbackProduction` is not exposed
 
-Cloudflare does not generate Preview URLs for Workers that implement Durable Objects. Because the current intelligence, compute, expert, and governance architecture uses Durable Objects, build success cannot be treated as a candidate runtime E2E result.
+Cloudflare does not generate Preview URLs for Workers that implement Durable Objects. Because the current intelligence, compute, expert, and governance architecture uses Durable Objects, and the dry run uploads no version, build success cannot be treated as a candidate runtime E2E result.
 
 A later phase must introduce an isolated runtime-canary mechanism before production promotion is enabled.
 
@@ -103,7 +103,7 @@ A later phase must introduce an isolated runtime-canary mechanism before product
 - `main` branch -> 400.
 - malformed or missing commit SHA -> 400.
 - active downstream task -> 409, no build trigger.
-- no safe preview trigger -> 503, no production trigger fallback.
+- no safe dry-run trigger -> 503, no production trigger fallback.
 - partial trigger failure -> stop and cancel already-triggered builds best-effort.
 - AdminState persistence failure after triggering -> cancel the triggered build set best-effort and return failure.
 - any terminal build failure or identity mismatch -> acceptance FAIL (422).
@@ -117,7 +117,7 @@ Before attempting a live candidate:
 - [ ] `CLOUDFLARE_ACCOUNT_ID` is configured on `governance-worker`.
 - [ ] `CLOUDFLARE_BUILDS_API_TOKEN` is configured as a Cloudflare secret on `governance-worker`.
 - [ ] The token is user-scoped and limited to the required permissions/resources.
-- [ ] All four Workers have a preview trigger that excludes `main` and uses `npm run cf:build && npx wrangler versions upload`.
+- [ ] All four Workers have a non-production trigger that excludes `main` and uses `npm run cf:build && npx wrangler deploy --dry-run`.
 - [ ] GPT Action schema has been refreshed from the latest `/openapi.json` and shows 10 operations.
 - [ ] `promoteCandidate` and `rollbackProduction` are absent.
 - [ ] A first live candidate is created with a disposable non-main candidate branch and known exact commit SHAs.

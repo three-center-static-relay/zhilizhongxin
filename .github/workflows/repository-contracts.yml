@@ -1,0 +1,41 @@
+name: Repository contracts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-contracts-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Validate changed architecture contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node governance/tests/cloudflare-build-gate-contract.mjs
+          node governance/tests/evolution-kernel-contract.mjs
+          node governance/tests/cloudflare-preview-build-guard.mjs
+          node governance/tests/admin-candidate-acceptance.mjs
+          node governance/tests/admin-candidate-compensation.mjs
+          node governance/tests/openapi-action-schema.mjs
+          node governance/tests/web-gpt-action-snapshot.mjs
+          node governance/tests/admin-operation-lock.mjs
+          node admin/tests/security-contract.mjs

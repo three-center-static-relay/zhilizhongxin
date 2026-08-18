@@ -6,9 +6,9 @@ Cloudflare Workers Builds currently ignores Wrangler custom-build configuration.
 
 | Worker | Root directory | Build watch include | Production branch | Build command | Production deploy command | Non-production deploy command |
 |---|---|---|---|---|---|---|
-| `governance-worker` | `governance` | `governance/*` | `main` | empty | `npm run cf:build && npx wrangler deploy` | `npm run cf:build && npx wrangler versions upload` |
-| `admin-worker` | `admin` | `admin/*` | `main` | empty | `npm run cf:build && npx wrangler deploy` | `npm run cf:build && npx wrangler versions upload` |
-| `maintenance-worker` | `maintenance` | `maintenance/*` | `main` | empty | `npm run cf:build && npx wrangler deploy` | `npm run cf:build && npx wrangler versions upload` |
+| `governance-worker` | `governance` | `governance/*` | `main` | empty | `npm run cf:build && npx wrangler deploy` | `npm run cf:build && npx wrangler deploy --dry-run` |
+| `admin-worker` | `admin` | `admin/*` | `main` | empty | `npm run cf:build && npx wrangler deploy` | `npm run cf:build && npx wrangler deploy --dry-run` |
+| `maintenance-worker` | `maintenance` | `maintenance/*` | `main` | empty | `npm run cf:build && npx wrangler deploy` | `npm run cf:build && npx wrangler deploy --dry-run` |
 
 Branch rules:
 
@@ -16,7 +16,9 @@ Branch rules:
 - non-production builds: include `*`, exclude `main`;
 - build watch excludes: empty.
 
-The commands deliberately use the Wrangler binary installed from `package.json`; they do not fetch a floating CLI at deploy time. `cf:preview` and `cf:deploy` remain equivalent local/manual conveniences, while the dashboard command is written out so the Governance candidate controller can verify that preview builds end in `wrangler versions upload`.
+The commands deliberately use the exact Wrangler version pinned in `package.json`. `cf:preview` is a build-and-package validation only: it performs no remote upload and cannot alter traffic. This is required because these Workers declare top-level Durable Object `exports`; Cloudflare rejects `wrangler versions upload` for that lifecycle model. `cf:deploy` remains the only production mutation command.
+
+Do not treat a dry run as a runtime preview. Runtime staging requires separately provisioned staging Worker names, Durable Object namespaces, service bindings, secrets, and routes. Add `--env staging` only after that Cloudflare account state has been audited; never point a staging binding at a production Durable Object namespace.
 
 ## Acceptance
 
@@ -24,9 +26,9 @@ The commands deliberately use the Wrangler binary installed from `package.json`;
 2. Push a non-main commit that changes only `governance/*`.
 3. Confirm Cloudflare creates exactly one build for `governance-worker`; `admin-worker` and `maintenance-worker` must not run.
 4. Confirm the log runs `npm run cf:build` before Wrangler.
-5. Confirm the preview build uploads a version and does not change production traffic.
+5. Confirm the non-production build completes `wrangler deploy --dry-run` and performs no remote upload.
 6. Merge only after the Cloudflare check succeeds.
 
-These Workers use Durable Objects, so the absence of a preview URL is expected. A successful version upload is a control-plane result, not a runtime business E2E result.
+These Workers use Durable Objects, so the absence of a preview URL is expected. A successful dry run proves packaging and configuration validity only, not runtime business E2E behavior.
 
 References: [Workers Builds configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/), [build watch paths](https://developers.cloudflare.com/workers/ci-cd/builds/build-watch-paths/), and [build branches](https://developers.cloudflare.com/workers/ci-cd/builds/build-branches/).

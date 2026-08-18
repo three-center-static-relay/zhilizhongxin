@@ -1,11 +1,10 @@
 import superguard,{AdminCoordinator} from "./superguard.js";
+import {verifyBearer} from "./security.js";
 export {AdminCoordinator};
 const H={"content-type":"application/json;charset=utf-8","cache-control":"no-store"};
 const json=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:H});
 const fail=(c,m,s=409,d)=>json({ok:false,error:c,message:m,...(d?{details:d}:{})},s);
-const tok=req=>{const h=req.headers.get("authorization")||"";return h.startsWith("Bearer ")?h.slice(7).trim():""};
-function eq(a,b){a=String(a||"");b=String(b||"");if(a.length!==b.length)return false;let x=0;for(let i=0;i<a.length;i++)x|=a.charCodeAt(i)^b.charCodeAt(i);return x===0}
-async function auth(req,env){if(!env.ADMIN_GPT_TOKEN)throw Object.assign(new Error("ADMIN_TOKEN_NOT_CONFIGURED"),{status:503});if(!eq(tok(req),env.ADMIN_GPT_TOKEN))throw Object.assign(new Error("UNAUTHORIZED"),{status:401})}
+async function auth(req,env){if(!env.ADMIN_GPT_TOKEN)throw Object.assign(new Error("ADMIN_TOKEN_NOT_CONFIGURED"),{status:503});if(!await verifyBearer(req,env.ADMIN_GPT_TOKEN))throw Object.assign(new Error("UNAUTHORIZED"),{status:401})}
 
 async function literatureSelftest(req,env){
   await auth(req,env);

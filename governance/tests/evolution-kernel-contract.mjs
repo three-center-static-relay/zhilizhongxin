@@ -6,7 +6,7 @@ import {buildSelfModel,compileTaskPlan,entropyReport,kernelSnapshot,validateEvol
 import {evolutionOpenApiPaths,handleEvolutionRoute} from "../src/evolution-router.js";
 
 const observed="2026-08-18T00:00:00.000Z";
-const capability=(id,center,operations,trust="T0")=>makeCapability({id,type:"atomic",domain:center,operations,provider:`${center}-worker`,protocol:"service-binding",auth_scope:"service-binding",permission_scope:"read",network_scope:center==="compute"?"allowlisted-compute":"none",write_scope:"none",health:{status:"ready",checked_at:observed},trust:{level:trust,status:"verified"},reliability:{score:0.9,basis:"test"},accuracy:{score:0.8,basis:"test"},first_seen:observed,last_verified:observed});
+const capability=(id,center,operations,trust="T0")=>makeCapability({id,type:"atomic",domain:center,operations,provider:`${center}-worker`,protocol:"service-binding",auth_scope:"service-binding",permission_scope:"read",network_scope:center==="compute"?"allowlisted-compute":"none",write_scope:"none",health:{status:"ready",checked_at:observed},trust:{level:trust,status:"verified"},verification:{status:"verified",scope:"runtime-contract",verified_at:observed,receipt_digest:"a".repeat(64),sample_size:1},reliability:{score:0.9,basis:"test"},accuracy:{score:0.8,basis:"test"},first_seen:observed,last_verified:observed});
 const manifests=[
   governanceCapabilityManifest(),
   buildManifest("intelligence",[capability("intelligence.literature-search","intelligence",["literature.search","evidence.retrieve"],"T1")]),
@@ -31,6 +31,10 @@ assert.match(plan.plan_digest,/^[a-f0-9]{64}$/);
 const blocked=await compileTaskPlan({...task,task_id:"adaptive-contract-2",required_capabilities:["unknown.future-capability"]},manifests);
 assert.equal(blocked.status,"BLOCKED");
 assert.deepEqual(blocked.unresolved,["unknown.future-capability"]);
+const unverified=makeCapability({id:"intelligence.configured-only",type:"atomic",domain:"intelligence",operations:["configured.only"],provider:"intelligence-worker",protocol:"service-binding",auth_scope:"service-binding",permission_scope:"read",network_scope:"allowlisted-upstreams-only",write_scope:"none",health:{status:"configured-unverified",checked_at:observed},trust:{level:"T0",status:"unverified"},verification:{status:"configured-unverified",scope:"configuration-only",verified_at:null,receipt_digest:null,sample_size:0},reliability:{score:0,basis:"unverified-no-bound-runtime-receipt"},accuracy:{score:0,basis:"unverified-no-bound-runtime-receipt"},first_seen:observed,last_verified:null});
+assert.deepEqual(validateManifest(buildManifest("intelligence",[unverified])),{ok:true,errors:[]});
+const configuredOnly=await compileTaskPlan({...task,task_id:"adaptive-contract-3",required_capabilities:["configured.only"]},[...manifests,buildManifest("intelligence-configured-only",[unverified])]);
+assert.equal(configuredOnly.status,"BLOCKED","configuration without a bound runtime receipt must not be routed");
 const candidate={candidate_id:"candidate-1",parent_id:"main",reason:"close capability gap",hypothesis:"adds verified capability",affected_components:["governance"],expected_gain:{quality:0.1},complexity_delta:1,risk_delta:0,benchmark:{static_check:{required:true},simulation:{required:true},shadow:{required:true},canary:{required:true}},rollback_target:"main",production_mutation:false};
 assert.equal(validateEvolutionContract(candidate).ok,true);
 assert.equal(validateEvolutionContract({...candidate,production_mutation:true}).ok,false);
