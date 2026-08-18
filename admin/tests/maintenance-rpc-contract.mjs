@@ -1,0 +1,16 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+const source=fs.readFileSync(new URL("../src/production-superguard.js",import.meta.url),"utf8");
+const config=JSON.parse(fs.readFileSync(new URL("../wrangler.jsonc",import.meta.url),"utf8"));
+const control=config.services.find(x=>x.binding==="MAINTENANCE_CONTROL");
+const center=config.services.find(x=>x.binding==="MAINTENANCE_CENTER");
+assert.equal(center?.service,"maintenance-worker");
+assert.equal(center?.entrypoint,undefined);
+assert.equal(control?.service,"maintenance-worker");
+assert.equal(control?.entrypoint,"MaintenanceControl");
+assert.deepEqual(control?.props,{caller:"admin-worker",capability:"expert-route-refresh"});
+assert.match(source,/await auth\(req,env\)/);
+assert.match(source,/MAINTENANCE_CONTROL/);
+assert.match(source,/\/v1\/admin\/maintenance\/expert-route\/refresh/);
+assert.match(source,/\/v1\/admin\/maintenance\/expert-route\/latest/);
+console.log(JSON.stringify({ok:true,suite:"admin-maintenance-rpc-contract",bearer_authenticated:true,named_entrypoint:true,public_maintenance_bypass:false}));

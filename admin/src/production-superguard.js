@@ -18,4 +18,27 @@ async function literatureSelftest(req,env){
   finally{clearTimeout(timer)}
 }
 
-export default{async fetch(req,env,ctx){try{const u=new URL(req.url);if(req.method==="POST"&&u.pathname==="/v1/admin/selftest/literature")return await literatureSelftest(req,env);return await superguard.fetch(req,env,ctx)}catch(e){return fail(String(e?.message||"INTERNAL_ERROR"),e?.status>=500?"Internal operation failed":String(e?.message||"Request failed"),e?.status||500,e?.details)}}};
+async function expertRouteRefresh(req,env){
+  await auth(req,env);
+  const svc=env.MAINTENANCE_CONTROL;
+  if(typeof svc?.refreshExpertRoute!=="function")return fail("MAINTENANCE_CONTROL_UNCONFIGURED","maintenance RPC control binding is not configured",503);
+  const body=await req.json().catch(()=>({})),requestId=String(body.request_id||crypto.randomUUID()).trim();
+  if(!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId))return fail("INVALID_REQUEST","request_id format is invalid",400);
+  const started=Date.now();
+  try{
+    const receipt=await svc.refreshExpertRoute(requestId),ok=receipt?.ok===true,status=ok?200:receipt?.http_status===409?409:502;
+    return json({ok,operation:"expert-route-refresh",...receipt,elapsed_ms:Date.now()-started},status);
+  }catch(e){return fail("MAINTENANCE_RPC_FAILED",String(e?.message||e),502,{operation:"expert-route-refresh",request_id:requestId,elapsed_ms:Date.now()-started})}
+}
+
+async function expertRouteLatest(req,env){
+  await auth(req,env);
+  const svc=env.MAINTENANCE_CONTROL;
+  if(typeof svc?.latestExpertRoute!=="function")return fail("MAINTENANCE_CONTROL_UNCONFIGURED","maintenance RPC control binding is not configured",503);
+  try{
+    const receipt=await svc.latestExpertRoute();
+    return json({ok:receipt?.ok===true,operation:"expert-route-latest",...receipt},receipt?.ok===true?200:502);
+  }catch(e){return fail("MAINTENANCE_RPC_FAILED",String(e?.message||e),502,{operation:"expert-route-latest"})}
+}
+
+export default{async fetch(req,env,ctx){try{const u=new URL(req.url);if(req.method==="POST"&&u.pathname==="/v1/admin/selftest/literature")return await literatureSelftest(req,env);if(req.method==="POST"&&u.pathname==="/v1/admin/maintenance/expert-route/refresh")return await expertRouteRefresh(req,env);if(req.method==="GET"&&u.pathname==="/v1/admin/maintenance/expert-route/latest")return await expertRouteLatest(req,env);return await superguard.fetch(req,env,ctx)}catch(e){return fail(String(e?.message||"INTERNAL_ERROR"),e?.status>=500?"Internal operation failed":String(e?.message||"Request failed"),e?.status||500,e?.details)}}};

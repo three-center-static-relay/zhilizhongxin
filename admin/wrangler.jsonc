@@ -20,7 +20,8 @@
     {"binding": "INTELLIGENCE_CENTER", "service": "intelligence-worker"},
     {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
     {"binding": "EXPERT_CENTER", "service": "expert-worker"},
-    {"binding": "MAINTENANCE_CENTER", "service": "maintenance-worker"}
+    {"binding": "MAINTENANCE_CENTER", "service": "maintenance-worker"},
+    {"binding": "MAINTENANCE_CONTROL", "service": "maintenance-worker", "entrypoint": "MaintenanceControl", "props": {"caller": "admin-worker", "capability": "expert-route-refresh"}}
   ],
   "vars": {
     "ENVIRONMENT": "production",
