@@ -6,7 +6,7 @@ OpenRouter MCP is an auxiliary governance and maintenance interface. It is not a
 
 Production expert execution remains:
 
-`governance -> expert-worker -> OpenRouter REST API -> selected models`
+`governance -> expert-worker -> authenticated Cloudflare AI Gateway -> OpenRouter REST API -> selected models`
 
 The MCP path is intentionally separate:
 
@@ -42,17 +42,19 @@ MCP must not:
 - change expert runtime model policy without a governed code/config change;
 - hold or renew long-lived production credentials.
 
-If MCP authentication, OAuth, session setup or the MCP service fails, production expert execution continues through the existing OpenRouter REST path. No automatic failover from REST to MCP is permitted.
+If MCP authentication, OAuth, session setup or the MCP service fails, production expert execution continues through the authenticated Cloudflare AI Gateway OpenRouter path. No automatic failover from REST to MCP is permitted.
 
 ## Production contract
 
 The expert runtime is required to keep these endpoints:
 
 - catalog: `https://openrouter.ai/api/v1/models`
-- inference: `https://openrouter.ai/api/v1/chat/completions`
+- inference: `https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openrouter/chat/completions`
+
+The gateway is authenticated. Production inference bypasses cache, disables request logging, and allows only one gateway attempt so the expert center retains its no-automatic-retry cost invariant. The provider API key and the AI Gateway token remain Worker secrets and are never committed.
 
 The expert runtime must not contain `https://mcp.openrouter.ai/mcp` as an execution endpoint.
 
 ## Source check
 
-Policy reviewed against OpenRouter's official MCP announcement and API quickstart on 2026-08-17.
+Policy reviewed against OpenRouter's official MCP announcement/API quickstart and Cloudflare's OpenRouter/Auth Gateway documentation on 2026-08-18.
