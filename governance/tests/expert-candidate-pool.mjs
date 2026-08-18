@@ -1,40 +1,7 @@
 import assert from "node:assert/strict";
-import {eligibleExpertCandidate,selectExpertCandidatePool,EXPERT_CANDIDATE_QUERY} from "../src/expert-candidate-pool.js";
-
-const m=(id,extra={})=>({
-  id,
-  pricing:{prompt:"0.000001",completion:"0.000002",request:"0"},
-  supported_parameters:["reasoning","max_tokens"],
-  architecture:{output_modalities:["text"]},
-  expiration_date:null,
-  ...extra
-});
-
-const ranked=[
-  m("openai/gpt-x"),
-  m("anthropic/claude-x"),
-  m("google/gemini-pro"),
-  m("google/gemini-pro-backup"),
-  m("deepseek/deepseek-r1"),
-  m("mistralai/magistral"),
-  m("qwen/qwen-reasoner"),
-  m("xai/grok-flash"),
-  m("moonshotai/kimi-free:free")
-];
-
-assert.equal(EXPERT_CANDIDATE_QUERY.params.sort,"intelligence-high-to-low");
-assert.equal(eligibleExpertCandidate(ranked[0]),false);
-assert.equal(eligibleExpertCandidate(ranked[1]),false);
-assert.equal(eligibleExpertCandidate(ranked[2]),true);
-
-const pool=selectExpertCandidatePool(ranked,{now:"2026-08-18T00:00:00Z"});
-assert.equal(pool.ready,true);
-assert.deepEqual(pool.lanes.map(x=>x.company),["google","deepseek","mistralai","qwen"]);
-assert.equal(pool.lanes[0].primary,"google/gemini-pro");
-assert.deepEqual(pool.lanes[0].fallbacks,["google/gemini-pro-backup"]);
-assert.equal(new Set(pool.lanes.map(x=>x.company)).size,4);
-
-const freeOnly=selectExpertCandidatePool([m("google/free:free")]);
-assert.equal(freeOnly.ready,false);
-
-console.log("expert candidate pool: pass");
+import {eligibleExpertCandidate,selectExpertCandidatePool,EXPERT_CANDIDATE_QUERY,EXPERT_CANDIDATE_QUERIES} from "../src/expert-candidate-pool.js";
+const m=(id,extra={})=>({id,pricing:{prompt:"0.000001",completion:"0.000002",request:"0"},supported_parameters:["reasoning","max_tokens"],architecture:{output_modalities:["text"]},expiration_date:null,...extra});
+const free=(id)=>m(id,{pricing:{prompt:"0",completion:"0",request:"0"}});
+const ranked=[m("openai/gpt-x"),m("anthropic/claude-x"),m("google/gemini-pro"),free("google/gemini-lite:free"),m("deepseek/deepseek-r1"),m("mistralai/magistral"),m("qwen/qwen-reasoner"),m("moonshotai/kimi-thinking"),m("meta-llama/llama-reasoning"),m("nvidia/nemotron-reasoning"),m("cohere/command-reasoning"),m("xai/grok-flash")];
+assert.equal(EXPERT_CANDIDATE_QUERY.params.sort,"intelligence-high-to-low");assert.equal(EXPERT_CANDIDATE_QUERIES.length,6);assert.equal(eligibleExpertCandidate(ranked[0]),false);assert.equal(eligibleExpertCandidate(ranked[1]),false);assert.equal(eligibleExpertCandidate(ranked[2]),true);assert.equal(eligibleExpertCandidate(ranked[3]),true);assert.equal(eligibleExpertCandidate(m("openrouter/free")),false);
+const pool=selectExpertCandidatePool(ranked,{now:"2026-08-18T00:00:00Z"});assert.equal(pool.ready,true);assert.equal(pool.lanes.length,8);assert.equal(new Set(pool.lanes.map(x=>x.company)).size,8);assert.equal(pool.lanes[0].company,"google");assert.equal(pool.lanes[0].free_models.includes("google/gemini-lite:free"),true);assert.equal(pool.policy.free_allowed,true);assert.equal(pool.policy.paid_allowed,true);assert.equal(pool.policy.exclude_random_free_router,true);console.log("expert candidate pool: pass");
