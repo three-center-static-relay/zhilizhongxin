@@ -1,6 +1,7 @@
 {
   "name": "maintenance-worker",
   "description": "Governance maintenance and adaptive expert-route lifecycle",
+  "diagnostic_round": "compact-route-v1",
   "private": true,
   "type": "module",
   "scripts": {
