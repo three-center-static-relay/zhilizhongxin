@@ -1,55 +1,15 @@
-const EXCLUDED_COMPANIES=new Set(["openai","anthropic"]);
-const DEFAULT_SEATS=["expert-1","expert-2","expert-3","judge"];
-
+const EXCLUDED_COMPANIES=new Set(["openai","anthropic","openrouter"]);
+const DEFAULT_LANES=Array.from({length:8},(_,i)=>`lane-${i+1}`);
+const SORTS=["intelligence-high-to-low","latency-low-to-high","throughput-high-to-low","context-high-to-low","pricing-low-to-high","top-weekly"];
 function num(v){const n=Number(v);return Number.isFinite(n)?n:0}
 function idOf(model){return String(model?.id||"").trim()}
 function companyOf(model){const id=idOf(model).toLowerCase();return id.includes("/")?id.split("/")[0]:""}
-function paid(model){const p=model?.pricing||{};return num(p.prompt)>0||num(p.completion)>0||num(p.request)>0}
 function reasoning(model){return Array.isArray(model?.supported_parameters)&&model.supported_parameters.includes("reasoning")}
 function textOutput(model){const out=model?.architecture?.output_modalities;return !Array.isArray(out)||out.length===0||out.includes("text")}
 function unexpired(model,now){const exp=model?.expiration_date;if(!exp)return true;const t=Date.parse(exp);return !Number.isFinite(t)||t>Date.parse(now)}
-
-export function eligibleExpertCandidate(model,{now=new Date().toISOString()}={}){
-  const id=idOf(model),low=id.toLowerCase(),company=companyOf(model);
-  if(!id||!company)return false;
-  if(EXCLUDED_COMPANIES.has(company))return false;
-  if(low.includes("anthropic")||low.includes("claude")||low.includes("openai"))return false;
-  if(low.includes(":free")||low.includes("flash"))return false;
-  if(!paid(model)||!reasoning(model)||!textOutput(model)||!unexpired(model,now))return false;
-  return true;
-}
-
-export function selectExpertCandidatePool(models,{seatNames=DEFAULT_SEATS,maxSameCompanyModels=3,now=new Date().toISOString()}={}){
-  const eligible=(Array.isArray(models)?models:[]).filter(m=>eligibleExpertCandidate(m,{now}));
-  const byCompany=new Map();
-  for(const model of eligible){
-    const company=companyOf(model);
-    const list=byCompany.get(company)||[];
-    if(list.length<Math.max(1,maxSameCompanyModels))list.push(model);
-    byCompany.set(company,list);
-  }
-  const companies=[];
-  for(const model of eligible){
-    const company=companyOf(model);
-    if(!companies.includes(company))companies.push(company);
-    if(companies.length>=seatNames.length)break;
-  }
-  const lanes=seatNames.map((seat,i)=>{
-    const company=companies[i]||null,ranked=company?(byCompany.get(company)||[]):[];
-    return {seat,company,primary:ranked[0]?.id||null,fallbacks:ranked.slice(1).map(x=>x.id)};
-  });
-  return {
-    source:"openrouter-models-api",
-    ordering:"intelligence-high-to-low-input-order",
-    policy:{reasoning:true,paid:true,exclude_free:true,exclude_flash:true,exclude_openai:true,exclude_anthropic_claude:true,company_dedup:true},
-    eligible_count:eligible.length,
-    distinct_company_count:byCompany.size,
-    ready:lanes.every(x=>x.primary)&&new Set(lanes.map(x=>x.company)).size===seatNames.length,
-    lanes
-  };
-}
-
-export const EXPERT_CANDIDATE_QUERY={
-  endpoint:"https://openrouter.ai/api/v1/models",
-  params:{supported_parameters:"reasoning",output_modalities:"text",sort:"intelligence-high-to-low"}
-};
+function free(model){const id=idOf(model).toLowerCase(),p=model?.pricing||{};return id.includes(":free")||(num(p.prompt)===0&&num(p.completion)===0&&num(p.request)===0)}
+function wrapper(model){const t=`${model?.id||""} ${model?.name||""} ${model?.description||""}`.toLowerCase();return idOf(model).toLowerCase()==="openrouter/free"||/\b(auto[- ]?router|multi[- ]model|ensemble|fusion)\b/.test(t)}
+export function eligibleExpertCandidate(model,{now=new Date().toISOString()}={}){const id=idOf(model),low=id.toLowerCase(),company=companyOf(model);if(!id||!company||EXCLUDED_COMPANIES.has(company))return false;if(low.includes("anthropic")||low.includes("claude")||low.includes("openai")||low.includes("flash"))return false;if(!reasoning(model)||!textOutput(model)||!unexpired(model,now)||wrapper(model))return false;return true}
+export function selectExpertCandidatePool(models,{laneNames=DEFAULT_LANES,maxSameCompanyModels=5,now=new Date().toISOString()}={}){const eligible=(Array.isArray(models)?models:[]).filter(m=>eligibleExpertCandidate(m,{now})),byCompany=new Map(),companies=[];for(const model of eligible){const company=companyOf(model),list=byCompany.get(company)||[];if(!byCompany.has(company))companies.push(company);if(list.length<Math.max(1,maxSameCompanyModels))list.push(model);byCompany.set(company,list)}const selected=companies.slice(0,laneNames.length),lanes=laneNames.map((lane,i)=>{const company=selected[i]||null,ranked=company?(byCompany.get(company)||[]):[],freeModels=ranked.filter(free),paidModels=ranked.filter(x=>!free(x));return{lane,company,primary:ranked[0]?.id||null,free_models:freeModels.map(x=>x.id),paid_models:paidModels.map(x=>x.id),fallbacks:ranked.slice(1).map(x=>x.id)}});return{source:"openrouter-models-api",ordering:"intelligence-high-to-low-input-order",ranking_signals:SORTS,policy:{reasoning:true,free_allowed:true,paid_allowed:true,exclude_random_free_router:true,exclude_flash:true,exclude_openai:true,exclude_anthropic_claude:true,company_dedup:true,dynamic_lane_count:true},eligible_count:eligible.length,distinct_company_count:byCompany.size,ready:lanes.every(x=>x.primary)&&new Set(lanes.map(x=>x.company)).size===laneNames.length,lanes}}
+export const EXPERT_CANDIDATE_QUERIES=SORTS.map(sort=>({endpoint:"https://openrouter.ai/api/v1/models",params:{supported_parameters:"reasoning",output_modalities:"text",sort}}));
+export const EXPERT_CANDIDATE_QUERY=EXPERT_CANDIDATE_QUERIES[0];
