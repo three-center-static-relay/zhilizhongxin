@@ -6,11 +6,14 @@ const pkg=JSON.parse(fs.readFileSync(new URL("../package.json",import.meta.url),
 assert.equal(config.main,"src/entry.js");
 assert.equal(config.workers_dev,false);
 assert.equal(config.preview_urls,false);
+assert.equal(pkg.devDependencies?.wrangler,"4.123.0");
+assert.equal(pkg.scripts["cf:ci:preview"],"node ../scripts/cloudflare-worker-gate.mjs maintenance preview");
+assert.equal(pkg.scripts["cf:preview"],"npm run cf:build && npx wrangler deploy --dry-run");
 assert.match(source,/export class MaintenanceControl extends WorkerEntrypoint/);
 assert.match(source,/props\.caller !== "admin-worker"/);
 assert.match(source,/props\.capability !== "expert-route-refresh"/);
 assert.match(source,/RPC_CALLER_NOT_AUTHORIZED/);
 assert.match(source,/IMMEDIATE_REFRESH_ENABLED: "true"/);
-assert.doesNotMatch(pkg.scripts["cf:ci:preview"],/run-immediate-refresh/);
+assert.doesNotMatch(pkg.scripts["cf:ci:preview"],/run-immediate-refresh|POST_ALLOW/);
 assert.match(pkg.scripts["cf:build"],/maintenance-rpc-contract/);
-console.log(JSON.stringify({ok:true,suite:"maintenance-rpc-contract",rpc_only_control:true,workers_dev_disabled:true,build_refresh_removed:true}));
+console.log(JSON.stringify({ok:true,suite:"maintenance-rpc-contract",rpc_only_control:true,workers_dev_disabled:true,build_refresh_removed:true,preview_gate_only:true,wrangler_pinned:true}));
