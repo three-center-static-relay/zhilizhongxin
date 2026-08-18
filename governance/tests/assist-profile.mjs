@@ -32,6 +32,13 @@ assert.equal(collaboration.tool_access, "none");
 
 assert.equal(routing.cloudflare.free_only, true);
 assert.equal(routing.cloudflare.paid_models_allowed, false);
+assert.deepEqual(routing.cloudflare.gateway, {
+  id_from: "AI_GATEWAY_ID",
+  default_id: "four-center-ai-gateway",
+  binding_authenticated: true,
+  cache: false,
+  request_logging: false
+});
 assert.equal(routing.cloudflare.quota_failure_behavior, "continue-remaining-free-models");
 assert.equal(routing.cloudflare.exhaust_free_pool_before_openrouter, true);
 assert.equal(routing.openrouter.free_models, false);
