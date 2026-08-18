@@ -4,7 +4,7 @@
   "main": "src/index.js",
   "compatibility_date": "2026-08-18",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": false,
+  "workers_dev": true,
   "preview_urls": false,
   "keep_vars": true,
   "secrets": {"required": ["CLOUDFLARE_AI_GATEWAY_API_TOKEN"]},
