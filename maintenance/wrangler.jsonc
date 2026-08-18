@@ -4,7 +4,7 @@
   "main": "src/index.js",
   "compatibility_date": "2026-08-18",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": false,
+  "workers_dev": true,
   "preview_urls": false,
   "keep_vars": true,
   "secrets": {"required": ["CLOUDFLARE_AI_GATEWAY_API_TOKEN"]},
@@ -16,15 +16,19 @@
     "IMMEDIATE_REFRESH_ENABLED": "false"
   },
   "durable_objects": {
-    "bindings": [{"name":"MAINTENANCE_STATE","class_name":"MaintenanceState"}]
+    "bindings": [
+      {"name": "MAINTENANCE_STATE", "class_name": "MaintenanceState"}
+    ]
   },
-  "exports": {"MaintenanceState":{"type":"durable-object","storage":"sqlite"}},
+  "exports": {
+    "MaintenanceState": {"type": "durable-object", "storage": "sqlite"}
+  },
   "services": [
-    {"binding":"GOVERNANCE_CENTER","service":"governance-worker"},
-    {"binding":"INTELLIGENCE_CENTER","service":"intelligence-worker"},
-    {"binding":"COMPUTE_CENTER","service":"compute-worker"},
-    {"binding":"EXPERT_CENTER","service":"expert-worker"}
+    {"binding": "GOVERNANCE_CENTER", "service": "governance-worker"},
+    {"binding": "INTELLIGENCE_CENTER", "service": "intelligence-worker"},
+    {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
+    {"binding": "EXPERT_CENTER", "service": "expert-worker"}
   ],
-  "triggers": {"crons":["*/15 * * * *"]},
+  "triggers": {"crons": ["*/15 * * * *"]},
   "observability": {"enabled":true,"logs":{"enabled":true,"head_sampling_rate":0.25},"traces":{"enabled":true,"head_sampling_rate":0.01}}
 }
