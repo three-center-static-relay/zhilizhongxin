@@ -12,6 +12,7 @@ const FREE_MODELS_STRONGEST_FIRST = Object.freeze([
 ]);
 
 const ASSIST_PROFILE_NAME = "governance-assist-high-reasoning-v1";
+const DEFAULT_AI_GATEWAY_ID = "four-center-ai-gateway";
 const FIXED_SAMPLING = Object.freeze({
   temperature: 0.2,
   top_p: 0.9,
@@ -97,7 +98,20 @@ function workersAiParameters(model, messages, maxTokens) {
 
 async function workersAiAttempt(env, model, messages, maxTokens) {
   if (!env.AI?.run) throw new Error("WORKERS_AI_BINDING_UNAVAILABLE");
-  return env.AI.run(model, workersAiParameters(model, messages, maxTokens));
+  const gatewayId = String(env.AI_GATEWAY_ID || DEFAULT_AI_GATEWAY_ID).trim();
+  if (!gatewayId) throw new Error("AI_GATEWAY_NOT_CONFIGURED");
+  return env.AI.run(model, workersAiParameters(model, messages, maxTokens), {
+    gateway: {
+      id: gatewayId,
+      skipCache: true,
+      collectLog: false,
+      metadata: {
+        center: "governance",
+        route: "assist",
+        model_tier: "workers-ai-free"
+      }
+    }
+  });
 }
 
 async function openRouterFallback(env, body) {
@@ -151,6 +165,13 @@ export function assistRoutingInfo() {
     cloudflare: {
       selection: "strongest-first-sequential",
       ranking: "governance-intelligence-high-to-low",
+      gateway: {
+        id_from: "AI_GATEWAY_ID",
+        default_id: DEFAULT_AI_GATEWAY_ID,
+        binding_authenticated: true,
+        cache: false,
+        request_logging: false
+      },
       free_only: true,
       paid_models_allowed: false,
       deterministic_order: true,
