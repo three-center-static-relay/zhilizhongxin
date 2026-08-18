@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "cf:build": "node --check src/index.js && node --check src/expert-route-manager.js && node --check scripts/promote-candidate.mjs",
-    "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview && node scripts/promote-candidate.mjs",
+    "cf:build": "node --check src/index.js && node --check src/expert-route-manager.js",
+    "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs maintenance deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
     "cf:deploy": "npm run cf:build && npx wrangler deploy"
