@@ -1,96 +1,103 @@
-# Expert model candidate pool governance
+# Expert model candidate pool governance v2
 
 ## Purpose
 
-The expert panel uses Cloudflare AI Gateway Dynamic Routing at runtime, but model discovery remains ranking-driven. OpenRouter is the external marketplace used to discover high-quality reasoning candidates; the Expert Worker does not query OpenRouter during a live task.
+Expert membership is no longer a fixed set of model companies. OpenRouter is the discovery marketplace; governance converts the live reasoning catalog into eight distinct company lanes, and Cloudflare AI Gateway Dynamic Routing chooses the concrete model for each task request. Expert Worker does not query OpenRouter during a live task.
 
-## Canonical discovery source
+## Discovery signals
 
-Use the OpenRouter Models API ordered by intelligence:
+The primary quality signal remains OpenRouter `intelligence-high-to-low`. Candidate refresh also reads:
 
-```text
-GET https://openrouter.ai/api/v1/models?supported_parameters=reasoning&output_modalities=text&sort=intelligence-high-to-low
-```
+- `latency-low-to-high`
+- `throughput-high-to-low`
+- `context-high-to-low`
+- `pricing-low-to-high`
+- `top-weekly`
 
-The returned order is treated as the primary reasoning-quality ordering for candidate discovery.
+All queries require `supported_parameters=reasoning` and text output.
 
 ## Hard filters
 
-Before a model can enter the candidate pool it must:
+A model may enter the pool when it:
 
-- support reasoning
-- support text output
-- be paid
-- not contain `:free`
-- not contain `flash`
-- not belong to OpenAI
-- not belong to Anthropic / Claude
-- not be expired or deprecated
+- supports reasoning and text output;
+- is live/not expired;
+- may be paid **or free**;
+- may use a concrete `:free` variant;
+- is not OpenAI;
+- is not Anthropic / Claude;
+- is not a Flash model;
+- is not a synthetic/random router or ensemble wrapper.
 
-## Company deduplication
+`openrouter/free` is intentionally excluded from the auditable expert core because it can choose a free model dynamically without preserving a preassigned company lane. Specific free model IDs remain allowed.
 
-Walk the filtered ranking from top to bottom. The first eligible company becomes `expert-1`; the next previously unused company becomes `expert-2`; the next becomes `expert-3`; the fourth becomes `judge`.
+## Dynamic company lanes
 
-For each selected company, retain up to three ranked models from that same company:
+Governance keeps eight distinct company lanes (`lane-1` ... `lane-8`) rather than permanent `expert-1=CompanyA` assignments. On refresh, the highest-scoring eligible distinct companies are re-ranked and can occupy different lane numbers in the next route version.
 
-- first = primary
-- remaining = same-company fallback candidates
+Each lane retains several same-company candidates, including when available:
 
-This preserves both ranking priority and exact cross-company panel diversity.
+- quality-first model(s)
+- balanced model(s)
+- free model(s)
+- lower-latency model(s)
+- task-specialized reasoning candidates
 
-## Runtime boundary
+Fallback must remain inside the same company lane so a failed model cannot silently collapse cross-company independence.
 
-The ranking is **not** a floating runtime router.
+## Runtime division of responsibility
 
 ```text
-OpenRouter ranking
-  -> governance candidate filtering
-  -> company deduplication
-  -> proposed Cloudflare route version
-  -> preview validation
-  -> deploy route version
-  -> Expert Worker runtime verification
+OpenRouter multi-signal rankings
+  -> governance filtering/scoring/company dedup
+  -> eight candidate company lanes
+  -> new Cloudflare Dynamic Route version
+  -> Expert Worker task-specific panel architect
+  -> 1-6 dynamic professions + 0-2 judges + 1-2 rounds
+  -> unique lane allocation
+  -> Cloudflare concrete-model routing and same-company fallback
+  -> actual model/provider receipt verification
 ```
 
-The active Cloudflare route stays pinned until a replacement version has passed preview validation. Ranking movement alone must never mutate the production route in place.
+Cloudflare is the runtime routing/execution engine. Expert Worker remains responsible for cross-request orchestration because Dynamic Routing does not itself create an arbitrary number of separate expert calls or enforce cross-request company uniqueness.
 
-## Task-adaptive selection
+## Runtime routing metadata
 
-The Expert Worker supplies these allow-listed metadata fields to Cloudflare:
+Cloudflare's five custom-metadata entries are used as:
 
-- `expert_slot`
-- `task_domain`
-- `task_type`
-- `complexity`
-- `reasoning_depth`
-- `context_size`
-- `latency_priority`
-- `cost_priority`
+- `stage`: planner / expert / judge / governance
+- `lane`: distinct company lane
+- `capability`: task-specific capability family
+- `depth`: standard / deep
+- `cost_mode`: free-first / balanced / quality-first
 
-Cloudflare may choose different concrete models within the already-approved company lane according to those fields. Fallback must stay inside the same company.
+The expert's human-readable profession/title and mandate are generated dynamically for the task and remain in the model prompt; they are not frozen into the route graph.
 
-## Secondary signals
+## Free/paid adaptation
 
-The OpenRouter intelligence ordering is primary. Before promoting a route version, governance may use these secondary signals as tie-breakers or health checks:
+Free models are allowed, not universally preferred.
 
-- weekly popularity
-- recent latency
-- recent throughput
-- provider availability
-- expert-center execution receipts
-- observed task-specific quality regressions
+- routine/economy tasks may use `free-first`;
+- ordinary tasks may use `balanced`;
+- difficult or high-stakes tasks may use `quality-first`;
+- all modes may fall back within the assigned company lane.
 
-Secondary signals must not override hard exclusions.
+This makes cost behavior task-specific rather than a permanent global free-only or paid-only rule.
 
-## Promotion rule
+## Safe exploration and evolution
 
-A newly discovered model remains a candidate until preview tests confirm:
+A candidate refresh creates a new route version. Production remains pinned until validation succeeds. Percentage split may be used only in an explicit exploration/canary mode and only between models inside the same company lane. Normal expert requests do not randomly A/B their final answer.
 
-1. the exact model is callable through the configured AI Gateway/provider path;
-2. `cf-aig-model` and `cf-aig-provider` identify the expected result;
-3. expert panel company diversity still holds;
-4. no forbidden model/company is selected;
-5. same-company failure behavior is fail-closed;
-6. representative deep, standard, long-context, coding, quantitative, legal, finance, and general tasks complete within configured timeouts.
+## Promotion checks
 
-Production promotion is a separate explicit route-version action.
+Before a new route version is promoted, verify:
+
+1. eight distinct eligible company lanes exist;
+2. free and paid model classification is correct;
+3. no OpenAI / Anthropic / Claude / Flash / random-router candidate is present;
+4. all model fallbacks remain same-company;
+5. Cloudflare accepts the generated JSON route as valid;
+6. planner can generate varying expert counts and task-specific professions;
+7. one- and two-round panels execute;
+8. actual `cf-aig-model` / `cf-aig-provider` receipts preserve company diversity;
+9. previous route version remains available for rollback.
