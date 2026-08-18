@@ -48,18 +48,22 @@ export function relevantPaths(scope, paths) {
   return [...new Set(paths.filter((filePath) => isRelevantPath(scope, filePath)))].sort();
 }
 
-export function wranglerCommand(mode, wranglerVersion, context) {
+export function wranglerCommand(scope, mode, wranglerVersion, context) {
   validateWranglerVersion(wranglerVersion);
+  if (!SCOPES.has(scope)) throw new Error(`UNSUPPORTED_SCOPE:${scope || "missing"}`);
   if (mode === "preview") {
-    const shortSha = String(context?.sha || "").slice(0, 12);
-    return [
-      "--yes",
-      `wrangler@${wranglerVersion}`,
-      "versions",
-      "upload",
-      "--message",
-      `candidate ${context?.branch || "preview"} ${shortSha}`,
-    ];
+    if (scope === "maintenance") {
+      const shortSha = String(context?.sha || "").slice(0, 12);
+      return [
+        "--yes",
+        `wrangler@${wranglerVersion}`,
+        "versions",
+        "upload",
+        "--message",
+        `candidate ${context?.branch || "preview"} ${shortSha}`,
+      ];
+    }
+    return ["--yes", `wrangler@${wranglerVersion}`, "deploy", "--dry-run"];
   }
   if (mode === "deploy") return ["--yes", `wrangler@${wranglerVersion}`, "deploy"];
   throw new Error(`UNSUPPORTED_MODE:${mode || "missing"}`);
@@ -184,6 +188,11 @@ export function main(argv = process.argv.slice(2), env = process.env) {
     }
 
     const { wranglerVersion } = packageContract(scope);
+    const previewSemantics = mode === "preview"
+      ? scope === "maintenance"
+        ? "version-upload-no-production-deploy"
+        : "compile-dry-run-only"
+      : "production-deploy";
     emit({
       ok: true,
       skipped: false,
@@ -196,7 +205,7 @@ export function main(argv = process.argv.slice(2), env = process.env) {
       history_deepened: historyDeepened,
       relevant_paths: relevant,
       wrangler_version: wranglerVersion,
-      preview_semantics: mode === "preview" ? "version-upload-no-production-deploy" : "production-deploy",
+      preview_semantics: previewSemantics,
     });
 
     run(process.execPath, [resolve(repoRoot, "scripts/cloudflare-worker-gate.test.mjs")], {
@@ -204,7 +213,7 @@ export function main(argv = process.argv.slice(2), env = process.env) {
       stdio: "inherit",
     });
     run("npm", ["run", "cf:build"], { cwd: process.cwd(), stdio: "inherit" });
-    run("npx", wranglerCommand(mode, wranglerVersion, context), { cwd: process.cwd(), stdio: "inherit" });
+    run("npx", wranglerCommand(scope, mode, wranglerVersion, context), { cwd: process.cwd(), stdio: "inherit" });
     return 0;
   } catch (error) {
     emit(
