@@ -12,7 +12,7 @@ const FREE_MODELS_STRONGEST_FIRST = Object.freeze([
 ]);
 
 const ASSIST_PROFILE_NAME = "governance-assist-high-reasoning-v1";
-const DEFAULT_AI_GATEWAY_ID = "four-center-ai-gateway";
+const DEFAULT_AI_GATEWAY_ID = "test";
 const FIXED_SAMPLING = Object.freeze({
   temperature: 0.2,
   top_p: 0.9,
@@ -103,8 +103,6 @@ async function workersAiAttempt(env, model, messages, maxTokens) {
   return env.AI.run(model, workersAiParameters(model, messages, maxTokens), {
     gateway: {
       id: gatewayId,
-      skipCache: true,
-      collectLog: false,
       metadata: {
         center: "governance",
         route: "assist",
@@ -169,8 +167,9 @@ export function assistRoutingInfo() {
         id_from: "AI_GATEWAY_ID",
         default_id: DEFAULT_AI_GATEWAY_ID,
         binding_authenticated: true,
-        cache: false,
-        request_logging: false
+        cache: "gateway-default",
+        request_logging: "gateway-default",
+        dynamic_routing: false
       },
       free_only: true,
       paid_models_allowed: false,
