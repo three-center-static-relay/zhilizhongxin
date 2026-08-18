@@ -5,6 +5,7 @@ import {
   relevantPaths,
   validateInvocation,
   validateWranglerVersion,
+  wranglerCommand,
 } from "./cloudflare-worker-gate.mjs";
 
 const previewEnv = {
@@ -35,6 +36,16 @@ assert.throws(() => validateInvocation("admin", "preview", { ...previewEnv, WORK
 assert.equal(validateWranglerVersion("4.123.0"), "4.123.0");
 assert.throws(() => validateWranglerVersion("^4.123.0"), /EXACT_WRANGLER_VERSION_REQUIRED/);
 
+const previewCommand = wranglerCommand("preview", "4.123.0", previewEnv.WORKERS_CI_COMMIT_SHA ? {
+  branch: previewEnv.WORKERS_CI_BRANCH,
+  sha: previewEnv.WORKERS_CI_COMMIT_SHA,
+} : {});
+assert.deepEqual(previewCommand.slice(0, 4), ["--yes", "wrangler@4.123.0", "versions", "upload"]);
+assert.equal(previewCommand.includes("--dry-run"), false);
+assert.equal(previewCommand.includes("deploy"), false);
+assert.match(previewCommand.join(" "), /candidate feature\/gate aaaaaaaaaaaa/);
+assert.deepEqual(wranglerCommand("deploy", "4.123.0", {branch:"main",sha:"b".repeat(40)}), ["--yes", "wrangler@4.123.0", "deploy"]);
+
 assert.equal(isRelevantPath("admin", "admin/src/index.js"), true);
 assert.equal(isRelevantPath("admin", "governance/src/index.js"), false);
 assert.equal(isRelevantPath("governance", "admin/docs/canary.md"), false);
@@ -57,4 +68,5 @@ console.log(JSON.stringify({
   fail_closed_context: true,
   exact_wrangler_pin: true,
   per_worker_path_isolation: true,
+  preview_creates_version_without_production_deploy: true,
 }));
