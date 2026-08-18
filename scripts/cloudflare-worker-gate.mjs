@@ -48,6 +48,23 @@ export function relevantPaths(scope, paths) {
   return [...new Set(paths.filter((filePath) => isRelevantPath(scope, filePath)))].sort();
 }
 
+export function wranglerCommand(mode, wranglerVersion, context) {
+  validateWranglerVersion(wranglerVersion);
+  if (mode === "preview") {
+    const shortSha = String(context?.sha || "").slice(0, 12);
+    return [
+      "--yes",
+      `wrangler@${wranglerVersion}`,
+      "versions",
+      "upload",
+      "--message",
+      `candidate ${context?.branch || "preview"} ${shortSha}`,
+    ];
+  }
+  if (mode === "deploy") return ["--yes", `wrangler@${wranglerVersion}`, "deploy"];
+  throw new Error(`UNSUPPORTED_MODE:${mode || "missing"}`);
+}
+
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
@@ -179,6 +196,7 @@ export function main(argv = process.argv.slice(2), env = process.env) {
       history_deepened: historyDeepened,
       relevant_paths: relevant,
       wrangler_version: wranglerVersion,
+      preview_semantics: mode === "preview" ? "version-upload-no-production-deploy" : "production-deploy",
     });
 
     run(process.execPath, [resolve(repoRoot, "scripts/cloudflare-worker-gate.test.mjs")], {
@@ -186,9 +204,7 @@ export function main(argv = process.argv.slice(2), env = process.env) {
       stdio: "inherit",
     });
     run("npm", ["run", "cf:build"], { cwd: process.cwd(), stdio: "inherit" });
-    const wranglerArgs = ["--yes", `wrangler@${wranglerVersion}`, "deploy"];
-    if (mode === "preview") wranglerArgs.push("--dry-run");
-    run("npx", wranglerArgs, { cwd: process.cwd(), stdio: "inherit" });
+    run("npx", wranglerCommand(mode, wranglerVersion, context), { cwd: process.cwd(), stdio: "inherit" });
     return 0;
   } catch (error) {
     emit(
