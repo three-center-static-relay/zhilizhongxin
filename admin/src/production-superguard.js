@@ -7,6 +7,17 @@ const fail=(c,m,s=409,d)=>json({ok:false,error:c,message:m,...(d?{details:d}:{})
 const tok=req=>{const h=req.headers.get("authorization")||"";return h.startsWith("Bearer ")?h.slice(7).trim():""};
 function eq(a,b){a=String(a||"");b=String(b||"");if(a.length!==b.length)return false;let x=0;for(let i=0;i<a.length;i++)x|=a.charCodeAt(i)^b.charCodeAt(i);return x===0}
 async function auth(req,env){if(!env.ADMIN_GPT_TOKEN)throw Object.assign(new Error("ADMIN_TOKEN_NOT_CONFIGURED"),{status:503});if(!eq(tok(req),env.ADMIN_GPT_TOKEN))throw Object.assign(new Error("UNAUTHORIZED"),{status:401})}
+function deployProbeToken(){return typeof TENCENT_DEPLOY_E2E_PROBE==="string"?TENCENT_DEPLOY_E2E_PROBE:""}
+
+async function deployTencentE2E(req,env){
+  const expected=deployProbeToken(),provided=req.headers.get("x-tencent-deploy-probe")||"";
+  if(!expected||!eq(provided,expected))return new Response(null,{status:404,headers:{"cache-control":"no-store"}});
+  const response=await tencentExecutorSelftest(env);
+  const headers=new Headers(response.headers);
+  headers.set("cache-control","no-store");
+  headers.set("x-deploy-e2e","tencent-runtime-v1");
+  return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
+}
 
 async function literatureSelftest(req,env){
   await auth(req,env);
@@ -22,8 +33,9 @@ async function literatureSelftest(req,env){
 
 export default{async fetch(req,env,ctx){try{
   const u=new URL(req.url);
+  if(req.method==="POST"&&u.pathname==="/_internal/tencent-deploy-e2e")return await deployTencentE2E(req,env);
   if(req.method==="POST"&&u.pathname==="/v1/admin/selftest/literature")return await literatureSelftest(req,env);
-  if(req.method==="GET"&&u.pathname==="/v1/admin/tencent/status"){await auth(req,env);return tencentExecutorStatus(env)}
+  if(req.method==="GET"&&u.pathname==="/v1/admin/tencent/status"){await auth(req,env);return await tencentExecutorStatus(env)}
   if(req.method==="POST"&&u.pathname==="/v1/admin/tencent/selftest"){await auth(req,env);return await tencentExecutorSelftest(env)}
   if(req.method==="POST"&&u.pathname==="/v1/admin/tencent/agent"){await auth(req,env);return await tencentAgentInvoke(req,env)}
   return await superguard.fetch(req,env,ctx)
