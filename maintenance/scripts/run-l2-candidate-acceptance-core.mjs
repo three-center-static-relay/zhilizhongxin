@@ -1,58 +1,42 @@
 #!/usr/bin/env node
-import {spawnSync} from "node:child_process";
+import {spawn} from "node:child_process";
 import {mkdirSync,readFileSync,rmSync,writeFileSync} from "node:fs";
 import {resolve} from "node:path";
 import {pathToFileURL} from "node:url";
 
 const WRANGLER="4.123.0";
-const WORKER="maintenance-worker";
 const COMMIT_PATTERN=/^[a-f0-9]{40}$/i;
-const TAG_PATTERN=/^[a-f0-9]{12}$/i;
-const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const WRANGLER_TIMEOUT_MS=120000;
-const PREVIEW_READY_TIMEOUT_MS=60000;
+const DRIVER_PORT=8799;
+const READY_TIMEOUT_MS=75000;
 let phase="boot";
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 function mark(next,details={}){
   phase=next;
-  console.log(JSON.stringify({event:"L2_SELF_STATELESS_PREVIEW_PHASE",phase,at:new Date().toISOString(),...details,secrets_redacted:true}));
+  console.log(JSON.stringify({event:"L2_LOCAL_REMOTE_BINDING_PHASE",phase,at:new Date().toISOString(),...details,secrets_redacted:true}));
 }
-function run(args,{cwd=process.cwd(),env={}}={}){
-  const result=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{
-    cwd,encoding:"utf8",env:{...process.env,CI:"1",...env},maxBuffer:8*1024*1024,timeout:WRANGLER_TIMEOUT_MS,killSignal:"SIGTERM"
-  });
-  if(result.error?.code==="ETIMEDOUT")throw Object.assign(new Error(`WRANGLER_TIMEOUT:${args.join(" ")}`),{stdout:result.stdout,stderr:result.stderr});
-  if(result.error||result.status!==0)throw Object.assign(new Error(`WRANGLER_FAILED:${args.join(" ")}`),{stdout:result.stdout,stderr:result.stderr});
-  if(result.stdout)process.stdout.write(result.stdout);
-  if(result.stderr)process.stderr.write(result.stderr);
-  return result;
+function stop(child){
+  if(!child||child.exitCode!==null)return;
+  try{child.kill("SIGTERM")}catch{}
+  setTimeout(()=>{if(child.exitCode===null)try{child.kill("SIGKILL")}catch{}},1500).unref?.();
 }
-export function parseVersionUploadOutput(text){
-  const rows=String(text||"").split(/\r?\n/).map(line=>line.trim()).filter(Boolean).flatMap(line=>{try{return[JSON.parse(line)]}catch{return[]}});
-  const row=[...rows].reverse().find(value=>value?.type==="version-upload");
-  if(!row)throw new Error("VERSION_UPLOAD_STRUCTURED_OUTPUT_MISSING");
-  const versionId=String(row.version_id||"").trim();
-  const previewUrl=String(row.preview_url||row.preview_alias_url||"").trim();
-  if(!UUID_PATTERN.test(versionId))throw new Error("SELF_PREVIEW_VERSION_ID_INVALID");
-  if(!/^https:\/\/[A-Za-z0-9.-]+\.workers\.dev\/?$/.test(previewUrl))throw new Error("SELF_PREVIEW_URL_INVALID");
-  return{versionId,previewUrl};
+async function fetchLocal(){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),4000);
+  try{
+    const response=await fetch(`http://127.0.0.1:${DRIVER_PORT}/health`,{headers:{accept:"application/json"},signal:controller.signal});
+    const body=await response.json().catch(()=>null);
+    if(!response.ok||body?.ok!==true||body?.upstream_service!=="maintenance-worker"||body?.upstream_status!==200)throw new Error(`LOCAL_DRIVER_RESPONSE_MISMATCH:${response.status}`);
+    return body;
+  }finally{clearTimeout(timer)}
 }
-async function fetchPreview(previewUrl,commit,versionId){
-  const deadline=Date.now()+PREVIEW_READY_TIMEOUT_MS;let last=null;
+async function waitReady(child){
+  const deadline=Date.now()+READY_TIMEOUT_MS;let last=null;
   while(Date.now()<deadline){
-    try{
-      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
-      let response;
-      try{response=await fetch(new URL("/health",previewUrl),{headers:{accept:"application/json"},signal:controller.signal})}
-      finally{clearTimeout(timer)}
-      const body=await response.json().catch(()=>null);
-      if(response.ok&&body?.ok===true&&body?.commit_sha===commit&&body?.version_id===versionId&&body?.stateless===true)return body;
-      last=new Error(`PREVIEW_RESPONSE_MISMATCH:${response.status}`);
-    }catch(error){last=error}
-    await sleep(2000);
+    if(child.exitCode!==null)throw new Error(`WRANGLER_DEV_EXITED:${child.exitCode}`);
+    try{return await fetchLocal()}catch(error){last=error}
+    await sleep(1000);
   }
-  throw last||new Error("SELF_STATELESS_PREVIEW_NOT_READY");
+  throw last||new Error("LOCAL_REMOTE_BINDING_DRIVER_NOT_READY");
 }
 
 async function main(){
@@ -61,38 +45,60 @@ async function main(){
   if(request?.schema!=="expert-l2-acceptance-v1"||request?.enabled!==true)throw new Error("L2_TRIGGER_INVALID");
   const commit=String(process.env.WORKERS_CI_COMMIT_SHA||"").trim();
   if(!COMMIT_PATTERN.test(commit))throw new Error("L2_COMMIT_SHA_INVALID");
-  const tag=commit.slice(0,12);
-  if(!TAG_PATTERN.test(tag))throw new Error("L2_TAG_INVALID");
 
-  const dir=resolve(".l2-self-stateless-preview");
+  const dir=resolve(".l2-local-remote-binding");
   const configPath=resolve(dir,"wrangler.jsonc");
-  const outputPath=resolve(dir,"wrangler-output.ndjson");
-  rmSync(dir,{recursive:true,force:true});mkdirSync(dir,{recursive:true});
-  writeFileSync(resolve(dir,"candidate.mjs"),`export default{fetch(request,env){const u=new URL(request.url);if(request.method!=="GET"||u.pathname!=="/health")return new Response("not found",{status:404});return Response.json({ok:true,commit_sha:env.L2_COMMIT_SHA,version_id:env.CF_VERSION_METADATA?.id||null,stateless:true})}};\n`);
+  rmSync(dir,{recursive:true,force:true});
+  mkdirSync(dir,{recursive:true});
+  writeFileSync(resolve(dir,"driver.mjs"),`export default{async fetch(request,env){const u=new URL(request.url);if(request.method!=="GET"||u.pathname!=="/health")return Response.json({ok:false,error:"NOT_FOUND"},{status:404});const upstream=await env.MAINTENANCE.fetch(new Request("https://maintenance.internal/health",{method:"GET",headers:{accept:"application/json"}}));const body=await upstream.json().catch(()=>null);const ok=upstream.ok&&body?.ok===true&&body?.service==="maintenance-worker";return Response.json({ok,upstream_status:upstream.status,upstream_service:body?.service||null,upstream_ready:body?.status||null,upstream_api_version:body?.api_version||null},{status:ok?200:502})}};\n`);
   writeFileSync(configPath,JSON.stringify({
-    name:WORKER,
-    main:"candidate.mjs",
+    name:"l2-local-remote-binding-driver",
+    main:"driver.mjs",
     compatibility_date:"2026-08-18",
     compatibility_flags:["nodejs_compat"],
-    workers_dev:false,
-    preview_urls:true,
-    version_metadata:{binding:"CF_VERSION_METADATA"},
-    vars:{L2_COMMIT_SHA:commit}
+    services:[{binding:"MAINTENANCE",service:"maintenance-worker",remote:true}]
   },null,2));
 
+  let child=null;
   try{
-    mark("self-version-upload-begin",{worker:WORKER,candidate_tag:tag,stateless_config:true,formal_config_unchanged:true,no_deploy:true});
-    run(["versions","upload","--tag",tag,"--preview-alias",`p-${tag}`,"--config",configPath],{cwd:dir,env:{WRANGLER_OUTPUT_FILE_PATH:outputPath}});
-    const parsed=parseVersionUploadOutput(readFileSync(outputPath,"utf8"));
-    mark("self-version-upload-complete",{worker:WORKER,version_id:parsed.versionId,preview_url_present:true});
-    const body=await fetchPreview(parsed.previewUrl,commit,parsed.versionId);
-    mark("self-preview-http-verified",{worker:WORKER,version_id:parsed.versionId,http_ok:true});
-    console.log(JSON.stringify({event:"L2_SELF_STATELESS_VERSION_PREVIEW_PROBE_PASS",ok:true,worker_name:WORKER,commit_sha:body.commit_sha,version_id:parsed.versionId,preview_url_verified:true,stateless_candidate_config:true,formal_maintenance_config_unchanged:true,version_uploaded:true,version_deployed:false,production_traffic_changed:false,durable_object_binding_in_candidate:false,secret_binding_in_candidate:false,service_binding_in_candidate:false,cron_in_candidate:false,ai_gateway_called:false,dynamic_routes_mutated:false,secrets_redacted:true}));
+    mark("local-driver-start",{execution:"local",remote_service_binding:true,target:"maintenance-worker",production_mutation:false});
+    child=spawn("npx",["--yes",`wrangler@${WRANGLER}`,"dev","--config",configPath,"--ip","127.0.0.1","--port",String(DRIVER_PORT)],{
+      cwd:dir,env:{...process.env,CI:"1",NO_COLOR:"1"},stdio:["ignore","pipe","pipe"]
+    });
+    let stdout="",stderr="";
+    child.stdout?.on("data",chunk=>{stdout=(stdout+String(chunk)).slice(-16000)});
+    child.stderr?.on("data",chunk=>{stderr=(stderr+String(chunk)).slice(-16000)});
+    child.on("error",error=>{stderr=(stderr+String(error?.message||error)).slice(-16000)});
+    const body=await waitReady(child);
+    mark("remote-maintenance-health-verified",{target:"maintenance-worker",http_status:body.upstream_status,service:body.upstream_service});
+    console.log(JSON.stringify({
+      event:"L2_LOCAL_REMOTE_SERVICE_BINDING_PROBE_PASS",
+      ok:true,
+      commit_sha:commit,
+      local_worker_execution:true,
+      remote_service_binding:true,
+      target_worker:"maintenance-worker",
+      upstream_http_status:body.upstream_status,
+      upstream_service:body.upstream_service,
+      upstream_ready:body.upstream_ready,
+      upstream_api_version:body.upstream_api_version,
+      new_worker_created:false,
+      remote_dev_used:false,
+      versions_uploaded:false,
+      deployment_mutated:false,
+      production_traffic_changed:false,
+      secret_used:false,
+      ai_gateway_called:false,
+      dynamic_routes_mutated:false,
+      secrets_redacted:true
+    }));
   }finally{
+    stop(child);
     rmSync(dir,{recursive:true,force:true});
   }
 }
+
 if(import.meta.url===pathToFileURL(resolve(process.argv[1]||"")).href)main().catch(error=>{
-  console.error(JSON.stringify({event:"L2_SELF_STATELESS_VERSION_PREVIEW_PROBE_FAIL",phase,error:String(error?.message||error),secrets_redacted:true}));
+  console.error(JSON.stringify({event:"L2_LOCAL_REMOTE_SERVICE_BINDING_PROBE_FAIL",phase,error:String(error?.message||error),secrets_redacted:true}));
   process.exitCode=1;
 });
