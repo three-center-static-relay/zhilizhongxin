@@ -2,6 +2,7 @@
   "name": "maintenance-worker",
   "private": true,
   "type": "module",
+  "description": "Maintenance Worker participating in shared fail-closed Cloudflare gate validation",
   "scripts": {
     "cf:build": "node --check src/index.js",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",

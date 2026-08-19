@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 
-// Post-ready trigger only; assertions below are unchanged.
 import {
   adminPublicBaseFromOpenApi,
   isRelevantPath,
@@ -60,6 +62,16 @@ assert.throws(()=>validateTencentRuntimeReceipt({...goodReceipt,validation:"FAIL
 assert.throws(()=>validateTencentRuntimeReceipt({...goodReceipt,resolved_executor:{mode:"bootstrap-deployment"}}),/TENCENT_E2E_STABLE_DOMAIN_REQUIRED/);
 assert.throws(()=>validateTencentRuntimeReceipt({...goodReceipt,checks:goodReceipt.checks.map((x,i)=>i===11?{...x,ok:false}:x)}),/TENCENT_E2E_CHECK_FAILED:shell_exec/);
 
+const postdeployPath=resolve(process.cwd(),"scripts/tencent-postdeploy-e2e.mjs");
+const syntax=spawnSync(process.execPath,["--check",postdeployPath],{encoding:"utf8"});
+assert.equal(syntax.status,0,syntax.stderr||"TENCENT_POSTDEPLOY_SYNTAX_INVALID");
+const postdeploySource=readFileSync(postdeployPath,"utf8");
+assert.match(postdeploySource,/request as httpsRequest/);
+assert.match(postdeploySource,/E2E_DUAL_TRANSPORT_FAILED/);
+assert.match(postdeploySource,/validateTencentRuntimeReceipt\(body\)/);
+assert.match(postdeploySource,/TENCENT_POSTDEPLOY_E2E_FAILED:/);
+assert.doesNotMatch(postdeploySource,/console\.(?:log|error)\([^\n]*probe/);
+
 console.log(JSON.stringify({
   ok:true,
   suite:"cloudflare-worker-gate-contract",
@@ -70,5 +82,7 @@ console.log(JSON.stringify({
   canonical_admin_e2e_target:true,
   wrangler_output_not_authoritative_for_e2e_target:true,
   tencent_runtime_receipt_validation:true,
+  tencent_postdeploy_dual_transport_syntax:true,
+  tencent_postdeploy_probe_not_logged:true,
   automatic_rollback_path:true
 }));
