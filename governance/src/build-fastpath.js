@@ -1,33 +1,12 @@
 const API_BASE="https://api.cloudflare.com/client/v4";
 const REQUEST_TIMEOUT_MS=10000;
 const MAX_RESPONSE_BYTES=524288;
-const DEFAULT_TAIL_LINES=120;
-const MAX_TAIL_LINES=300;
+const RECENT_BUILD_LIMIT=5;
+const FAILURE_TAIL_LINES=120;
 const MAX_LOG_PAGES=8;
-const ALLOWED_WORKERS=new Set([
-  "governance-worker",
-  "admin-worker",
-  "maintenance-worker",
-  "intelligence-worker",
-  "compute-worker",
-  "expert-worker"
-]);
+const MONITORED_WORKERS=Object.freeze(["governance-worker","admin-worker","maintenance-worker"]);
 
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
-
-function constantTimeEqual(a,b){
-  a=String(a||"");b=String(b||"");
-  if(a.length!==b.length)return false;
-  let diff=0;for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);
-  return diff===0;
-}
-
-function authenticate(request,env){
-  const authorization=request.headers.get("authorization")||"";
-  if(!authorization.startsWith("Bearer "))return {ok:false,status:401,error:"UNAUTHORIZED"};
-  if(!env.ADMIN_GPT_TOKEN)return {ok:false,status:503,error:"ADMIN_TOKEN_NOT_CONFIGURED"};
-  return constantTimeEqual(authorization.slice(7).trim(),env.ADMIN_GPT_TOKEN)?{ok:true}:{ok:false,status:401,error:"UNAUTHORIZED"};
-}
 
 function configuration(env){
   const accountId=String(env.CLOUDFLARE_ACCOUNT_ID||"").trim();
@@ -70,26 +49,6 @@ async function cfApi(env,path){
   }finally{clearTimeout(timer)}
 }
 
-function normalizeWorker(value){
-  const worker=String(value||"").trim();
-  if(!ALLOWED_WORKERS.has(worker))throw Object.assign(new Error("INVALID_WORKER"),{status:400});
-  return worker;
-}
-
-function normalizeCommit(value){
-  if(value===null||value===undefined||value==="")return null;
-  const commit=String(value).trim().toLowerCase();
-  if(!/^[a-f0-9]{7,40}$/.test(commit))throw Object.assign(new Error("INVALID_COMMIT"),{status:400});
-  return commit;
-}
-
-function tailCount(value){
-  if(value===null||value===undefined||value==="")return DEFAULT_TAIL_LINES;
-  const n=Number(value);
-  if(!Number.isInteger(n)||n<20||n>MAX_TAIL_LINES)throw Object.assign(new Error("INVALID_TAIL"),{status:400});
-  return n;
-}
-
 function rows(payload){
   if(Array.isArray(payload))return payload;
   for(const key of ["builds","result","data"])if(Array.isArray(payload?.[key]))return payload[key];
@@ -108,12 +67,12 @@ function normalizedBuild(build){
   const outcome=String(build?.build_outcome||build?.buildOutcome||"").toLowerCase();
   const commitHash=String(metadata?.commit_hash||metadata?.commitHash||build?.commit_hash||build?.commitHash||"").trim().toLowerCase();
   const branch=String(metadata?.branch||build?.branch||"").trim();
-  const terminal=status==="stopped"||["success","fail","failed","failure","skipped","cancelled","canceled","terminated"].includes(outcome);
   const success=outcome==="success";
   const failed=["fail","failed","failure"].includes(outcome);
   const canceled=["cancelled","canceled"].includes(outcome);
   const terminated=outcome==="terminated";
   const skipped=outcome==="skipped";
+  const terminal=status==="stopped"||success||failed||canceled||terminated||skipped;
   const state=success?"SUCCESS":failed?"FAILED":canceled?"CANCELED":terminated?"TERMINATED":skipped?"SKIPPED":status==="stopped"?"STOPPED":["queued","initializing","running"].includes(status)?status.toUpperCase():"UNKNOWN";
   return {
     build_uuid:String(build?.build_uuid||build?.buildUuid||build?.id||"").trim()||null,
@@ -126,33 +85,23 @@ function normalizedBuild(build){
   };
 }
 
-async function resolveWorkerTag(env,worker){
-  const scripts=rows(await cfApi(env,"/workers/scripts"));
-  const script=scripts.find(item=>String(item?.id||"")===worker);
-  const tag=String(script?.tag||script?.external_script_id||"").trim();
-  if(!tag)throw Object.assign(new Error("WORKER_TAG_NOT_FOUND"),{status:404,details:{worker}});
-  return tag;
-}
-
 function logLines(payload){
   let source=payload;
   if(payload&&typeof payload==="object"&&!Array.isArray(payload))source=payload.lines??payload.logs??payload.data??payload.result??payload;
-  if(Array.isArray(source)){
-    return source.map(item=>{
-      if(typeof item==="string")return redactText(item);
-      if(Array.isArray(item))return redactText(item.map(part=>String(part??"")).join(" "));
-      if(item&&typeof item==="object"){
-        const candidate=item.message??item.line??item.text??item.log;
-        if(typeof candidate==="string")return redactText(candidate);
-      }
-      return redactText(JSON.stringify(redact(item)));
-    });
-  }
+  if(Array.isArray(source))return source.map(item=>{
+    if(typeof item==="string")return redactText(item);
+    if(Array.isArray(item))return redactText(item.map(part=>String(part??"")).join(" "));
+    if(item&&typeof item==="object"){
+      const candidate=item.message??item.line??item.text??item.log;
+      if(typeof candidate==="string")return redactText(candidate);
+    }
+    return redactText(JSON.stringify(redact(item)));
+  });
   if(typeof source==="string")return redactText(source).split(/\r?\n/);
   return redactText(JSON.stringify(redact(source))).split(/\r?\n/);
 }
 
-async function buildLogTail(env,buildUuid,tail){
+async function buildLogTail(env,buildUuid){
   let cursor=null,pages=0,all=[],apiTruncated=false;
   do{
     const suffix=cursor?`?cursor=${encodeURIComponent(cursor)}`:"";
@@ -162,45 +111,49 @@ async function buildLogTail(env,buildUuid,tail){
     apiTruncated=payload?.truncated===true;
     pages++;
   }while(cursor&&pages<MAX_LOG_PAGES);
-  return {tail_lines:tail,total_lines_observed:all.length,log_tail:all.slice(-tail),truncated:apiTruncated||Boolean(cursor)||all.length>tail,pages_observed:pages};
+  return {tail_lines:FAILURE_TAIL_LINES,total_lines_observed:all.length,log_tail:all.slice(-FAILURE_TAIL_LINES),truncated:apiTruncated||Boolean(cursor)||all.length>FAILURE_TAIL_LINES,pages_observed:pages};
 }
 
-async function authorized(request,env,fn){
-  const auth=authenticate(request,env);
-  if(!auth.ok)return json({ok:false,error:auth.error,http_status:auth.status},auth.status);
-  try{return json(await fn(),200)}catch(error){return json({ok:false,error:String(error?.message||"BUILD_FASTPATH_FAILED"),http_status:error?.status||500,details:error?.details||undefined,secrets_redacted:true},error?.status||500)}
+async function workerTags(env){
+  const scripts=rows(await cfApi(env,"/workers/scripts"));
+  const tags={};
+  for(const worker of MONITORED_WORKERS){
+    const script=scripts.find(item=>String(item?.id||"")===worker);
+    const tag=String(script?.tag||script?.external_script_id||"").trim();
+    if(tag)tags[worker]=tag;
+  }
+  return tags;
 }
 
-export async function getBuildFastStatus(request,env){
-  return authorized(request,env,async()=>{
-    const url=new URL(request.url);
-    const worker=normalizeWorker(url.searchParams.get("worker"));
-    const commit=normalizeCommit(url.searchParams.get("commit"));
-    const tail=tailCount(url.searchParams.get("tail"));
-    const workerTag=await resolveWorkerTag(env,worker);
-    const list=rows(await cfApi(env,`/builds/workers/${encodeURIComponent(workerTag)}/builds`)).slice().sort((a,b)=>createdTime(b)-createdTime(a));
-    const selected=commit?list.find(item=>String(normalizedBuild(item).commit_hash||"").startsWith(commit)):list[0];
-    if(!selected)return {ok:true,http_status:200,found:false,state:"NOT_OBSERVED",worker,commit,source:"cloudflare-builds-api",bot_independent:true,observed_at:new Date().toISOString(),secrets_redacted:true};
-    const build=normalizedBuild(selected);
-    let logs=null;
-    if((build.failed||build.canceled||build.terminated)&&build.build_uuid)logs=await buildLogTail(env,build.build_uuid,tail);
-    return {ok:true,http_status:200,found:true,worker,worker_tag:workerTag,requested_commit:commit,build,logs,source:"cloudflare-builds-api",bot_independent:true,observed_at:new Date().toISOString(),secrets_redacted:true};
-  });
+async function inspectWorker(env,worker,tag){
+  if(!tag)return {ok:false,worker,error:"WORKER_TAG_NOT_FOUND",recent_builds:[],latest:null,latest_failure_logs:null,secrets_redacted:true};
+  try{
+    const builds=rows(await cfApi(env,`/builds/workers/${encodeURIComponent(tag)}/builds`)).slice().sort((a,b)=>createdTime(b)-createdTime(a)).slice(0,RECENT_BUILD_LIMIT).map(normalizedBuild);
+    const latest=builds[0]||null;
+    let latestFailureLogs=null;
+    if(latest?.build_uuid&&(latest.failed||latest.canceled||latest.terminated))latestFailureLogs=await buildLogTail(env,latest.build_uuid);
+    return {ok:true,worker,worker_tag:tag,latest,recent_builds:builds,latest_failure_logs:latestFailureLogs,secrets_redacted:true};
+  }catch(error){
+    return {ok:false,worker,error:String(error?.message||"BUILD_STATUS_FAILED"),http_status:error?.status||500,details:redact(error?.details||null),recent_builds:[],latest:null,latest_failure_logs:null,secrets_redacted:true};
+  }
 }
 
-export async function getBuildLogTail(request,env){
-  return authorized(request,env,async()=>{
-    const url=new URL(request.url);
-    const buildUuid=String(url.searchParams.get("build_uuid")||"").trim();
-    if(!/^[A-Za-z0-9-]{16,96}$/.test(buildUuid))throw Object.assign(new Error("INVALID_BUILD_UUID"),{status:400});
-    const tail=tailCount(url.searchParams.get("tail"));
-    return {ok:true,http_status:200,build_uuid:buildUuid,...(await buildLogTail(env,buildUuid,tail)),source:"cloudflare-builds-api",bot_independent:true,observed_at:new Date().toISOString(),secrets_redacted:true};
-  });
+export async function collectBuildFastStatus(env){
+  try{
+    const tags=await workerTags(env);
+    const entries=await Promise.all(MONITORED_WORKERS.map(async worker=>[worker,await inspectWorker(env,worker,tags[worker])]));
+    const workers=Object.fromEntries(entries);
+    return {ok:Object.values(workers).every(item=>item.ok===true),source:"cloudflare-builds-api",bot_independent:true,observed_at:new Date().toISOString(),recent_build_limit:RECENT_BUILD_LIMIT,workers,secrets_redacted:true};
+  }catch(error){
+    return {ok:false,source:"cloudflare-builds-api",bot_independent:true,observed_at:new Date().toISOString(),error:String(error?.message||"CLOUDFLARE_BUILDS_STATUS_FAILED"),http_status:error?.status||500,details:redact(error?.details||null),workers:{},secrets_redacted:true};
+  }
 }
 
-export function buildFastOpenApiPaths(){
-  return {
-    "/v1/admin/builds/fast-status":{get:{operationId:"getCloudflareBuildFastStatus",summary:"Read live Cloudflare Workers Build status",description:"Read the latest Cloudflare Workers Build directly from the Builds API, optionally pinned to a commit prefix. Failed, canceled, or terminated builds automatically include a redacted log tail. This bypasses delayed GitHub bot synchronization and never triggers or cancels builds.",security:[{BearerAuth:[]}],parameters:[{name:"worker",in:"query",required:true,schema:{type:"string",enum:[...ALLOWED_WORKERS]}},{name:"commit",in:"query",required:false,schema:{type:"string",pattern:"^[A-Fa-f0-9]{7,40}$"}},{name:"tail",in:"query",required:false,schema:{type:"integer",minimum:20,maximum:MAX_TAIL_LINES,default:DEFAULT_TAIL_LINES}}],responses:{"200":{description:"Current Build status or NOT_OBSERVED."},"400":{description:"Invalid worker, commit, or tail."},"401":{description:"Unauthorized."},"503":{description:"Builds API credentials unavailable."}}}},
-    "/v1/admin/builds/logs":{get:{operationId:"getCloudflareBuildLogTail",summary:"Read a redacted Cloudflare Build log tail",description:"Read a bounded, cursor-aware tail of one Cloudflare Workers Build log by build UUID. Sensitive-looking fields and bearer/token strings are redacted before return.",security:[{BearerAuth:[]}],parameters:[{name:"build_uuid",in:"query",required:true,schema:{type:"string",minLength:16,maxLength:96}},{name:"tail",in:"query",required:false,schema:{type:"integer",minimum:20,maximum:MAX_TAIL_LINES,default:DEFAULT_TAIL_LINES}}],responses:{"200":{description:"Redacted Build log tail."},"400":{description:"Invalid build_uuid or tail."},"401":{description:"Unauthorized."},"503":{description:"Builds API credentials unavailable."}}}}
-  };
+export async function enrichSystemHealthWithBuilds(response,env){
+  if(!response?.ok)return response;
+  const fallback=response.clone();
+  const body=await response.json().catch(()=>null);
+  if(!body||typeof body!=="object")return fallback;
+  const cloudflare_builds=await collectBuildFastStatus(env);
+  return json({...body,data:{...(body.data||{}),cloudflare_builds}},response.status);
 }
