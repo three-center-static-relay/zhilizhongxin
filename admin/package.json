@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "cf:build": "node ../scripts/tencent-c633-failure-bucket.mjs auth",
+    "cf:build": "node ../scripts/tencent-c633-failure-bucket.mjs fail",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs admin preview",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs admin deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
