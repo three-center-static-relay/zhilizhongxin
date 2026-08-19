@@ -2,9 +2,9 @@
   "name": "maintenance-worker",
   "private": true,
   "type": "module",
-  "description": "Atomic Tencent state classifier: previous 78d8af13 FAIL; do not merge",
+  "description": "Atomic Tencent failure classifier: runtime-receipt failure for 54ca74a6; do not merge",
   "scripts": {
-    "cf:build": "node --check src/index.js && node ../scripts/tencent-attestation-state-probe.mjs old-fail",
+    "cf:build": "node --check src/index.js && node ../scripts/tencent-current-failure-probe.mjs receipt",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs maintenance deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",

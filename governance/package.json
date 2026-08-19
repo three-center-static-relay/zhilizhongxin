@@ -2,7 +2,7 @@
   "name": "governance-worker",
   "private": true,
   "type": "module",
-  "description": "Atomic Tencent state classifier: current 54ca74a6 FAIL; do not merge",
+  "description": "Atomic Tencent failure classifier: dual-transport failure for 54ca74a6; do not merge",
   "scripts": {
     "policy": "node tests/policy-regression.mjs",
     "policy:hardening": "node tests/policy-hardening-second-layer.mjs",
@@ -19,7 +19,7 @@
     "mcp:contract": "node tests/openrouter-mcp-boundary.mjs",
     "evolution:contract": "node tests/evolution-kernel-contract.mjs",
     "test": "node tests/evolution-kernel-contract.mjs && node tests/domain-architecture-contract.mjs && node tests/openrouter-mcp-boundary.mjs && node tests/policy-regression.mjs && node tests/policy-hardening-second-layer.mjs && node tests/runtime-attestation.mjs && node tests/openapi-action-schema.mjs && node tests/literature-action-route.mjs && node tests/provider-fresh-e2e-route.mjs && node tests/final-output-validation.mjs && node tests/legacy-action-compat-selftests.mjs && node tests/assist-profile.mjs && node tests/stress.mjs && node tests/admin-gateway-readonly.mjs && node tests/admin-candidate-acceptance.mjs && node tests/web-gpt-action-snapshot.mjs",
-    "cf:build": "npm test && node ../scripts/tencent-attestation-state-probe.mjs new-fail",
+    "cf:build": "npm test && node ../scripts/tencent-current-failure-probe.mjs dual",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs governance preview",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs governance deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
