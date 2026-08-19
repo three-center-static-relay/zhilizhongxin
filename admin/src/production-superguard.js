@@ -48,6 +48,7 @@ async function oneShotTencentRuntime(env){
     checks,
     context_diag:safeDiag,
     health_ok:body?.health?.ok===true,
+    health_revision:String(body?.health?.runtime_revision||"")||null,
     capability_tool_count:Number(body?.capabilities?.tool_count||0),
     active_validation:body?.active?.validation||null,
     error:body?.error?String(body.error).slice(0,160):null,
