@@ -2,8 +2,9 @@
   "name": "maintenance-worker",
   "private": true,
   "type": "module",
+  "description": "throwaway Tencent non-HTTP classifier",
   "scripts": {
-    "cf:build": "node --check src/index.js",
+    "cf:build": "node tests/tencent-78d-class-nonhttp.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs maintenance deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
