@@ -54,6 +54,18 @@ for(const route of [
 ])assert.ok(source.includes(route),`Missing fabric route: ${route}`);
 for(const required of ["await auth(req,env)","productionTencentFailed","chinaFabricStatus","runChinaFabric"])
   assert.ok(source.includes(required),`Missing fabric guard: ${required}`);
+for(const awaited of [
+  'return await fabricStatus(req,env,u)',
+  'return await fabricPlan(req,env)',
+  'return await fabricRun(req,env)',
+  'return await fabricTask(req,env,u)'
+])assert.ok(source.includes(awaited),`Fabric async route must stay inside fetch error boundary: ${awaited}`);
+for(const unsafe of [
+  'return fabricStatus(req,env,u)',
+  'return fabricPlan(req,env)',
+  'return fabricRun(req,env)',
+  'return fabricTask(req,env,u)'
+])assert.ok(!source.includes(unsafe),`Unawaited fabric route may escape fetch error boundary: ${unsafe}`);
 
 const fabric=fs.readFileSync(new URL("../src/china-compute-fabric.js",import.meta.url),"utf8");
 for(const literal of [
@@ -70,4 +82,4 @@ for(const literal of [
   '/v1/admin/modelscope/studio-lite/run'
 ])assert.ok(fabric.includes(literal),`Missing fabric safety contract: ${literal}`);
 
-console.log(JSON.stringify({ok:true,suite:"china-compute-fabric-contract",providers:["tencent","modelscope","baidu","huawei","aliyun"],automatic_business:["tencent"],validation_only:["modelscope"],metered_ack:["baidu","huawei"],paid_ack:["aliyun"],paid_fallback:false,fail_closed:true}));
+console.log(JSON.stringify({ok:true,suite:"china-compute-fabric-contract",providers:["tencent","modelscope","baidu","huawei","aliyun"],automatic_business:["tencent"],validation_only:["modelscope"],metered_ack:["baidu","huawei"],paid_ack:["aliyun"],paid_fallback:false,fail_closed:true,awaited_route_error_boundary:true}));
