@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {candidateTag,diagnosticAdminVersionConfig,isRelevantPath,relevantPaths,shouldRunL2,validateInvocation,validatePostAllowScript,validateWranglerVersion,wranglerCommand} from "./gate.mjs";
+import {candidateTag,diagnosticAdminVersionConfig,isRelevantPath,relevantPaths,shouldRunL2,validateInvocation,validatePostAllowScript,validateWranglerVersion,wranglerCommand} from "./cloudflare-worker-gate.mjs";
 const previewEnv={WORKERS_CI:"1",WORKERS_CI_BRANCH:"feature/gate",WORKERS_CI_COMMIT_SHA:"a".repeat(40)};
 const deployEnv={...previewEnv,WORKERS_CI_BRANCH:"main"};
 assert.deepEqual(validateInvocation("admin","preview",previewEnv),{branch:"feature/gate",sha:"a".repeat(40)});
