@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {validateTencentRuntimeReceipt} from "./cloudflare-worker-gate.mjs";
 
-// Ready-state trigger only; diagnostic behavior below is unchanged.
+// Synchronized throwaway generation probe trigger; production diagnostic behavior is unchanged.
 const base=String(process.argv[2]||"").replace(/\/+$/,""),probe=process.env.TENCENT_E2E_PROBE_TOKEN||"";
 assert.match(base,/^https:\/\/[a-z0-9.-]+\.workers\.dev$/i,"VALID_WORKERS_DEV_URL_REQUIRED");
 assert.match(probe,/^[a-f0-9]{64}$/i,"VALID_DEPLOY_PROBE_REQUIRED");
