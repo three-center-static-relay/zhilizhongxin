@@ -11,6 +11,7 @@ const DIAG_PREFIX="pr49-l2-snapshot-bisect-";
 const ADMIN_DIAG_PREFIX="pr49-l2-admin-candidate-bisect-";
 const ENTRY_DIAG_PREFIX="pr49-l2-wrapper-entry-bisect-";
 const LIST_DIAG_PREFIX="pr49-l2-admin-list-bisect-";
+const BUILD_DIAG_PREFIX="pr49-l2-admin-build-bisect-";
 const TAG_PATTERN=/^[a-f0-9]{12}$/i;
 const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -92,6 +93,12 @@ function main(){
     const versions=rows(payload);
     const existing=candidateByTag(payload,tag);
     console.log(JSON.stringify({event:"L2_ADMIN_LIST_BISECT_PASS",tag,request_id:requestId,version_count:versions.length,exact_tag_present:Boolean(existing),exact_version:existing||null,secrets_redacted:true}));
+    return;
+  }
+  if(requestId.startsWith(BUILD_DIAG_PREFIX)){
+    const adminCwd=resolve(process.cwd(),"../admin");
+    run("npm",["run","cf:build"],adminCwd,{stdio:"inherit",stripCiOverride:true});
+    console.log(JSON.stringify({event:"L2_ADMIN_BUILD_BISECT_PASS",tag,request_id:requestId,secrets_redacted:true}));
     return;
   }
   const admin=ensureAdminCandidate(tag);
