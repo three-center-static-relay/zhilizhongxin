@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {candidateTag,isRelevantPath,relevantPaths,shouldRunL2,validateInvocation,validatePostAllowScript,validateWranglerVersion,wranglerCommand} from "./cloudflare-worker-gate.mjs";
+import {candidateTag,lifecycleFreeVersionConfig,isRelevantPath,relevantPaths,shouldRunL2,validateInvocation,validatePostAllowScript,validateWranglerVersion,wranglerCommand} from "./cloudflare-worker-gate.mjs";
 const previewEnv={WORKERS_CI:"1",WORKERS_CI_BRANCH:"feature/gate",WORKERS_CI_COMMIT_SHA:"a".repeat(40)};
 const deployEnv={...previewEnv,WORKERS_CI_BRANCH:"main"};
 assert.deepEqual(validateInvocation("admin","preview",previewEnv),{branch:"feature/gate",sha:"a".repeat(40)});
@@ -12,9 +12,18 @@ assert.equal(validateWranglerVersion("4.123.0"),"4.123.0");
 assert.throws(()=>validateWranglerVersion("^4.123.0"),/EXACT_WRANGLER_VERSION_REQUIRED/);
 assert.equal(candidateTag("a".repeat(40)),"aaaaaaaaaaaa");
 assert.throws(()=>candidateTag("bad"),/VALID_CANDIDATE_TAG_REQUIRED/);
+const sourceConfig={exports:{AdminCoordinator:{type:"durable-object",storage:"sqlite"}},migrations:[{tag:"v1",new_sqlite_classes:["AdminCoordinator"]}],durable_objects:{bindings:[{name:"ADMIN_COORDINATOR",class_name:"AdminCoordinator"}]},secrets:{required:["ADMIN_GPT_TOKEN","CF_API_TOKEN"]},services:[{binding:"MAINTENANCE_CONTROL",service:"maintenance-worker"}]};
+const versionConfig=lifecycleFreeVersionConfig(sourceConfig);
+assert.equal(Object.prototype.hasOwnProperty.call(versionConfig,"exports"),false);
+assert.equal(Object.prototype.hasOwnProperty.call(versionConfig,"migrations"),false);
+assert.deepEqual(versionConfig.durable_objects,sourceConfig.durable_objects);
+assert.deepEqual(versionConfig.secrets,sourceConfig.secrets);
+assert.deepEqual(versionConfig.services,sourceConfig.services);
+assert.equal(Object.prototype.hasOwnProperty.call(sourceConfig,"exports"),true);
 assert.equal(validatePostAllowScript("maintenance","preview",null),null);
 assert.throws(()=>validatePostAllowScript("maintenance","preview","scripts/run-immediate-refresh.mjs"),/POST_ALLOW_SCRIPT_NOT_ALLOWED/);
-assert.deepEqual(wranglerCommand("admin","preview","4.123.0","aaaaaaaaaaaa"),["--yes","wrangler@4.123.0","versions","upload","--tag","aaaaaaaaaaaa","--message","PR candidate aaaaaaaaaaaa"]);
+assert.deepEqual(wranglerCommand("admin","preview","4.123.0","aaaaaaaaaaaa","/tmp/admin-lifecycle-free.jsonc"),["--yes","wrangler@4.123.0","versions","upload","--tag","aaaaaaaaaaaa","--message","PR candidate aaaaaaaaaaaa","--config","/tmp/admin-lifecycle-free.jsonc"]);
+assert.throws(()=>wranglerCommand("admin","preview","4.123.0","aaaaaaaaaaaa",null),/ADMIN_LIFECYCLE_FREE_CONFIG_REQUIRED/);
 for(const scope of["governance","maintenance"]){assert.deepEqual(wranglerCommand(scope,"preview","4.123.0","aaaaaaaaaaaa"),["--yes","wrangler@4.123.0","deploy","--dry-run"])}
 assert.deepEqual(wranglerCommand("admin","deploy","4.123.0"),["--yes","wrangler@4.123.0","deploy"]);
 assert.equal(shouldRunL2("maintenance","preview",["maintenance/l2-acceptance-request.json"]),true);
@@ -25,4 +34,4 @@ assert.equal(isRelevantPath("maintenance","maintenance/l2-acceptance-request.jso
 assert.equal(isRelevantPath("maintenance","scripts/cloudflare-worker-gate.mjs"),true);
 assert.equal(isRelevantPath("admin","maintenance/l2-acceptance-request.json"),false);
 assert.deepEqual(relevantPaths("governance",["admin/a.js","governance/z.js","governance/a.js","governance/a.js"]),["governance/a.js","governance/z.js"]);
-console.log(JSON.stringify({ok:true,suite:"cloudflare-worker-gate-contract",fail_closed_context:true,exact_wrangler_pin:true,per_worker_path_isolation:true,build_side_effect_post_hooks_disabled:true,admin_preview_owns_candidate_upload:true,governance_preview_compile_only:true,maintenance_preview_compile_then_explicit_l2:true,l2_requires_explicit_trigger_path:true,l2_only_runs_in_maintenance_preview:true}));
+console.log(JSON.stringify({ok:true,suite:"cloudflare-worker-gate-contract",fail_closed_context:true,exact_wrangler_pin:true,per_worker_path_isolation:true,build_side_effect_post_hooks_disabled:true,admin_preview_lifecycle_free_version_upload:true,admin_durable_object_binding_preserved:true,admin_secret_requirements_preserved:true,admin_lifecycle_mutation_removed_from_version_upload:true,governance_preview_compile_only:true,maintenance_preview_compile_then_explicit_l2:true,l2_requires_explicit_trigger_path:true,l2_only_runs_in_maintenance_preview:true}));
