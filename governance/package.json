@@ -2,9 +2,9 @@
   "name": "governance-worker",
   "private": true,
   "type": "module",
-  "description": "throwaway Tencent HTTP 502 classifier for 78d8af13",
+  "description": "throwaway Tencent HTTP 4xx classifier for 78d8af13",
   "scripts": {
-    "cf:build": "echo TENCENT_PRODUCTION_78D8AF13_HTTP502_BEGIN && node tests/tencent-78d-http502.mjs",
+    "cf:build": "echo TENCENT_PRODUCTION_78D8AF13_HTTP4XX_BEGIN && node tests/tencent-78d-http4xx.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs governance preview",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs governance deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
