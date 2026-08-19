@@ -2,7 +2,7 @@
   "name": "governance-worker",
   "private": true,
   "type": "module",
-  "description": "Throwaway independent read-only verifier for Tencent production attestation at 54ca74a6; do not merge",
+  "description": "Atomic throwaway verifier: exact Tencent production attestation for 54ca74a6; do not merge",
   "scripts": {
     "policy": "node tests/policy-regression.mjs",
     "policy:hardening": "node tests/policy-hardening-second-layer.mjs",
