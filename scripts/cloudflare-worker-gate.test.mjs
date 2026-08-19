@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 
+// Post-ready trigger only; assertions below are unchanged.
 import {
+  adminPublicBaseFromOpenApi,
   isRelevantPath,
   parseWorkersDevUrl,
   relevantPaths,
@@ -38,6 +40,10 @@ assert.deepEqual(relevantPaths("governance",["admin/a.js","governance/z.js","gov
 
 assert.equal(parseWorkersDevUrl("Deployed https://admin-worker.example123.workers.dev in 1s"),"https://admin-worker.example123.workers.dev");
 assert.throws(()=>parseWorkersDevUrl("no deployment url"),/WORKERS_DEV_URL_NOT_FOUND/);
+assert.equal(adminPublicBaseFromOpenApi({servers:[{url:"https://admin-worker.a15280020511.workers.dev"}]}),"https://admin-worker.a15280020511.workers.dev");
+assert.equal(adminPublicBaseFromOpenApi({servers:[{url:"https://admin-worker.a15280020511.workers.dev/"}]}),"https://admin-worker.a15280020511.workers.dev");
+assert.throws(()=>adminPublicBaseFromOpenApi({servers:[{url:"https://example.com"}]}),/VALID_ADMIN_WORKERS_DEV_URL_REQUIRED/);
+assert.throws(()=>adminPublicBaseFromOpenApi({servers:[]}),/ADMIN_OPENAPI_SERVER_REQUIRED/);
 
 const requiredNames=[
   "stable_domain","runtime_http","python_runtime","executor_auth","capability_http",
@@ -61,7 +67,8 @@ console.log(JSON.stringify({
   exact_wrangler_pin:true,
   per_worker_path_isolation:true,
   production_attestation_shared_gate:true,
-  workers_dev_url_parsing:true,
+  canonical_admin_e2e_target:true,
+  wrangler_output_not_authoritative_for_e2e_target:true,
   tencent_runtime_receipt_validation:true,
   automatic_rollback_path:true
 }));

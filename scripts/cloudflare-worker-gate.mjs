@@ -55,6 +55,15 @@ export function parseWorkersDevUrl(text) {
   return `${url.protocol}//${url.host}`;
 }
 
+export function adminPublicBaseFromOpenApi(spec) {
+  const raw=String(spec?.servers?.[0]?.url||"").trim();
+  if(!raw)throw new Error("ADMIN_OPENAPI_SERVER_REQUIRED");
+  const url=new URL(raw);
+  if(url.protocol!=="https:"||!url.hostname.endsWith(".workers.dev"))throw new Error("VALID_ADMIN_WORKERS_DEV_URL_REQUIRED");
+  if(url.username||url.password||url.search||url.hash)throw new Error("CLEAN_ADMIN_WORKERS_DEV_URL_REQUIRED");
+  return `${url.protocol}//${url.host}`;
+}
+
 export function validateTencentRuntimeReceipt(body) {
   if(body?.ok!==true)throw new Error("TENCENT_E2E_OK_REQUIRED");
   if(body?.validation!=="PASS")throw new Error("TENCENT_E2E_PASS_REQUIRED");
@@ -84,6 +93,7 @@ function emit(payload,stream=process.stdout){stream.write(`${JSON.stringify(payl
 function printCaptured(result){if(result.stdout)process.stdout.write(result.stdout);if(result.stderr)process.stderr.write(result.stderr)}
 function safeFailure(value){return String(value||"UNKNOWN_FAILURE").replace(/[^0-9A-Za-z_.:,=-]/g,"_").slice(0,240)}
 function failureFromVerify(verify){const text=`${verify?.stderr||""}\n${verify?.stdout||""}`;const m=text.match(/TENCENT_POSTDEPLOY_E2E_FAILED:([^\r\n]+)/);return safeFailure(m?.[1]||`E2E_EXIT_${verify?.status??"UNKNOWN"}`)}
+function configuredAdminPublicBase(){return adminPublicBaseFromOpenApi(JSON.parse(readFileSync(resolve(process.cwd(),"openapi.json"),"utf8")))}
 
 function rollbackAdmin(wranglerVersion,message="Automatic rollback: Tencent production gate failed"){
   try{run("npx",["--yes",`wrangler@${wranglerVersion}`,"rollback","--message",message],{cwd:process.cwd(),stdio:"inherit"});emit({ok:true,code:"ADMIN_AUTOMATIC_ROLLBACK_COMPLETE"},process.stderr);return true}
@@ -95,7 +105,9 @@ function capturedDeploy(wranglerVersion,defineArgs=[]){
   for(const defineArg of (Array.isArray(defineArgs)?defineArgs:[defineArgs]).filter(Boolean))args.push("--define",defineArg);
   const result=run("npx",args,{cwd:process.cwd(),encoding:"utf8",maxBuffer:4*1024*1024});
   printCaptured(result);
-  return {result,url:parseWorkersDevUrl(`${result.stdout||""}\n${result.stderr||""}`)};
+  const url=configuredAdminPublicBase();
+  emit({ok:true,code:"ADMIN_CANONICAL_E2E_TARGET",worker_host:new URL(url).host,url_source:"admin-openapi"});
+  return {result,url};
 }
 
 function publishFailureAttestation(wranglerVersion,context,failureCode){
