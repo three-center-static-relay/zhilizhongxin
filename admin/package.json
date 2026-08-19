@@ -2,7 +2,7 @@
   "name": "admin-worker",
   "private": true,
   "type": "module",
-  "description": "Admin Worker with fail-closed Tencent runtime E2E production gate",
+  "description": "Admin Worker with fail-closed Tencent runtime E2E gate and deterministic redacted failure marker",
   "scripts": {
     "cf:build": "node --check src/guard.js && node --check src/index.js && node --check src/production-superguard.js && node --check src/protection.js && node --check src/superguard.js && node --check src/tencent-executor.js && node --check ../scripts/tencent-postdeploy-e2e.mjs && node --check ../scripts/tencent-production-attestation-verify.mjs && node tests/tencent-executor-contract.mjs && node tests/tencent-cloudflare-secret-presence.mjs && node ../scripts/tencent-production-attestation-verify.mjs preview-marker && node -e \"JSON.parse(require('node:fs').readFileSync('openapi.json','utf8'))\"",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs admin preview",
