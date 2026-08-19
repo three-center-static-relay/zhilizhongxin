@@ -1,20 +1,26 @@
 const JSON_HEADERS={"content-type":"application/json;charset=utf-8","cache-control":"no-store"};
 const json=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:JSON_HEADERS});
+const MAKERS_API_BASES=["https://pages-api.cloud.tencent.com/v1","https://pages-api.edgeone.ai/v1"];
+const DISCOVERY_TTL_MS=5*60*1000;
+let discoveryCache={key:"",expires_at:0,value:null};
 
 function executorMode(env){return String(env.TENCENT_MAKERS_EXECUTOR_MODE||"unconfigured").trim()}
-function stableMode(env){return ["project-domain","custom-domain"].includes(executorMode(env))}
+function configuredStableMode(env){return ["project-domain","custom-domain"].includes(executorMode(env))}
+function projectName(env){return String(env.TENCENT_MAKERS_PROJECT_NAME||"python-starter-agent").trim()}
+function makersToken(env){return String(env.TENCENT_MAKERS_API_TOKEN||"").trim()}
 
-function executorBase(env){
-  const raw=String(env.TENCENT_MAKERS_EXECUTOR_URL||"").trim();
-  if(!raw)throw Object.assign(new Error("TENCENT_EXECUTOR_URL_NOT_CONFIGURED"),{status:503});
-  let u;try{u=new URL(raw)}catch{throw Object.assign(new Error("TENCENT_EXECUTOR_URL_INVALID"),{status:503})}
+function normalizeBase(raw){
+  let value=String(raw||"").trim();
+  if(!value)throw Object.assign(new Error("TENCENT_EXECUTOR_DOMAIN_EMPTY"),{status:503});
+  if(!/^https?:\/\//i.test(value))value=`https://${value}`;
+  let u;try{u=new URL(value)}catch{throw Object.assign(new Error("TENCENT_EXECUTOR_URL_INVALID"),{status:503})}
   if(u.protocol!=="https:")throw Object.assign(new Error("TENCENT_EXECUTOR_URL_MUST_BE_HTTPS"),{status:503});
+  if(!u.hostname)throw Object.assign(new Error("TENCENT_EXECUTOR_HOST_INVALID"),{status:503});
+  u.username="";u.password="";u.pathname="/";u.search="";u.hash="";
   return u;
 }
-function requireStable(env){
-  if(!stableMode(env))throw Object.assign(new Error("TENCENT_EXECUTOR_NOT_STABLE"),{status:503,details:{mode:executorMode(env),required:["project-domain","custom-domain"]}});
-}
-function endpoint(env,path){const u=executorBase(env);u.pathname=path;return u}
+function configuredBase(env){return normalizeBase(env.TENCENT_MAKERS_EXECUTOR_URL)}
+function endpoint(base,path){const u=new URL(base.toString());u.pathname=path;u.search="";u.hash="";return u}
 function executorToken(env){
   const token=String(env.TENCENT_EXECUTOR_SHARED_TOKEN||"").trim();
   if(!token)throw Object.assign(new Error("TENCENT_EXECUTOR_SHARED_TOKEN_NOT_CONFIGURED"),{status:503});
@@ -35,24 +41,82 @@ function parseSseEvent(text,eventName){
   }
   return null;
 }
+function activeCustomDomain(item){
+  const domain=String(item?.Domain||"").trim();
+  if(!domain)return false;
+  const status=String(item?.Status||"").trim().toLowerCase();
+  if(!status)return false;
+  return ["active","online","enabled","normal","success","deployed","ready"].some(x=>status.includes(x));
+}
+function safeExecutorMeta(resolved){return {mode:resolved.mode,source:resolved.source,host:resolved.base.hostname,project_id:resolved.project_id||null,management_api_host:resolved.management_api_host||null}}
 
-export function tencentExecutorStatus(env){
-  const urlConfigured=Boolean(env.TENCENT_MAKERS_EXECUTOR_URL);
-  const executorAuthConfigured=Boolean(env.TENCENT_EXECUTOR_SHARED_TOKEN);
-  const mode=executorMode(env),stable=stableMode(env);
-  const ok=urlConfigured&&executorAuthConfigured&&stable;
+async function describeProjectFrom(base,env){
+  const token=makersToken(env);
+  if(!token)throw Object.assign(new Error("TENCENT_MAKERS_API_TOKEN_NOT_CONFIGURED"),{status:503});
+  const wanted=projectName(env);
+  for(let page=1;page<=5;page++){
+    const response=await timedFetch(base,{method:"POST",headers:{authorization:`Bearer ${token}`,"content-type":"application/json",accept:"application/json"},body:JSON.stringify({Action:"DescribePagesProjects",PageNumber:page,PageSize:20})},10000);
+    const payload=await response.json().catch(()=>null);
+    if(!response.ok||payload?.Code!==0)throw Object.assign(new Error("TENCENT_MAKERS_PROJECT_QUERY_FAILED"),{status:502});
+    const projects=Array.isArray(payload?.Data?.Response?.Projects)?payload.Data.Response.Projects:[];
+    const exact=projects.find(p=>String(p?.Name||"")===wanted);
+    if(exact)return exact;
+    if(projects.length<20)break;
+  }
+  return null;
+}
+
+async function discoverStableExecutor(env){
+  const key=`${projectName(env)}:${Boolean(makersToken(env))}`;
+  if(discoveryCache.value&&discoveryCache.key===key&&Date.now()<discoveryCache.expires_at)return discoveryCache.value;
+  if(!makersToken(env))throw Object.assign(new Error("TENCENT_MAKERS_API_TOKEN_NOT_CONFIGURED"),{status:503});
+  const failures=[];
+  for(const apiBase of MAKERS_API_BASES){
+    try{
+      const project=await describeProjectFrom(apiBase,env);
+      if(!project){failures.push(`${new URL(apiBase).hostname}:PROJECT_NOT_FOUND`);continue}
+      const custom=Array.isArray(project.CustomDomains)?project.CustomDomains.find(activeCustomDomain):null;
+      const raw=custom?.Domain||project.PresetDomain;
+      if(!raw)throw new Error("PROJECT_HAS_NO_STABLE_DOMAIN");
+      const resolved={
+        base:normalizeBase(raw),
+        mode:custom?.Domain?"custom-domain":"project-domain",
+        source:"makers-management-api",
+        project_id:String(project.ProjectId||"")||null,
+        management_api_host:new URL(apiBase).hostname
+      };
+      discoveryCache={key,expires_at:Date.now()+DISCOVERY_TTL_MS,value:resolved};
+      return resolved;
+    }catch(e){failures.push(`${new URL(apiBase).hostname}:${String(e?.message||e)}`)}
+  }
+  throw Object.assign(new Error("TENCENT_STABLE_DOMAIN_DISCOVERY_FAILED"),{status:503,details:{attempts:failures.map(x=>x.replace(/Bearer\s+\S+/gi,"Bearer [REDACTED]"))}});
+}
+
+async function resolveExecutor(env){
+  if(configuredStableMode(env))return {base:configuredBase(env),mode:executorMode(env),source:"cloudflare-config",project_id:null,management_api_host:null};
+  return discoverStableExecutor(env);
+}
+
+export async function tencentExecutorStatus(env){
+  const executorAuthConfigured=Boolean(String(env.TENCENT_EXECUTOR_SHARED_TOKEN||"").trim());
+  const managementTokenConfigured=Boolean(makersToken(env));
+  let resolved=null,error=null;
+  try{resolved=await resolveExecutor(env)}catch(e){error=String(e?.message||e)}
+  const ok=executorAuthConfigured&&Boolean(resolved);
   return json({
     ok,
     provider:"tencent-edgeone-makers",
     role:"agent-executor",
-    lifecycle:stable?"ready":"staging",
-    project:String(env.TENCENT_MAKERS_PROJECT_NAME||"python-starter-agent"),
-    executor_url_configured:urlConfigured,
+    lifecycle:ok?"ready":"staging",
+    project:projectName(env),
+    configured_mode:executorMode(env),
+    configured_url_present:Boolean(String(env.TENCENT_MAKERS_EXECUTOR_URL||"").trim()),
     executor_auth_configured:executorAuthConfigured,
-    stable_domain_configured:stable,
-    management_token_configured:Boolean(env.TENCENT_MAKERS_API_TOKEN),
-    management_token_usage:"deployment-management-only",
-    mode,
+    management_token_configured:managementTokenConfigured,
+    management_token_usage:"deployment-management-and-stable-domain-discovery-only",
+    stable_domain_configured:Boolean(resolved),
+    resolved_executor:resolved?safeExecutorMeta(resolved):null,
+    discovery_error:error,
     fail_closed:true,
     secret_exposed:false
   },ok?200:503);
@@ -61,21 +125,21 @@ export function tencentExecutorStatus(env){
 export async function tencentExecutorSelftest(env){
   const started=Date.now(),cid=conversationId("selftest");
   try{
-    requireStable(env);
-    const healthResp=await timedFetch(endpoint(env,"/health"),{method:"GET",headers:{accept:"application/json"}},20000);
+    const resolved=await resolveExecutor(env),base=resolved.base;
+    const healthResp=await timedFetch(endpoint(base,"/health"),{method:"GET",headers:{accept:"application/json"}},20000);
     const health=await healthResp.json().catch(()=>null);
-    const capResp=await timedFetch(endpoint(env,"/capabilities"),{
+    const capResp=await timedFetch(endpoint(base,"/capabilities"),{
       method:"POST",headers:executorHeaders(env,{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid}),body:"{}"
     },30000);
     const capText=await capResp.text(),capabilities=parseSseEvent(capText,"capabilities");
-    const activeResp=await timedFetch(endpoint(env,"/runtime-selftest"),{
+    const activeResp=await timedFetch(endpoint(base,"/runtime-selftest"),{
       method:"POST",headers:executorHeaders(env,{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid}),body:"{}"
     },90000);
     const activeText=await activeResp.text(),active=parseSseEvent(activeText,"selftest");
     const activeChecks=Array.isArray(active?.checks)?active.checks:[],activeByName=Object.fromEntries(activeChecks.map(x=>[x?.name,x]));
     const families=capabilities?.families||{};
     const checks=[
-      {name:"stable_domain",ok:true,observed:executorMode(env)},
+      {name:"stable_domain",ok:["project-domain","custom-domain"].includes(resolved.mode),observed:safeExecutorMeta(resolved)},
       {name:"runtime_http",ok:healthResp.ok,observed:healthResp.status},
       {name:"python_runtime",ok:health?.ok===true&&health?.language==="python",observed:health?.python_version||null},
       {name:"executor_auth",ok:capResp.status!==401&&activeResp.status!==401,observed:{capabilities:capResp.status,active:activeResp.status}},
@@ -92,24 +156,24 @@ export async function tencentExecutorSelftest(env){
       {name:"chromium_navigation",ok:activeByName.browser?.ok===true,observed:activeByName.browser||null}
     ];
     const ok=checks.every(x=>x.ok===true)&&active?.validation==="PASS";
-    return json({ok,provider:"tencent-edgeone-makers",selftest:"executor-runtime-v4",validation:ok?"PASS":"FAIL",conversation_id:cid,checks,health,capabilities,active,elapsed_ms:Date.now()-started},ok?200:502);
+    return json({ok,provider:"tencent-edgeone-makers",selftest:"executor-runtime-v5",validation:ok?"PASS":"FAIL",conversation_id:cid,resolved_executor:safeExecutorMeta(resolved),checks,health,capabilities,active,elapsed_ms:Date.now()-started},ok?200:502);
   }catch(e){
-    return json({ok:false,provider:"tencent-edgeone-makers",selftest:"executor-runtime-v4",validation:"FAIL",error:e?.name==="AbortError"?"TENCENT_EXECUTOR_TIMEOUT":String(e?.message||e),details:e?.details||undefined,elapsed_ms:Date.now()-started},e?.status||(e?.name==="AbortError"?504:502));
+    return json({ok:false,provider:"tencent-edgeone-makers",selftest:"executor-runtime-v5",validation:"FAIL",error:e?.name==="AbortError"?"TENCENT_EXECUTOR_TIMEOUT":String(e?.message||e),details:e?.details||undefined,elapsed_ms:Date.now()-started},e?.status||(e?.name==="AbortError"?504:502));
   }
 }
 
 export async function tencentAgentInvoke(req,env){
-  try{requireStable(env)}catch(e){return json({ok:false,error:String(e?.message||e),details:e?.details||undefined},e?.status||503)}
+  let resolved;try{resolved=await resolveExecutor(env)}catch(e){return json({ok:false,error:String(e?.message||e),details:e?.details||undefined},e?.status||503)}
   let body;try{body=await req.json()}catch{return json({ok:false,error:"INVALID_JSON"},400)}
   const message=String(body?.message||"").trim();
   if(!message)return json({ok:false,error:"MESSAGE_REQUIRED"},400);
   if(message.length>10000)return json({ok:false,error:"MESSAGE_TOO_LONG"},400);
   const requested=String(body?.conversation_id||"").trim(),valid=/^[0-9A-Za-z_.-]{6,36}$/.test(requested),cid=valid?requested:conversationId("agent");
   try{
-    const upstream=await timedFetch(endpoint(env,"/chat"),{
+    const upstream=await timedFetch(endpoint(resolved.base,"/chat"),{
       method:"POST",headers:executorHeaders(env,{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid}),body:JSON.stringify({message})
     },120000);
-    const headers=new Headers(upstream.headers);headers.set("cache-control","no-store");headers.set("x-tencent-makers-conversation-id",cid);headers.delete("set-cookie");
+    const headers=new Headers(upstream.headers);headers.set("cache-control","no-store");headers.set("x-tencent-makers-conversation-id",cid);headers.set("x-tencent-executor-domain-kind",resolved.mode);headers.delete("set-cookie");
     return new Response(upstream.body,{status:upstream.status,headers});
   }catch(e){return json({ok:false,error:e?.name==="AbortError"?"TENCENT_AGENT_TIMEOUT":"TENCENT_AGENT_FAILED",message:String(e?.message||e),conversation_id:cid},e?.name==="AbortError"?504:502)}
 }
