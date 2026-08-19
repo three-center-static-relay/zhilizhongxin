@@ -2,9 +2,9 @@
   "name":"admin-worker",
   "private":true,
   "type":"module",
-  "description":"Diagnostic only: test Tencent executor_auth failed check",
+  "description":"Diagnostic only: test Tencent active_selftest_http failed check",
   "scripts":{
-    "cf:build":"node ../scripts/tencent-543eb94-specific-failed-check.mjs executor_auth",
+    "cf:build":"node ../scripts/tencent-543eb94-specific-failed-check.mjs active_selftest_http",
     "cf:ci:preview":"npm run cf:build",
     "cf:ci:deploy":"node ../scripts/cloudflare-worker-gate.mjs admin deploy"
   },
