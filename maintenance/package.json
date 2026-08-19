@@ -1,5 +1,13 @@
 {
   "name": "maintenance-worker",
   "private": true,
-  "devDependencies": {"wrangler": "^4.0.0"}
+  "type": "module",
+  "scripts": {
+    "cf:build": "node --check src/index.js",
+    "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
+    "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs maintenance deploy",
+    "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
+    "cf:deploy": "npm run cf:build && npx wrangler deploy"
+  },
+  "devDependencies": {"wrangler": "4.123.0"}
 }
