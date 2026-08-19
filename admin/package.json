@@ -2,7 +2,7 @@
   "name": "admin-worker",
   "private": true,
   "type": "module",
-  "description": "Admin-only Tencent 54ca runtime receipt classifier; diagnostic only",
+  "description": "Admin-only Tencent 54ca verifier spawn classifier; diagnostic only",
   "scripts": {
     "cf:build": "node ../scripts/tencent-admin-receipt-classifier.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs admin preview",
