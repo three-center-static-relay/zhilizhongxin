@@ -3,6 +3,7 @@ import {existsSync,readFileSync} from "node:fs";
 import {resolve} from "node:path";
 import {spawnSync} from "node:child_process";
 
+// Shared-build trigger for synchronized Tencent runtime-state diagnosis; no behavior change.
 const SHA=/^[a-f0-9]{40,64}$/i;
 
 export async function fetchAttestation(base,expectedCommit){
