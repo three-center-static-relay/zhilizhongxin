@@ -2,9 +2,9 @@
   "name":"admin-worker",
   "private":true,
   "type":"module",
-  "description":"Diagnostic only: classify Tencent 543eb94 HTTP failure bucket",
+  "description":"Diagnostic only: classify Tencent 543eb94 HTTP validation-check failure",
   "scripts":{
-    "cf:build":"node ../scripts/tencent-543eb94-failure-bucket.mjs http",
+    "cf:build":"node ../scripts/tencent-543eb94-failure-bucket.mjs http-validation",
     "cf:ci:preview":"node ../scripts/cloudflare-worker-gate.mjs admin preview",
     "cf:ci:deploy":"node ../scripts/cloudflare-worker-gate.mjs admin deploy"
   },
