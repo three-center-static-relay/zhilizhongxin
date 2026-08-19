@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "cf:build": "node --check src/entry.js && node --check src/index.js && node --check src/expert-route-manager.js && node --check scripts/run-l2-candidate-acceptance.mjs && node tests/maintenance-rpc-contract.mjs && node tests/l2-acceptance-contract.mjs",
+    "cf:build": "node --check src/entry.js && node --check src/index.js && node --check src/expert-route-manager.js && node --check scripts/run-l2-candidate-acceptance.mjs && node --check scripts/run-l2-candidate-acceptance-core.mjs && node tests/maintenance-rpc-contract.mjs && node tests/l2-acceptance-contract.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs maintenance deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
