@@ -15,6 +15,16 @@ function endpoint(env,path){
   return u;
 }
 
+function executorToken(env){
+  const token=String(env.TENCENT_EXECUTOR_SHARED_TOKEN||"").trim();
+  if(!token)throw Object.assign(new Error("TENCENT_EXECUTOR_SHARED_TOKEN_NOT_CONFIGURED"),{status:503});
+  return token;
+}
+
+function executorHeaders(env,extra={}){
+  return {"X-Executor-Token":executorToken(env),...extra};
+}
+
 function conversationId(prefix="c"){
   return `${prefix}_${crypto.randomUUID().replace(/-/g,"")}`.slice(0,36);
 }
@@ -44,18 +54,21 @@ function parseSseEvent(text,eventName){
 }
 
 export function tencentExecutorStatus(env){
-  const configured=Boolean(env.TENCENT_MAKERS_EXECUTOR_URL);
+  const urlConfigured=Boolean(env.TENCENT_MAKERS_EXECUTOR_URL);
+  const executorAuthConfigured=Boolean(env.TENCENT_EXECUTOR_SHARED_TOKEN);
+  const ok=urlConfigured&&executorAuthConfigured;
   return json({
-    ok:configured,
+    ok,
     provider:"tencent-edgeone-makers",
     role:"agent-executor",
     project:String(env.TENCENT_MAKERS_PROJECT_NAME||"python-starter-agent"),
-    executor_url_configured:configured,
+    executor_url_configured:urlConfigured,
+    executor_auth_configured:executorAuthConfigured,
     management_token_configured:Boolean(env.TENCENT_MAKERS_API_TOKEN),
     management_token_usage:"deployment-management-only",
     mode:String(env.TENCENT_MAKERS_EXECUTOR_MODE||"production"),
     secret_exposed:false
-  },configured?200:503);
+  },ok?200:503);
 }
 
 export async function tencentExecutorSelftest(env){
@@ -67,7 +80,7 @@ export async function tencentExecutorSelftest(env){
 
     const capResp=await timedFetch(endpoint(env,"/capabilities"),{
       method:"POST",
-      headers:{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid},
+      headers:executorHeaders(env,{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid}),
       body:"{}"
     },30000);
     const capText=await capResp.text();
@@ -75,7 +88,7 @@ export async function tencentExecutorSelftest(env){
 
     const activeResp=await timedFetch(endpoint(env,"/runtime-selftest"),{
       method:"POST",
-      headers:{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid},
+      headers:executorHeaders(env,{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid}),
       body:"{}"
     },90000);
     const activeText=await activeResp.text();
@@ -87,6 +100,7 @@ export async function tencentExecutorSelftest(env){
     const checks=[
       {name:"runtime_http",ok:healthResp.ok,observed:healthResp.status},
       {name:"python_runtime",ok:health?.ok===true&&health?.language==="python",observed:health?.python_version||null},
+      {name:"executor_auth",ok:capResp.status!==401&&activeResp.status!==401,observed:{capabilities:capResp.status,active:activeResp.status}},
       {name:"capability_http",ok:capResp.ok,observed:capResp.status},
       {name:"sandbox_tools_visible",ok:capabilities?.ok===true&&Number(capabilities?.tool_count||0)>0,observed:Number(capabilities?.tool_count||0)},
       {name:"commands_visible",ok:families.commands===true,observed:families.commands===true},
@@ -103,7 +117,7 @@ export async function tencentExecutorSelftest(env){
     return json({
       ok,
       provider:"tencent-edgeone-makers",
-      selftest:"executor-runtime-v2",
+      selftest:"executor-runtime-v3",
       validation:ok?"PASS":"FAIL",
       conversation_id:cid,
       checks,
@@ -116,7 +130,7 @@ export async function tencentExecutorSelftest(env){
     return json({
       ok:false,
       provider:"tencent-edgeone-makers",
-      selftest:"executor-runtime-v2",
+      selftest:"executor-runtime-v3",
       validation:"FAIL",
       error:e?.name==="AbortError"?"TENCENT_EXECUTOR_TIMEOUT":String(e?.message||e),
       elapsed_ms:Date.now()-started
@@ -135,7 +149,7 @@ export async function tencentAgentInvoke(req,env){
   try{
     const upstream=await timedFetch(endpoint(env,"/chat"),{
       method:"POST",
-      headers:{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid},
+      headers:executorHeaders(env,{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid}),
       body:JSON.stringify({message})
     },120000);
     const headers=new Headers(upstream.headers);
