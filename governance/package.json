@@ -2,9 +2,9 @@
   "name":"governance-worker",
   "private":true,
   "type":"module",
-  "description":"Diagnostic only: test Tencent capability_http failed check",
+  "description":"Diagnostic only: test Tencent sandbox_tools_visible failed check",
   "scripts":{
-    "cf:build":"node ../scripts/tencent-543eb94-specific-failed-check.mjs capability_http",
+    "cf:build":"node ../scripts/tencent-543eb94-specific-failed-check.mjs sandbox_tools_visible",
     "cf:ci:preview":"npm run cf:build",
     "cf:ci:deploy":"node ../scripts/cloudflare-worker-gate.mjs governance deploy"
   },
