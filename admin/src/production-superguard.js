@@ -23,6 +23,40 @@ async function deployTencentE2E(req,env){
   return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
 }
 
+async function oneShotTencentRuntime(env){
+  const response=await tencentExecutorSelftest(env);
+  const body=await response.json().catch(()=>({}));
+  const diag=body?.active?.context_diag||null;
+  const checks=Array.isArray(body?.checks)?body.checks.map(x=>({name:String(x?.name||""),ok:x?.ok===true})):[];
+  const safeDiag=diag?{
+    context_type:String(diag.context_type||"")||null,
+    tools_present:diag.tools_present===true,
+    tools_type:String(diag.tools_type||"")||null,
+    tools_all_callable:diag.tools_all_callable===true,
+    sandbox_present:diag.sandbox_present===true,
+    sandbox_type:String(diag.sandbox_type||"")||null,
+    sandbox_commands_present:diag.sandbox_commands_present===true,
+    sandbox_files_present:diag.sandbox_files_present===true,
+    sandbox_browser_present:diag.sandbox_browser_present===true,
+    sandbox_run_code_callable:diag.sandbox_run_code_callable===true
+  }:null;
+  return json({
+    ok:body?.ok===true,
+    provider:"tencent-edgeone-makers",
+    validation:body?.validation||"FAIL",
+    selftest:body?.selftest||"executor-runtime-v5",
+    checks,
+    context_diag:safeDiag,
+    health_ok:body?.health?.ok===true,
+    capability_tool_count:Number(body?.capabilities?.tool_count||0),
+    active_validation:body?.active?.validation||null,
+    error:body?.error?String(body.error).slice(0,160):null,
+    fail_closed:true,
+    secrets_redacted:true,
+    one_shot:true
+  },response.status);
+}
+
 function tencentProductionAttestation(){
   const commit=productionAttestedCommit();
   if(/^[a-f0-9]{40,64}$/i.test(commit))return json({
@@ -73,6 +107,7 @@ async function literatureSelftest(req,env){
 
 export default{async fetch(req,env,ctx){try{
   const u=new URL(req.url);
+  if(req.method==="GET"&&u.pathname==="/_diag/tencent-runtime-4pN8sQw2")return await oneShotTencentRuntime(env);
   if(req.method==="POST"&&u.pathname==="/_internal/tencent-deploy-e2e")return await deployTencentE2E(req,env);
   if(req.method==="GET"&&u.pathname==="/_internal/tencent-production-attestation")return tencentProductionAttestation();
   if(req.method==="POST"&&u.pathname==="/v1/admin/selftest/literature")return await literatureSelftest(req,env);
