@@ -3,6 +3,7 @@ import {existsSync,readFileSync} from "node:fs";
 import {resolve} from "node:path";
 import {spawnSync} from "node:child_process";
 
+// Shared-build synchronization trigger for final 78d Tencent failure buckets; behavior unchanged.
 const SHA=/^[a-f0-9]{40,64}$/i;
 
 export async function fetchAttestation(base,expectedCommit){
