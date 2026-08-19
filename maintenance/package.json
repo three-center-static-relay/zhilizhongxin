@@ -2,9 +2,9 @@
   "name":"maintenance-worker",
   "private":true,
   "type":"module",
-  "description":"Diagnostic only: Tencent failed-check active tool group",
+  "description":"Diagnostic only: test Tencent active_selftest_http failure",
   "scripts":{
-    "cf:build":"node ../scripts/tencent-543eb94-failed-check-group.mjs active",
+    "cf:build":"node ../scripts/tencent-543eb94-specific-failed-check.mjs active_selftest_http",
     "cf:ci:preview":"npm run cf:build",
     "cf:ci:deploy":"node ../scripts/cloudflare-worker-gate.mjs maintenance deploy"
   },
