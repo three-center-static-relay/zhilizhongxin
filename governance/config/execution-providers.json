@@ -1,0 +1,25 @@
+{
+  "schema": "execution-providers-v1",
+  "updated_at": "2026-08-19T17:05:00+08:00",
+  "providers": [
+    {
+      "id": "tencent-edgeone-makers",
+      "role": "agent-executor",
+      "lifecycle": "staging",
+      "control_plane": "admin-worker",
+      "project": "python-starter-agent",
+      "capabilities": ["agent-runtime", "sandbox", "shell", "files", "code-interpreter", "browser", "session-store"],
+      "management_secret": "TENCENT_MAKERS_API_TOKEN",
+      "execution_secret": "TENCENT_EXECUTOR_SHARED_TOKEN",
+      "management_secret_scope": "deployment-management-only",
+      "production_routing": false,
+      "promotion_requirements": [
+        "stable_project_or_custom_domain",
+        "cloudflare_to_tencent_runtime_selftest_pass",
+        "shell_file_code_browser_active_e2e_pass"
+      ],
+      "fail_closed": true,
+      "notes": "Per-deployment bootstrap domains are diagnostic only and must never be promoted as the stable production executor URL."
+    }
+  ]
+}
