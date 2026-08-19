@@ -6,18 +6,17 @@ import {pathToFileURL} from "node:url";
 
 const WRANGLER="4.123.0";
 const ADMIN="admin-worker";
-const MAINTENANCE="maintenance-worker";
 const COMMIT_PATTERN=/^[a-f0-9]{40}$/i;
 const TAG_PATTERN=/^[a-f0-9]{12}$/i;
 const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WRANGLER_TIMEOUT_MS=120000;
-const ADMIN_WAIT_TIMEOUT_MS=180000;
+const ADMIN_WAIT_TIMEOUT_MS=120000;
 let phase="boot";
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 function mark(next,details={}){
   phase=next;
-  console.log(JSON.stringify({event:"L2_DUAL_STAGE_PROBE_PHASE",phase,at:new Date().toISOString(),...details,secrets_redacted:true}));
+  console.log(JSON.stringify({event:"L2_ADMIN_READ_PROBE_PHASE",phase,at:new Date().toISOString(),...details,secrets_redacted:true}));
 }
 function cleanJson(text){
   const raw=String(text||"").replace(/\x1b\[[0-9;]*m/g,"").trim();
@@ -84,27 +83,6 @@ export function stableVersion(snapshot){
   if(snapshot.some(v=>v.id!==stable.id&&v.percentage>0))throw new Error("CURRENT_DEPLOYMENT_HAS_ACTIVE_SPLIT");
   return stable.id;
 }
-export function stageSpecs(snapshot,candidate){
-  if(!UUID_PATTERN.test(candidate))throw new Error("CANDIDATE_VERSION_INVALID");
-  const stable=stableVersion(snapshot);
-  if(candidate===stable)return snapshot;
-  return[{id:stable,percentage:100},{id:candidate,percentage:0}];
-}
-function normalize(rows){return [...rows].map(v=>({id:v.id,percentage:Number(v.percentage)})).sort((a,b)=>a.id.localeCompare(b.id))}
-export function sameSnapshot(a,b){return JSON.stringify(normalize(a))===JSON.stringify(normalize(b))}
-function snapshot(worker){return currentDeployment(run(["deployments","status","--name",worker,"--json"],{json:true}))}
-function deploy(worker,rows,message){const specs=rows.map(v=>`${v.id}@${v.percentage}%`);run(["versions","deploy",...specs,"-y","--name",worker,"--message",message])}
-function verifyZeroStage(worker,before,candidate){
-  const observed=snapshot(worker),row=observed.find(v=>v.id===candidate);
-  if(!row||Math.abs(row.percentage)>0.001)throw new Error(`${worker.toUpperCase().replaceAll("-","_")}_CANDIDATE_NOT_STAGED_AT_ZERO`);
-  if(stableVersion(observed)!==stableVersion(before))throw new Error(`${worker.toUpperCase().replaceAll("-","_")}_STABLE_VERSION_CHANGED`);
-  return observed;
-}
-function restoreAndVerify(worker,before,message){
-  deploy(worker,before,message);
-  const restored=snapshot(worker);
-  if(!sameSnapshot(before,restored))throw new Error(`${worker.toUpperCase().replaceAll("-","_")}_DEPLOYMENT_RESTORE_MISMATCH`);
-}
 
 async function main(){
   mark("trigger-read");
@@ -115,42 +93,19 @@ async function main(){
   const tag=commit.slice(0,12);
   if(!TAG_PATTERN.test(tag))throw new Error("L2_TAG_INVALID");
 
-  mark("maintenance-version-upload-begin",{worker:MAINTENANCE,candidate_tag:tag,secret_value_read_by_build:false});
-  run(["versions","upload","--name",MAINTENANCE,"--tag",tag,"--message",`PR49 dual-stage maintenance ${tag}`]);
-  mark("maintenance-version-upload-complete",{candidate_tag:tag});
-
-  mark("admin-candidate-wait-begin",{worker:ADMIN,candidate_tag:tag,admin_upload_owner:"admin-build"});
+  mark("admin-candidate-resolution-begin",{worker:ADMIN,candidate_tag:tag,mutation:false});
   const adminCandidate=await waitVersionByTag(ADMIN,tag);
-  const maintenanceCandidate=await waitVersionByTag(MAINTENANCE,tag,30000);
-  mark("candidate-resolution-complete",{admin_version:adminCandidate,maintenance_version:maintenanceCandidate,candidate_tag:tag});
+  mark("admin-candidate-resolved",{worker:ADMIN,candidate_tag:tag,admin_version:adminCandidate});
 
-  const adminBefore=snapshot(ADMIN),maintenanceBefore=snapshot(MAINTENANCE);
-  mark("snapshots-complete",{admin_stable_version:stableVersion(adminBefore),maintenance_stable_version:stableVersion(maintenanceBefore)});
+  mark("admin-deployment-snapshot-begin",{worker:ADMIN,mutation:false});
+  const adminBefore=currentDeployment(run(["deployments","status","--name",ADMIN,"--json"],{json:true}));
+  const stable=stableVersion(adminBefore);
+  if(adminCandidate===stable)throw new Error("ADMIN_CANDIDATE_ALREADY_STABLE");
+  mark("admin-deployment-snapshot-complete",{worker:ADMIN,admin_stable_version:stable,admin_candidate_version:adminCandidate});
 
-  let adminStaged=false,maintenanceStaged=false,primaryError=null;
-  try{
-    mark("admin-stage-zero-begin",{candidate_version:adminCandidate,production_candidate_percentage:0,cross_worker_upload:false});
-    deploy(ADMIN,stageSpecs(adminBefore,adminCandidate),`PR49 admin 0% coordination probe ${tag}`);
-    adminStaged=true;
-    verifyZeroStage(ADMIN,adminBefore,adminCandidate);
-    mark("admin-stage-zero-verified",{candidate_version:adminCandidate,production_candidate_percentage:0});
-
-    mark("maintenance-stage-zero-begin",{candidate_version:maintenanceCandidate,production_candidate_percentage:0});
-    deploy(MAINTENANCE,stageSpecs(maintenanceBefore,maintenanceCandidate),`PR49 maintenance 0% coordination probe ${tag}`);
-    maintenanceStaged=true;
-    verifyZeroStage(MAINTENANCE,maintenanceBefore,maintenanceCandidate);
-    mark("maintenance-stage-zero-verified",{candidate_version:maintenanceCandidate,production_candidate_percentage:0});
-  }catch(error){primaryError=error}
-
-  const cleanupErrors=[];
-  if(maintenanceStaged){try{mark("maintenance-restore-begin");restoreAndVerify(MAINTENANCE,maintenanceBefore,`PR49 maintenance coordination restore ${tag}`);mark("maintenance-restore-verified")}catch(error){cleanupErrors.push({worker:MAINTENANCE,error:String(error?.message||error)})}}
-  if(adminStaged){try{mark("admin-restore-begin");restoreAndVerify(ADMIN,adminBefore,`PR49 admin coordination restore ${tag}`);mark("admin-restore-verified")}catch(error){cleanupErrors.push({worker:ADMIN,error:String(error?.message||error)})}}
-  if(primaryError)throw Object.assign(primaryError,{cleanup_errors:cleanupErrors});
-  if(cleanupErrors.length)throw Object.assign(new Error("L2_DUAL_STAGE_PROBE_CLEANUP_FAILED"),{cleanup_errors:cleanupErrors});
-
-  console.log(JSON.stringify({event:"L2_DUAL_ZERO_STAGE_COORDINATION_PROBE_PASS",ok:true,commit_sha:commit,candidate_tag:tag,admin_version:adminCandidate,maintenance_version:maintenanceCandidate,admin_upload_owner:"admin-build",maintenance_upload_owner:"maintenance-build",cross_worker_admin_upload:false,cross_worker_admin_stage:true,admin_candidate_percentage:0,maintenance_candidate_percentage:0,admin_restore_verified:true,maintenance_restore_verified:true,remote_dev:false,build_secret_value_read:false,ai_gateway_called:false,dynamic_routes_mutated:false,secrets_redacted:true}));
+  console.log(JSON.stringify({event:"L2_ADMIN_CANDIDATE_RESOLUTION_SNAPSHOT_PROBE_PASS",ok:true,commit_sha:commit,candidate_tag:tag,admin_version:adminCandidate,admin_stable_version:stable,cross_worker_versions_list:true,cross_worker_deployment_status:true,admin_deployment_mutated:false,maintenance_deployment_mutated:false,version_upload_by_maintenance:false,remote_dev:false,build_secret_value_read:false,ai_gateway_called:false,dynamic_routes_mutated:false,secrets_redacted:true}));
 }
 if(import.meta.url===pathToFileURL(resolve(process.argv[1]||"")).href)main().catch(error=>{
-  console.error(JSON.stringify({event:"L2_DUAL_ZERO_STAGE_COORDINATION_PROBE_FAIL",phase,error:String(error?.message||error),cleanup_errors:error?.cleanup_errors||[],secrets_redacted:true}));
+  console.error(JSON.stringify({event:"L2_ADMIN_CANDIDATE_RESOLUTION_SNAPSHOT_PROBE_FAIL",phase,error:String(error?.message||error),secrets_redacted:true}));
   process.exitCode=1;
 });
