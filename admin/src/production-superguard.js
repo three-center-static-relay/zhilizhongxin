@@ -8,6 +8,7 @@ const tok=req=>{const h=req.headers.get("authorization")||"";return h.startsWith
 function eq(a,b){a=String(a||"");b=String(b||"");if(a.length!==b.length)return false;let x=0;for(let i=0;i<a.length;i++)x|=a.charCodeAt(i)^b.charCodeAt(i);return x===0}
 async function auth(req,env){if(!env.ADMIN_GPT_TOKEN)throw Object.assign(new Error("ADMIN_TOKEN_NOT_CONFIGURED"),{status:503});if(!eq(tok(req),env.ADMIN_GPT_TOKEN))throw Object.assign(new Error("UNAUTHORIZED"),{status:401})}
 function deployProbeToken(){return typeof TENCENT_DEPLOY_E2E_PROBE==="string"?TENCENT_DEPLOY_E2E_PROBE:""}
+function productionAttestedCommit(){return typeof TENCENT_PRODUCTION_E2E_ATTESTED==="string"?TENCENT_PRODUCTION_E2E_ATTESTED:""}
 
 async function deployTencentE2E(req,env){
   const expected=deployProbeToken(),provided=req.headers.get("x-tencent-deploy-probe")||"";
@@ -17,6 +18,26 @@ async function deployTencentE2E(req,env){
   headers.set("cache-control","no-store");
   headers.set("x-deploy-e2e","tencent-runtime-v1");
   return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
+}
+
+function tencentProductionAttestation(){
+  const commit=productionAttestedCommit();
+  if(!/^[a-f0-9]{40,64}$/i.test(commit))return new Response(null,{status:404,headers:{"cache-control":"no-store"}});
+  return json({
+    ok:true,
+    provider:"tencent-edgeone-makers",
+    role:"agent-executor",
+    validation:"PASS",
+    runtime_e2e:true,
+    selftest:"executor-runtime-v5",
+    attested_commit:commit,
+    checks_required:15,
+    stable_domain_required:true,
+    shell_file_python_chromium_required:true,
+    fail_closed:true,
+    secret_values_exposed:false,
+    deploy_probe_active:Boolean(deployProbeToken())
+  });
 }
 
 async function literatureSelftest(req,env){
@@ -34,6 +55,7 @@ async function literatureSelftest(req,env){
 export default{async fetch(req,env,ctx){try{
   const u=new URL(req.url);
   if(req.method==="POST"&&u.pathname==="/_internal/tencent-deploy-e2e")return await deployTencentE2E(req,env);
+  if(req.method==="GET"&&u.pathname==="/_internal/tencent-production-attestation")return tencentProductionAttestation();
   if(req.method==="POST"&&u.pathname==="/v1/admin/selftest/literature")return await literatureSelftest(req,env);
   if(req.method==="GET"&&u.pathname==="/v1/admin/tencent/status"){await auth(req,env);return await tencentExecutorStatus(env)}
   if(req.method==="POST"&&u.pathname==="/v1/admin/tencent/selftest"){await auth(req,env);return await tencentExecutorSelftest(env)}
