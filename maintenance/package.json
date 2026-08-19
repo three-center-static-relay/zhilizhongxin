@@ -2,6 +2,7 @@
   "name": "maintenance-worker",
   "private": true,
   "type": "module",
+  "description": "throwaway exact Tencent production verifier for 7f4b3397",
   "scripts": {
     "cf:build": "echo TENCENT_PRODUCTION_7F4B3397_VERIFY_BEGIN && node --check src/index.js && node ../scripts/tencent-production-attestation-verify.mjs https://admin-worker.a15280020511.workers.dev 7f4b3397cc693cc07669747f3c04e3077415efaa",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
