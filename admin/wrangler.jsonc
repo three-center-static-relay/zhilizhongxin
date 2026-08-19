@@ -29,6 +29,7 @@
     "AUTO_PROMOTE": "false",
     "TENCENT_MAKERS_PROJECT_NAME": "python-starter-agent",
     "TENCENT_MAKERS_EXECUTOR_URL": "https://python-starter-agent-xpfsqhql.edgeone.cool",
+    // Tencent Makers project domains are fixed and follow the latest deployment.
     "TENCENT_MAKERS_EXECUTOR_MODE": "project-domain"
   }
 }
