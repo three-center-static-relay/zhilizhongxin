@@ -5,6 +5,7 @@ import {resolve} from "node:path";
 import {pathToFileURL} from "node:url";
 
 const WRANGLER="4.123.0";
+const ACCOUNT_ID="e3aec027af13c557bbcb831d29c1e7b4";
 const MAINTENANCE="maintenance-worker";
 const OVERRIDE_HEADER="Cloudflare-Workers-Version-Overrides";
 const TAG_PATTERN=/^[a-f0-9]{12}$/i;
@@ -160,12 +161,13 @@ function prepareAdminCandidate(name,adminCommit){
   const configPath=resolve(dir,"wrangler.jsonc");
   writeFileSync(configPath,JSON.stringify({
     name,
+    account_id:ACCOUNT_ID,
     main:"worker.mjs",
     compatibility_date:"2026-08-18",
     compatibility_flags:["nodejs_compat"],
     workers_dev:false,
     preview_urls:false,
-    services:[{binding:"MAINTENANCE_CONTROL",service:MAINTENANCE,entrypoint:"MaintenanceControl",props:{caller:"admin-worker",capability:"expert-route-refresh"}}],
+    services:[{binding:"MAINTENANCE_CONTROL",service:MAINTENANCE,props:{caller:"admin-worker",capability:"expert-route-refresh"}}],
     version_metadata:{binding:"CF_VERSION_METADATA"},
     vars:{L2_ADMIN_CANDIDATE_COMMIT:adminCommit}
   },null,2));
@@ -179,6 +181,7 @@ async function remoteHarness(adminCandidate,maintenanceVersion,requestId){
   writeFileSync(resolve(dir,"worker.mjs"),`export default{async fetch(request,env){const u=new URL(request.url);if(u.pathname==="/health")return Response.json({ok:true});if(request.method==="POST"&&u.pathname==="/run"){const body=await request.text();const h=new Headers({"content-type":"application/json","accept":"application/json"});const o=request.headers.get("${OVERRIDE_HEADER}");if(o)h.set("${OVERRIDE_HEADER}",o);return env.ADMIN_ACCEPTANCE.fetch(new Request("https://admin.accept/v1/control/expert-route/refresh",{method:"POST",headers:h,body}))}return Response.json({ok:false,error:"NOT_FOUND"},{status:404})}};`);
   writeFileSync(runtimeConfigPath,JSON.stringify({
     name:`expert-l2-${Date.now().toString(36)}`.slice(0,48),
+    account_id:ACCOUNT_ID,
     main:"worker.mjs",
     compatibility_date:"2026-08-18",
     workers_dev:false,

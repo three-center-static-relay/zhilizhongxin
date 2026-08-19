@@ -3,12 +3,12 @@ import maintenance, { MaintenanceState } from "./index.js";
 import { refreshExpertRoute } from "./expert-route-manager.js";
 
 export { MaintenanceState };
-export default maintenance;
 
 const REQUEST_ID=/^[A-Za-z0-9._:-]{1,128}$/;
 const JSON_HEADERS={"content-type":"application/json;charset=utf-8","cache-control":"no-store"};
 const CF_API="https://api.cloudflare.com/client/v4";
 const SHARDS=["plan","general","code","regulated","research","strategy","creative"];
+const CONTROL_FETCH_TIMEOUT_MS=30000;
 const versionId=env=>String(env.CF_VERSION_METADATA?.id||"").trim()||null;
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:JSON_HEADERS});
 
@@ -18,6 +18,12 @@ function authorizeControl(ctx){
 }
 function requestId(value){const id=String(value||"").trim();if(!REQUEST_ID.test(id))throw new Error("INVALID_REQUEST_ID");return id}
 async function readJson(response){return await response.json().catch(()=>null)}
+async function timedFetch(input,init={},timeoutMs=CONTROL_FETCH_TIMEOUT_MS){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{return await fetch(input,{...init,signal:controller.signal})}
+  catch(error){if(error?.name==="AbortError")throw Object.assign(new Error("CONTROL_FETCH_TIMEOUT"),{status:504});throw error}
+  finally{clearTimeout(timer)}
+}
 function store(env){return env.MAINTENANCE_STATE.get(env.MAINTENANCE_STATE.idFromName("global"))}
 async function stateCall(env,path,method="GET",data){
   const init={method,headers:{"content-type":"application/json"}};
@@ -39,7 +45,7 @@ function controlConfig(env){
 }
 async function cf(env,path,{method="GET",body}={}){
   const c=controlConfig(env);
-  const response=await fetch(`${CF_API}/accounts/${encodeURIComponent(c.accountId)}/ai-gateway/gateways/${encodeURIComponent(c.gatewayId)}${path}`,{
+  const response=await timedFetch(`${CF_API}/accounts/${encodeURIComponent(c.accountId)}/ai-gateway/gateways/${encodeURIComponent(c.gatewayId)}${path}`,{
     method,
     headers:{authorization:`Bearer ${c.token}`,accept:"application/json",...(body===undefined?{}:{"content-type":"application/json"})},
     ...(body===undefined?{}:{body:JSON.stringify(body)})
@@ -122,21 +128,32 @@ async function latestRoute(env,ctx,transport){
   const response=await maintenance.fetch(new Request("https://maintenance.internal/v1/maintenance/expert-route/latest",{method:"GET",headers:{accept:"application/json"}}),env,ctx),body=await readJson(response);
   return{ok:response.ok&&body?.ok===true,http_status:response.status,transport,maintenance_version:versionId(env),expert_route:body?.expert_route||null,error:body?.error||null,secrets_redacted:true};
 }
+async function internalControlFetch(request,env,ctx){
+  try{authorizeControl(ctx)}catch(error){return json({ok:false,error:String(error?.message||error),maintenance_version:versionId(env),secrets_redacted:true},403)}
+  const url=new URL(request.url);
+  if(request.method==="POST"&&url.pathname==="/v1/control/expert-route/refresh"){
+    const body=await request.json().catch(()=>({}));
+    try{const receipt=await runL2Rehearsal(env,ctx,body.request_id);return json(receipt,receipt.ok?200:receipt.http_status||502)}
+    catch(error){return json({ok:false,error:String(error?.message||error),maintenance_version:versionId(env),secrets_redacted:true},error?.status||502)}
+  }
+  if(request.method==="GET"&&url.pathname==="/v1/control/expert-route/latest"){
+    try{const receipt=await latestRoute(env,ctx,"fetch");return json(receipt,receipt.ok?200:502)}
+    catch(error){return json({ok:false,error:String(error?.message||error),maintenance_version:versionId(env),secrets_redacted:true},error?.status||502)}
+  }
+  return json({ok:false,error:"NOT_FOUND",secrets_redacted:true},404);
+}
 
 export class MaintenanceControl extends WorkerEntrypoint{
-  async fetch(request){
-    authorizeControl(this.ctx);
-    const url=new URL(request.url);
-    if(request.method==="POST"&&url.pathname==="/v1/control/expert-route/refresh"){
-      const body=await request.json().catch(()=>({}));
-      try{const receipt=await runL2Rehearsal(this.env,this.ctx,body.request_id);return json(receipt,receipt.ok?200:receipt.http_status||502)}
-      catch(error){return json({ok:false,error:String(error?.message||error),maintenance_version:versionId(this.env),secrets_redacted:true},error?.status||502)}
-    }
-    if(request.method==="GET"&&url.pathname==="/v1/control/expert-route/latest"){
-      const receipt=await latestRoute(this.env,this.ctx,"fetch");return json(receipt,receipt.ok?200:502);
-    }
-    return json({ok:false,error:"NOT_FOUND",secrets_redacted:true},404);
-  }
+  async fetch(request){return await internalControlFetch(request,this.env,this.ctx)}
   async refreshExpertRoute(value){authorizeControl(this.ctx);return await runPersistentRefresh(this.env,this.ctx,value,"rpc")}
   async latestExpertRoute(){authorizeControl(this.ctx);return await latestRoute(this.env,this.ctx,"rpc")}
 }
+
+export default{
+  ...maintenance,
+  async fetch(request,env,ctx){
+    const url=new URL(request.url);
+    if(url.pathname==="/v1/control/expert-route/refresh"||url.pathname==="/v1/control/expert-route/latest")return await internalControlFetch(request,env,ctx);
+    return await maintenance.fetch(request,env,ctx);
+  }
+};
