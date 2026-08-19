@@ -95,7 +95,7 @@ async function main(){
   if(uploaded){
     try{
       mark("cleanup-delete-begin",{worker:workerName});
-      run(["delete","--name",workerName,"--force"],{cwd:dir});
+      run(["delete","--name",workerName],{cwd:dir});
       mark("cleanup-delete-complete",{worker:workerName});
     }catch(error){cleanupErrors.push(String(error?.message||error))}
   }
