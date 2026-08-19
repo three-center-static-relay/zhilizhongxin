@@ -73,34 +73,50 @@ export async function tencentExecutorSelftest(env){
     const capText=await capResp.text();
     const capabilities=parseSseEvent(capText,"capabilities");
 
+    const activeResp=await timedFetch(endpoint(env,"/runtime-selftest"),{
+      method:"POST",
+      headers:{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid},
+      body:"{}"
+    },90000);
+    const activeText=await activeResp.text();
+    const active=parseSseEvent(activeText,"selftest");
+    const activeChecks=Array.isArray(active?.checks)?active.checks:[];
+    const activeByName=Object.fromEntries(activeChecks.map(x=>[x?.name,x]));
+
     const families=capabilities?.families||{};
     const checks=[
       {name:"runtime_http",ok:healthResp.ok,observed:healthResp.status},
       {name:"python_runtime",ok:health?.ok===true&&health?.language==="python",observed:health?.python_version||null},
       {name:"capability_http",ok:capResp.ok,observed:capResp.status},
       {name:"sandbox_tools_visible",ok:capabilities?.ok===true&&Number(capabilities?.tool_count||0)>0,observed:Number(capabilities?.tool_count||0)},
-      {name:"commands",ok:families.commands===true,observed:families.commands===true},
-      {name:"files",ok:families.files===true,observed:families.files===true},
-      {name:"code",ok:families.code===true,observed:families.code===true},
-      {name:"browser",ok:families.browser===true,observed:families.browser===true}
+      {name:"commands_visible",ok:families.commands===true,observed:families.commands===true},
+      {name:"files_visible",ok:families.files===true,observed:families.files===true},
+      {name:"code_visible",ok:families.code===true,observed:families.code===true},
+      {name:"browser_visible",ok:families.browser===true,observed:families.browser===true},
+      {name:"active_selftest_http",ok:activeResp.ok,observed:activeResp.status},
+      {name:"shell_exec",ok:activeByName.shell?.ok===true,observed:activeByName.shell||null},
+      {name:"file_rw_cleanup",ok:activeByName.files?.ok===true,observed:activeByName.files||null},
+      {name:"python_exec",ok:activeByName.code_interpreter?.ok===true,observed:activeByName.code_interpreter||null},
+      {name:"chromium_navigation",ok:activeByName.browser?.ok===true,observed:activeByName.browser||null}
     ];
-    const ok=checks.every(x=>x.ok===true);
+    const ok=checks.every(x=>x.ok===true)&&active?.validation==="PASS";
     return json({
       ok,
       provider:"tencent-edgeone-makers",
-      selftest:"executor-runtime-v1",
+      selftest:"executor-runtime-v2",
       validation:ok?"PASS":"FAIL",
       conversation_id:cid,
       checks,
       health,
       capabilities,
+      active,
       elapsed_ms:Date.now()-started
     },ok?200:502);
   }catch(e){
     return json({
       ok:false,
       provider:"tencent-edgeone-makers",
-      selftest:"executor-runtime-v1",
+      selftest:"executor-runtime-v2",
       validation:"FAIL",
       error:e?.name==="AbortError"?"TENCENT_EXECUTOR_TIMEOUT":String(e?.message||e),
       elapsed_ms:Date.now()-started
