@@ -12,6 +12,10 @@ function productionAttestedCommit(){return typeof TENCENT_PRODUCTION_E2E_ATTESTE
 function productionFailureCode(){return typeof TENCENT_PRODUCTION_E2E_FAILURE==="string"?TENCENT_PRODUCTION_E2E_FAILURE:""}
 function productionFailedCommit(){return typeof TENCENT_PRODUCTION_E2E_FAILED_COMMIT==="string"?TENCENT_PRODUCTION_E2E_FAILED_COMMIT:""}
 function productionTencentFailed(){return Boolean(productionFailureCode())}
+function safeFailure(value){
+  const raw=String(value||"").replace(/[A-Za-z0-9._~-]{24,}/g,"[REDACTED]").replace(/https?:\/\/\S+/gi,"[URL]").replace(/\s+/g," ").trim();
+  return raw.slice(0,180)||null;
+}
 
 async function deployTencentE2E(req,env){
   const expected=deployProbeToken(),provided=req.headers.get("x-tencent-deploy-probe")||"";
@@ -28,6 +32,8 @@ async function oneShotTencentRuntime(env){
   const body=await response.json().catch(()=>({}));
   const diag=body?.active?.context_diag||null;
   const checks=Array.isArray(body?.checks)?body.checks.map(x=>({name:String(x?.name||""),ok:x?.ok===true})):[];
+  const activeChecks=Array.isArray(body?.active?.checks)?body.active.checks:[];
+  const browserCheck=activeChecks.find(x=>x?.name==="browser")||null;
   const safeDiag=diag?{
     context_type:String(diag.context_type||"")||null,
     tools_present:diag.tools_present===true,
@@ -51,6 +57,7 @@ async function oneShotTencentRuntime(env){
     health_revision:String(body?.health?.runtime_revision||"")||null,
     capability_tool_count:Number(body?.capabilities?.tool_count||0),
     active_validation:body?.active?.validation||null,
+    browser_failure:browserCheck?.ok===false?safeFailure(browserCheck?.error||browserCheck?.status||"BROWSER_CHECK_FAILED"):null,
     capability_event_error:body?.capability_event_error||null,
     active_event_error:body?.active_event_error||null,
     error:body?.error?String(body.error).slice(0,160):null,
