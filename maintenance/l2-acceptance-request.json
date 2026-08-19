@@ -1,5 +1,6 @@
 {
   "schema": "expert-l2-acceptance-v1",
   "enabled": true,
-  "request_id": "pr49-maintenance-local-route-candidate-20260820"
+  "phase": "predeploy-control-plane",
+  "request_id": "pr94-two-phase-predeploy-20260820-0328"
 }
