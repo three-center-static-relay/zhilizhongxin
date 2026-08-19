@@ -2,6 +2,7 @@
   "name": "maintenance-worker",
   "private": true,
   "type": "module",
+  "description": "throwaway Tencent production STALE-state probe",
   "scripts": {
     "cf:build": "node ../scripts/tencent-c633-failure-bucket.mjs stale",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
