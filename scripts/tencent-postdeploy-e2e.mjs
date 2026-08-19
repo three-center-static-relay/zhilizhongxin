@@ -35,8 +35,19 @@ for(let attempt=1;attempt<=8;attempt++){
     }
     const failedChecks=Array.isArray(body?.checks)?body.checks.filter(x=>x?.ok!==true).map(x=>String(x?.name||"unknown")):[];
     const upstreamError=safe(body?.error||body?.message||"VALIDATION_FAIL");
-    lastError=safe(`HTTP_${response.status}:${upstreamError}${failedChecks.length?`:FAILED=${failedChecks.join(",")}`:""}`);
-    console.error(JSON.stringify({ok:false,suite:"tencent-cloudflare-runtime-e2e",attempt,http_status:response.status,error:upstreamError,failed_checks:failedChecks,secret_values_read:false}));
+    const discoveryAttempts=Array.isArray(body?.details?.attempts)?body.details.attempts.map(x=>safe(x)).filter(Boolean):[];
+    lastError=safe(`HTTP_${response.status}:${upstreamError}${failedChecks.length?`:FAILED=${failedChecks.join(",")}`:""}${discoveryAttempts.length?`:DISCOVERY=${discoveryAttempts.join(",")}`:""}`);
+    console.error(JSON.stringify({
+      ok:false,
+      suite:"tencent-cloudflare-runtime-e2e",
+      attempt,
+      http_status:response.status,
+      error:upstreamError,
+      failed_checks:failedChecks,
+      discovery_attempt_count:discoveryAttempts.length,
+      discovery_reason_codes:discoveryAttempts.map(x=>x.split(":").slice(1).join(":")),
+      secret_values_read:false
+    }));
   }catch(error){
     lastError=error?.name==="AbortError"?"E2E_REQUEST_TIMEOUT":safe(String(error?.message||error));
   }finally{clearTimeout(timer)}
