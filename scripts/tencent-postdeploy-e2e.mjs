@@ -107,4 +107,8 @@ for(let attempt=1;attempt<=8;attempt++){
   }
   if(attempt<8)await sleep(2000);
 }
-throw new Error(`TENCENT_POSTDEPLOY_E2E_FAILED:${lastError}`);
+// Emit exactly one machine-readable failure marker. Avoid an uncaught Error stack,
+// because Node echoes the source template before the runtime message and can poison
+// the redacted production attestation parser with `${lastError}` instead of its value.
+console.error(`TENCENT_POSTDEPLOY_E2E_FAILED:${lastError}`);
+process.exitCode=1;
