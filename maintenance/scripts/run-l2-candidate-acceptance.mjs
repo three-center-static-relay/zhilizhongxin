@@ -9,6 +9,7 @@ const ADMIN="admin-worker";
 const MAINTENANCE="maintenance-worker";
 const DIAG_PREFIX="pr49-l2-snapshot-bisect-";
 const ADMIN_DIAG_PREFIX="pr49-l2-admin-candidate-bisect-";
+const ENTRY_DIAG_PREFIX="pr49-l2-wrapper-entry-bisect-";
 const TAG_PATTERN=/^[a-f0-9]{12}$/i;
 const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -78,10 +79,14 @@ function snapshotBisect(tag){
 function main(){
   const tag=String(process.env.WORKERS_CI_COMMIT_SHA||"").slice(0,12);
   if(!TAG_PATTERN.test(tag))throw new Error("L2_TAG_INVALID");
-  const admin=ensureAdminCandidate(tag);
-  console.log(JSON.stringify({event:"L2_SELF_CONTAINED_ADMIN_CANDIDATE_READY",tag,...admin,secrets_redacted:true}));
   const request=JSON.parse(readFileSync(resolve(process.cwd(),"l2-acceptance-request.json"),"utf8"));
   const requestId=String(request?.request_id||"");
+  if(requestId.startsWith(ENTRY_DIAG_PREFIX)){
+    console.log(JSON.stringify({event:"L2_WRAPPER_ENTRY_BISECT_PASS",tag,request_id:requestId,secrets_redacted:true}));
+    return;
+  }
+  const admin=ensureAdminCandidate(tag);
+  console.log(JSON.stringify({event:"L2_SELF_CONTAINED_ADMIN_CANDIDATE_READY",tag,...admin,secrets_redacted:true}));
   if(requestId.startsWith(ADMIN_DIAG_PREFIX)){
     console.log(JSON.stringify({event:"L2_ADMIN_CANDIDATE_BISECT_PASS",tag,request_id:requestId,admin_version:admin.version_id,reused:admin.reused,secrets_redacted:true}));
     return;
