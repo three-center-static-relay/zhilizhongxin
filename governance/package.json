@@ -2,9 +2,9 @@
   "name": "governance-worker",
   "private": true,
   "type": "module",
-  "description": "throwaway Tencent runtime-check failure probe for 78d8af13",
+  "description": "throwaway Tencent stable-domain discovery failure probe for 78d8af13",
   "scripts": {
-    "cf:build": "echo TENCENT_PRODUCTION_78D8AF13_RUNTIME_CHECK_FAIL_BEGIN && node tests/tencent-78d-runtime-check-fail.mjs",
+    "cf:build": "echo TENCENT_PRODUCTION_78D8AF13_DISCOVERY_FAIL_BEGIN && node tests/tencent-78d-discovery-fail.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs governance preview",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs governance deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
