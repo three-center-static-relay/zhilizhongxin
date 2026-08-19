@@ -2,9 +2,9 @@
   "name":"maintenance-worker",
   "private":true,
   "type":"module",
-  "description":"Diagnostic only: classify Tencent 543eb94 transport-timeout-exit failure bucket",
+  "description":"Diagnostic only: Tencent 543eb94 HTTP config-timeout subclass",
   "scripts":{
-    "cf:build":"node ../scripts/tencent-543eb94-failure-bucket.mjs transport",
+    "cf:build":"node ../scripts/tencent-543eb94-failure-bucket.mjs http-config-timeout",
     "cf:ci:preview":"node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
     "cf:ci:deploy":"node ../scripts/cloudflare-worker-gate.mjs maintenance deploy"
   },

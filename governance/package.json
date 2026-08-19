@@ -2,9 +2,9 @@
   "name":"governance-worker",
   "private":true,
   "type":"module",
-  "description":"Diagnostic only: classify Tencent 543eb94 runtime receipt failure bucket",
+  "description":"Diagnostic only: Tencent 543eb94 HTTP stable-domain discovery subclass",
   "scripts":{
-    "cf:build":"node ../scripts/tencent-543eb94-failure-bucket.mjs receipt",
+    "cf:build":"node ../scripts/tencent-543eb94-failure-bucket.mjs http-discovery",
     "cf:ci:preview":"node ../scripts/cloudflare-worker-gate.mjs governance preview",
     "cf:ci:deploy":"node ../scripts/cloudflare-worker-gate.mjs governance deploy"
   },
