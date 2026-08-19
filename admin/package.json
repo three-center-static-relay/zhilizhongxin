@@ -2,7 +2,7 @@
   "name": "admin-worker",
   "private": true,
   "type": "module",
-  "description": "throwaway Tencent 5xx classifier",
+  "description": "throwaway Tencent 5xx classifier; PR77 trigger",
   "scripts": {
     "cf:build": "node tests/tencent-78d-class-5xx.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs admin preview",
