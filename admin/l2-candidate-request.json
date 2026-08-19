@@ -1,5 +1,5 @@
 {
   "schema": "admin-l2-candidate-request-v1",
   "enabled": true,
-  "request_id": "pr49-admin-candidate-for-read-snapshot-probe-20260819"
+  "request_id": "pr49-admin-candidate-for-zero-stage-restore-probe-20260819"
 }

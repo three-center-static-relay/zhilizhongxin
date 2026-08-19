@@ -16,7 +16,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 function mark(next,details={}){
   phase=next;
-  console.log(JSON.stringify({event:"L2_ADMIN_READ_PROBE_PHASE",phase,at:new Date().toISOString(),...details,secrets_redacted:true}));
+  console.log(JSON.stringify({event:"L2_ADMIN_ZERO_STAGE_PROBE_PHASE",phase,at:new Date().toISOString(),...details,secrets_redacted:true}));
 }
 function cleanJson(text){
   const raw=String(text||"").replace(/\x1b\[[0-9;]*m/g,"").trim();
@@ -83,6 +83,26 @@ export function stableVersion(snapshot){
   if(snapshot.some(v=>v.id!==stable.id&&v.percentage>0))throw new Error("CURRENT_DEPLOYMENT_HAS_ACTIVE_SPLIT");
   return stable.id;
 }
+export function stageSpecs(snapshot,candidate){
+  if(!UUID_PATTERN.test(candidate))throw new Error("CANDIDATE_VERSION_INVALID");
+  const stable=stableVersion(snapshot);
+  if(candidate===stable)throw new Error("ADMIN_CANDIDATE_ALREADY_STABLE");
+  return[{id:stable,percentage:100},{id:candidate,percentage:0}];
+}
+function normalize(rows){return [...rows].map(v=>({id:v.id,percentage:Number(v.percentage)})).sort((a,b)=>a.id.localeCompare(b.id))}
+export function sameSnapshot(a,b){return JSON.stringify(normalize(a))===JSON.stringify(normalize(b))}
+function snapshot(){return currentDeployment(run(["deployments","status","--name",ADMIN,"--json"],{json:true}))}
+function deploy(rows,message){
+  const specs=rows.map(v=>`${v.id}@${v.percentage}%`);
+  run(["versions","deploy",...specs,"-y","--name",ADMIN,"--message",message]);
+}
+function verifyZeroStage(before,candidate){
+  const observed=snapshot();
+  const row=observed.find(v=>v.id===candidate);
+  if(!row||Math.abs(row.percentage)>0.001)throw new Error("ADMIN_CANDIDATE_NOT_STAGED_AT_ZERO");
+  if(stableVersion(observed)!==stableVersion(before))throw new Error("ADMIN_STABLE_VERSION_CHANGED");
+  return observed;
+}
 
 async function main(){
   mark("trigger-read");
@@ -93,19 +113,37 @@ async function main(){
   const tag=commit.slice(0,12);
   if(!TAG_PATTERN.test(tag))throw new Error("L2_TAG_INVALID");
 
-  mark("admin-candidate-resolution-begin",{worker:ADMIN,candidate_tag:tag,mutation:false});
-  const adminCandidate=await waitVersionByTag(ADMIN,tag);
-  mark("admin-candidate-resolved",{worker:ADMIN,candidate_tag:tag,admin_version:adminCandidate});
+  mark("admin-candidate-resolution-begin",{worker:ADMIN,candidate_tag:tag});
+  const candidate=await waitVersionByTag(ADMIN,tag);
+  const before=snapshot();
+  const stable=stableVersion(before);
+  if(candidate===stable)throw new Error("ADMIN_CANDIDATE_ALREADY_STABLE");
+  mark("admin-stage-zero-begin",{admin_stable_version:stable,admin_candidate_version:candidate,production_candidate_percentage:0});
 
-  mark("admin-deployment-snapshot-begin",{worker:ADMIN,mutation:false});
-  const adminBefore=currentDeployment(run(["deployments","status","--name",ADMIN,"--json"],{json:true}));
-  const stable=stableVersion(adminBefore);
-  if(adminCandidate===stable)throw new Error("ADMIN_CANDIDATE_ALREADY_STABLE");
-  mark("admin-deployment-snapshot-complete",{worker:ADMIN,admin_stable_version:stable,admin_candidate_version:adminCandidate});
+  let staged=false;let primaryError=null;
+  try{
+    deploy(stageSpecs(before,candidate),`PR49 admin 0% stage probe ${tag}`);
+    staged=true;
+    verifyZeroStage(before,candidate);
+    mark("admin-stage-zero-verified",{admin_stable_version:stable,admin_candidate_version:candidate,production_candidate_percentage:0});
+  }catch(error){primaryError=error}
 
-  console.log(JSON.stringify({event:"L2_ADMIN_CANDIDATE_RESOLUTION_SNAPSHOT_PROBE_PASS",ok:true,commit_sha:commit,candidate_tag:tag,admin_version:adminCandidate,admin_stable_version:stable,cross_worker_versions_list:true,cross_worker_deployment_status:true,admin_deployment_mutated:false,maintenance_deployment_mutated:false,version_upload_by_maintenance:false,remote_dev:false,build_secret_value_read:false,ai_gateway_called:false,dynamic_routes_mutated:false,secrets_redacted:true}));
+  const cleanupErrors=[];
+  if(staged){
+    try{
+      mark("admin-restore-begin");
+      deploy(before,`PR49 admin stage probe restore ${tag}`);
+      const restored=snapshot();
+      if(!sameSnapshot(before,restored))throw new Error("ADMIN_DEPLOYMENT_RESTORE_MISMATCH");
+      mark("admin-restore-verified");
+    }catch(error){cleanupErrors.push(String(error?.message||error))}
+  }
+  if(primaryError)throw Object.assign(primaryError,{cleanup_errors:cleanupErrors});
+  if(cleanupErrors.length)throw Object.assign(new Error("ADMIN_STAGE_PROBE_CLEANUP_FAILED"),{cleanup_errors:cleanupErrors});
+
+  console.log(JSON.stringify({event:"L2_ADMIN_ZERO_STAGE_RESTORE_PROBE_PASS",ok:true,commit_sha:commit,candidate_tag:tag,admin_version:candidate,admin_stable_version:stable,admin_candidate_percentage:0,admin_stage_zero:true,admin_restore_verified:true,maintenance_deployment_mutated:false,maintenance_version_upload:false,remote_dev:false,build_secret_value_read:false,ai_gateway_called:false,dynamic_routes_mutated:false,secrets_redacted:true}));
 }
 if(import.meta.url===pathToFileURL(resolve(process.argv[1]||"")).href)main().catch(error=>{
-  console.error(JSON.stringify({event:"L2_ADMIN_CANDIDATE_RESOLUTION_SNAPSHOT_PROBE_FAIL",phase,error:String(error?.message||error),secrets_redacted:true}));
+  console.error(JSON.stringify({event:"L2_ADMIN_ZERO_STAGE_RESTORE_PROBE_FAIL",phase,error:String(error?.message||error),cleanup_errors:error?.cleanup_errors||[],secrets_redacted:true}));
   process.exitCode=1;
 });
