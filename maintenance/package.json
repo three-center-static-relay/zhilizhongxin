@@ -4,8 +4,8 @@
   "type": "module",
   "description": "Maintenance Worker participating in shared fail-closed Cloudflare gate validation",
   "scripts": {
-    "cf:build": "node --check src/index.js",
-    "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
+    "cf:build": "node --check src/index.js && node --check src/expert-route-manager.js && node --check scripts/run-l2-candidate-acceptance.mjs && node --check scripts/run-l2-candidate-acceptance-core.mjs && node tests/l2-acceptance-contract.mjs",
+    "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview && node scripts/run-l2-candidate-acceptance.mjs",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs maintenance deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
     "cf:deploy": "npm run cf:build && npx wrangler deploy"
