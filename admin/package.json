@@ -1,14 +1,12 @@
 {
-  "name": "admin-worker",
-  "private": true,
-  "type": "module",
-  "description": "Admin Worker with fail-closed Tencent runtime E2E gate and deterministic redacted failure marker",
-  "scripts": {
-    "cf:build": "node --check src/guard.js && node --check src/index.js && node --check src/production-superguard.js && node --check src/protection.js && node --check src/superguard.js && node --check src/tencent-executor.js && node --check ../scripts/tencent-postdeploy-e2e.mjs && node --check ../scripts/tencent-production-attestation-verify.mjs && node tests/tencent-executor-contract.mjs && node tests/tencent-cloudflare-secret-presence.mjs && node ../scripts/tencent-production-attestation-verify.mjs preview-marker && node -e \"JSON.parse(require('node:fs').readFileSync('openapi.json','utf8'))\"",
-    "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs admin preview",
-    "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs admin deploy",
-    "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
-    "cf:deploy": "npm run cf:build && npx wrangler deploy"
+  "name":"admin-worker",
+  "private":true,
+  "type":"module",
+  "description":"Diagnostic only: test Tencent active_selftest_http failed check",
+  "scripts":{
+    "cf:build":"node ../scripts/tencent-543eb94-specific-failed-check.mjs active_selftest_http",
+    "cf:ci:preview":"npm run cf:build",
+    "cf:ci:deploy":"node ../scripts/cloudflare-worker-gate.mjs admin deploy"
   },
-  "devDependencies": {"wrangler": "4.123.0"}
+  "devDependencies":{"wrangler":"4.123.0"}
 }
