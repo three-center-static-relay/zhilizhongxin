@@ -1,5 +1,6 @@
 {
   "schema": "expert-l2-acceptance-v1",
   "enabled": true,
-  "request_id": "pr49-l2-admin-upload-bisect-no-ci-override-20260819"
+  "request_id": "pr49-l2-prebuilt-admin-candidate-20260819",
+  "admin_candidate_tag": "2f8c742c689c"
 }

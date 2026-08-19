@@ -170,33 +170,35 @@ async function main(){
   markPhase("trigger-read");
   const request=JSON.parse(readFileSync("l2-acceptance-request.json","utf8"));
   if(request?.schema!=="expert-l2-acceptance-v1"||request?.enabled!==true)throw new Error("L2_TRIGGER_INVALID");
-  const tag=String(process.env.WORKERS_CI_COMMIT_SHA||"").slice(0,12);
-  if(!TAG_PATTERN.test(tag))throw new Error("L2_TAG_INVALID");
-  const requestId=String(request.request_id||`l2-${tag}`);
+  const maintenanceTag=String(process.env.WORKERS_CI_COMMIT_SHA||"").slice(0,12);
+  const adminCandidateTag=String(request.admin_candidate_tag||"").trim();
+  if(!TAG_PATTERN.test(maintenanceTag))throw new Error("L2_MAINTENANCE_TAG_INVALID");
+  if(!TAG_PATTERN.test(adminCandidateTag))throw new Error("L2_ADMIN_CANDIDATE_TAG_INVALID");
+  const requestId=String(request.request_id||`l2-${maintenanceTag}`);
   if(!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId))throw new Error("L2_REQUEST_ID_INVALID");
-  markPhase("candidate-lookup-begin",{tag,request_id:requestId});
-  const adminCandidate=await waitCandidate(ADMIN,tag),maintenanceCandidate=await waitCandidate(MAINTENANCE,tag);
-  markPhase("candidate-lookup-complete",{admin_version:adminCandidate,maintenance_version:maintenanceCandidate});
+  markPhase("candidate-lookup-begin",{admin_candidate_tag:adminCandidateTag,maintenance_candidate_tag:maintenanceTag,request_id:requestId});
+  const adminCandidate=await waitCandidate(ADMIN,adminCandidateTag),maintenanceCandidate=await waitCandidate(MAINTENANCE,maintenanceTag);
+  markPhase("candidate-lookup-complete",{admin_candidate_tag:adminCandidateTag,maintenance_candidate_tag:maintenanceTag,admin_version:adminCandidate,maintenance_version:maintenanceCandidate});
   markPhase("snapshot-begin");
   const adminSnapshot=snapshot(ADMIN),maintenanceSnapshot=snapshot(MAINTENANCE);
   markPhase("snapshot-complete");
   let adminStaged=false,maintenanceStaged=false;
   try{
     markPhase("admin-stage-begin");
-    deploy(ADMIN,stageSpecs(adminSnapshot,adminCandidate),`L2 0% candidate ${tag}`);adminStaged=true;
+    deploy(ADMIN,stageSpecs(adminSnapshot,adminCandidate),`L2 0% admin candidate ${adminCandidateTag}`);adminStaged=true;
     markPhase("admin-stage-complete");
     markPhase("maintenance-stage-begin");
-    deploy(MAINTENANCE,stageSpecs(maintenanceSnapshot,maintenanceCandidate),`L2 0% candidate ${tag}`);maintenanceStaged=true;
+    deploy(MAINTENANCE,stageSpecs(maintenanceSnapshot,maintenanceCandidate),`L2 0% maintenance candidate ${maintenanceTag}`);maintenanceStaged=true;
     markPhase("maintenance-stage-complete");
     await sleep(5000);
     markPhase("remote-harness-begin");
     const receipt=await remoteHarness(adminCandidate,maintenanceCandidate,requestId);
-    console.log(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_PASS",tag,request_id:requestId,...receipt}));
+    console.log(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_PASS",admin_candidate_tag:adminCandidateTag,maintenance_candidate_tag:maintenanceTag,request_id:requestId,...receipt}));
   }finally{
     markPhase("restore-begin",{admin_staged:adminStaged,maintenance_staged:maintenanceStaged});
     const restoreErrors=[];
-    if(maintenanceStaged){try{deploy(MAINTENANCE,maintenanceSnapshot,`L2 restore ${tag}`)}catch(error){restoreErrors.push({worker:MAINTENANCE,error:String(error?.message||error)})}}
-    if(adminStaged){try{deploy(ADMIN,adminSnapshot,`L2 restore ${tag}`)}catch(error){restoreErrors.push({worker:ADMIN,error:String(error?.message||error)})}}
+    if(maintenanceStaged){try{deploy(MAINTENANCE,maintenanceSnapshot,`L2 restore maintenance ${maintenanceTag}`)}catch(error){restoreErrors.push({worker:MAINTENANCE,error:String(error?.message||error)})}}
+    if(adminStaged){try{deploy(ADMIN,adminSnapshot,`L2 restore admin ${adminCandidateTag}`)}catch(error){restoreErrors.push({worker:ADMIN,error:String(error?.message||error)})}}
     if(restoreErrors.length)throw Object.assign(new Error("WORKER_DEPLOYMENT_RESTORE_FAILED"),{body:{restore_errors:restoreErrors}});
     markPhase("restore-complete");
   }
