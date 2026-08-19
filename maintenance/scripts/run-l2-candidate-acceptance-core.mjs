@@ -10,7 +10,15 @@ const MAINTENANCE="maintenance-worker";
 const OVERRIDE_HEADER="Cloudflare-Workers-Version-Overrides";
 const TAG_PATTERN=/^[a-f0-9]{12}$/i;
 const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const WRANGLER_TIMEOUT_MS=90000;
+const REMOTE_READY_TIMEOUT_MS=60000;
+const REMOTE_RUN_TIMEOUT_MS=360000;
+let currentPhase="boot";
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function markPhase(phase,details={}){
+  currentPhase=phase;
+  console.log(JSON.stringify({event:"L2_PHASE",phase,at:new Date().toISOString(),...details,secrets_redacted:true}));
+}
 
 function cleanJson(text){
   const raw=String(text||"").replace(/\x1b\[[0-9;]*m/g,"").trim();
@@ -19,12 +27,14 @@ function cleanJson(text){
   return JSON.parse(raw.slice(starts[0]));
 }
 function runJson(args){
-  const r=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{encoding:"utf8",env:{...process.env,CI:"1"},maxBuffer:4*1024*1024});
+  const r=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{encoding:"utf8",env:{...process.env,CI:"1"},maxBuffer:4*1024*1024,timeout:WRANGLER_TIMEOUT_MS,killSignal:"SIGTERM"});
+  if(r.error?.code==="ETIMEDOUT")throw Object.assign(new Error(`WRANGLER_TIMEOUT:${args.join(" ")}`),{stderr:r.stderr,stdout:r.stdout});
   if(r.error||r.status!==0)throw Object.assign(new Error(`WRANGLER_FAILED:${args.join(" ")}`),{stderr:r.stderr,stdout:r.stdout});
   return cleanJson(r.stdout);
 }
 function run(args){
-  const r=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{encoding:"utf8",env:{...process.env,CI:"1"},stdio:"inherit"});
+  const r=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{encoding:"utf8",env:{...process.env,CI:"1"},stdio:"inherit",timeout:WRANGLER_TIMEOUT_MS,killSignal:"SIGTERM"});
+  if(r.error?.code==="ETIMEDOUT")throw new Error(`WRANGLER_TIMEOUT:${args.join(" ")}`);
   if(r.error||r.status!==0)throw new Error(`WRANGLER_FAILED:${args.join(" ")}`);
 }
 function idOf(x){return String(x?.version_id||x?.versionId||x?.id||"").trim()}
@@ -72,7 +82,7 @@ export function stageSpecs(snapshot,candidate){
 }
 function specs(rows){return rows.map(v=>`${v.id}@${v.percentage}%`)}
 function deploy(worker,rows,message){run(["versions","deploy",...specs(rows),"-y","--name",worker,"--message",message])}
-async function waitCandidate(worker,tag,timeoutMs=120000){
+async function waitCandidate(worker,tag,timeoutMs=90000){
   const end=Date.now()+timeoutMs;
   let last;
   while(Date.now()<end){
@@ -124,18 +134,29 @@ async function remoteHarness(adminVersion,maintenanceVersion,requestId){
     preview_urls:false,
     services:[{binding:"ADMIN_ACCEPTANCE",service:ADMIN,entrypoint:"AdminAcceptanceControl",props:{caller:"expert-l2-acceptance",capability:"expert-route-acceptance"}}]
   },null,2));
+  markPhase("remote-dev-start",{admin_version:adminVersion,maintenance_version:maintenanceVersion});
   const child=spawn("npx",["--yes",`wrangler@${WRANGLER}`,"dev","--remote","--config",resolve(dir,"wrangler.jsonc"),"--port","8787"],{stdio:["ignore","pipe","pipe"],env:{...process.env,CI:"1"}});
   let logs=""; child.stdout.on("data",d=>logs+=d);child.stderr.on("data",d=>logs+=d);
   try{
-    const end=Date.now()+90000;let ready=false;
+    const end=Date.now()+REMOTE_READY_TIMEOUT_MS;let ready=false;
     while(Date.now()<end){
       if(child.exitCode!==null)throw new Error(`REMOTE_DEV_EXITED:${child.exitCode}:${logs.slice(-2000)}`);
       try{const r=await fetch("http://127.0.0.1:8787/health");if(r.ok){ready=true;break}}catch{}
       await sleep(1500);
     }
     if(!ready)throw new Error(`REMOTE_DEV_NOT_READY:${logs.slice(-2000)}`);
+    markPhase("remote-dev-ready");
     const override=`${ADMIN}="${adminVersion}", ${MAINTENANCE}="${maintenanceVersion}"`;
-    const response=await fetch("http://127.0.0.1:8787/run",{method:"POST",headers:{"content-type":"application/json",[OVERRIDE_HEADER]:override},body:JSON.stringify({request_id:requestId})});
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),REMOTE_RUN_TIMEOUT_MS);
+    let response;
+    try{
+      markPhase("remote-run-begin",{request_id:requestId});
+      response=await fetch("http://127.0.0.1:8787/run",{method:"POST",headers:{"content-type":"application/json",[OVERRIDE_HEADER]:override},body:JSON.stringify({request_id:requestId}),signal:controller.signal});
+    }catch(error){
+      if(error?.name==="AbortError")throw new Error("REMOTE_RUN_TIMEOUT");
+      throw error;
+    }finally{clearTimeout(timer)}
+    markPhase("remote-run-response",{http_status:response.status});
     const body=await response.json().catch(()=>null);
     if(!response.ok)throw Object.assign(new Error(`L2_HTTP_${response.status}`),{body});
     return validateReceipt(body,adminVersion,maintenanceVersion);
@@ -146,26 +167,38 @@ async function remoteHarness(adminVersion,maintenanceVersion,requestId){
 }
 
 async function main(){
+  markPhase("trigger-read");
   const request=JSON.parse(readFileSync("l2-acceptance-request.json","utf8"));
   if(request?.schema!=="expert-l2-acceptance-v1"||request?.enabled!==true)throw new Error("L2_TRIGGER_INVALID");
   const tag=String(process.env.WORKERS_CI_COMMIT_SHA||"").slice(0,12);
   if(!TAG_PATTERN.test(tag))throw new Error("L2_TAG_INVALID");
   const requestId=String(request.request_id||`l2-${tag}`);
   if(!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId))throw new Error("L2_REQUEST_ID_INVALID");
+  markPhase("candidate-lookup-begin",{tag,request_id:requestId});
   const adminCandidate=await waitCandidate(ADMIN,tag),maintenanceCandidate=await waitCandidate(MAINTENANCE,tag);
+  markPhase("candidate-lookup-complete",{admin_version:adminCandidate,maintenance_version:maintenanceCandidate});
+  markPhase("snapshot-begin");
   const adminSnapshot=snapshot(ADMIN),maintenanceSnapshot=snapshot(MAINTENANCE);
+  markPhase("snapshot-complete");
   let adminStaged=false,maintenanceStaged=false;
   try{
+    markPhase("admin-stage-begin");
     deploy(ADMIN,stageSpecs(adminSnapshot,adminCandidate),`L2 0% candidate ${tag}`);adminStaged=true;
+    markPhase("admin-stage-complete");
+    markPhase("maintenance-stage-begin");
     deploy(MAINTENANCE,stageSpecs(maintenanceSnapshot,maintenanceCandidate),`L2 0% candidate ${tag}`);maintenanceStaged=true;
+    markPhase("maintenance-stage-complete");
     await sleep(5000);
+    markPhase("remote-harness-begin");
     const receipt=await remoteHarness(adminCandidate,maintenanceCandidate,requestId);
     console.log(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_PASS",tag,request_id:requestId,...receipt}));
   }finally{
+    markPhase("restore-begin",{admin_staged:adminStaged,maintenance_staged:maintenanceStaged});
     const restoreErrors=[];
     if(maintenanceStaged){try{deploy(MAINTENANCE,maintenanceSnapshot,`L2 restore ${tag}`)}catch(error){restoreErrors.push({worker:MAINTENANCE,error:String(error?.message||error)})}}
     if(adminStaged){try{deploy(ADMIN,adminSnapshot,`L2 restore ${tag}`)}catch(error){restoreErrors.push({worker:ADMIN,error:String(error?.message||error)})}}
     if(restoreErrors.length)throw Object.assign(new Error("WORKER_DEPLOYMENT_RESTORE_FAILED"),{body:{restore_errors:restoreErrors}});
+    markPhase("restore-complete");
   }
 }
-if(import.meta.url===pathToFileURL(resolve(process.argv[1]||"")).href)main().catch(error=>{console.error(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_FAIL",error:String(error?.message||error),details:error?.body||null,secrets_redacted:true}));process.exitCode=1});
+if(import.meta.url===pathToFileURL(resolve(process.argv[1]||"")).href)main().catch(error=>{console.error(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_FAIL",phase:currentPhase,error:String(error?.message||error),details:error?.body||null,secrets_redacted:true}));process.exitCode=1});
