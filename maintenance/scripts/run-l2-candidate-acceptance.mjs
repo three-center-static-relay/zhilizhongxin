@@ -12,6 +12,7 @@ const ADMIN_DIAG_PREFIX="pr49-l2-admin-candidate-bisect-";
 const ENTRY_DIAG_PREFIX="pr49-l2-wrapper-entry-bisect-";
 const LIST_DIAG_PREFIX="pr49-l2-admin-list-bisect-";
 const BUILD_DIAG_PREFIX="pr49-l2-admin-build-bisect-";
+const UPLOAD_DIAG_PREFIX="pr49-l2-admin-upload-bisect-";
 const TAG_PATTERN=/^[a-f0-9]{12}$/i;
 const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -99,6 +100,12 @@ function main(){
     const adminCwd=resolve(process.cwd(),"../admin");
     run("npm",["run","cf:build"],adminCwd,{stdio:"inherit",stripCiOverride:true});
     console.log(JSON.stringify({event:"L2_ADMIN_BUILD_BISECT_PASS",tag,request_id:requestId,secrets_redacted:true}));
+    return;
+  }
+  if(requestId.startsWith(UPLOAD_DIAG_PREFIX)){
+    const adminCwd=resolve(process.cwd(),"../admin");
+    adminWrangler(["versions","upload","--name",ADMIN,"--tag",tag,"--message",`L2 upload-only admin candidate ${tag}`],adminCwd,{stdio:"inherit"});
+    console.log(JSON.stringify({event:"L2_ADMIN_UPLOAD_BISECT_PASS",tag,request_id:requestId,secrets_redacted:true}));
     return;
   }
   const admin=ensureAdminCandidate(tag);
