@@ -100,20 +100,20 @@ function rollbackAdmin(wranglerVersion,message="Automatic rollback: Tencent prod
   catch(error){emit({ok:false,code:"ADMIN_AUTOMATIC_ROLLBACK_FAILED",error:String(error?.message||error)},process.stderr);return false}
 }
 
-function capturedDeploy(wranglerVersion,defineArgs=[]){
+function capturedDeploy(wranglerVersion,runtimeVars=[]){
   const args=["--yes",`wrangler@${wranglerVersion}`,"deploy"];
-  for(const defineArg of (Array.isArray(defineArgs)?defineArgs:[defineArgs]).filter(Boolean))args.push("--define",defineArg);
+  for(const runtimeVar of (Array.isArray(runtimeVars)?runtimeVars:[runtimeVars]).filter(Boolean))args.push("--var",runtimeVar);
   const result=run("npx",args,{cwd:process.cwd(),encoding:"utf8",maxBuffer:4*1024*1024});
   printCaptured(result);
   const url=configuredAdminPublicBase();
-  emit({ok:true,code:"ADMIN_CANONICAL_E2E_TARGET",worker_host:new URL(url).host,url_source:"admin-openapi"});
+  emit({ok:true,code:"ADMIN_CANONICAL_E2E_TARGET",worker_host:new URL(url).host,url_source:"admin-openapi",runtime_marker_transport:"worker-var"});
   return {result,url};
 }
 
 function publishFailureAttestation(wranglerVersion,context,failureCode){
   try{
     const clean=safeFailure(failureCode);
-    const deployed=capturedDeploy(wranglerVersion,[`TENCENT_PRODUCTION_E2E_FAILURE:'${clean}'`,`TENCENT_PRODUCTION_E2E_FAILED_COMMIT:'${context.sha}'`]);
+    const deployed=capturedDeploy(wranglerVersion,[`TENCENT_PRODUCTION_E2E_FAILURE:${clean}`,`TENCENT_PRODUCTION_E2E_FAILED_COMMIT:${context.sha}`]);
     emit({ok:false,code:"TENCENT_RUNTIME_E2E_FAILURE_ATTESTED",commit_sha:context.sha,worker_host:new URL(deployed.url).host,failure_code:clean,probe_persisted:false,agent_execution_enabled:false},process.stderr);
     return true;
   }catch(error){
@@ -127,7 +127,7 @@ function publishFailureAttestation(wranglerVersion,context,failureCode){
 function deployAdminWithRuntimeE2E(repoRoot,wranglerVersion,context){
   const probe=randomBytes(32).toString("hex");
   let candidate;
-  try{candidate=capturedDeploy(wranglerVersion,[`TENCENT_DEPLOY_E2E_PROBE:'${probe}'`])}
+  try{candidate=capturedDeploy(wranglerVersion,[`TENCENT_DEPLOY_E2E_PROBE:${probe}`])}
   catch(error){if(error.stdout)process.stdout.write(error.stdout);if(error.stderr)process.stderr.write(error.stderr);throw error}
 
   const verify=spawnSync(process.execPath,[resolve(repoRoot,"scripts/tencent-postdeploy-e2e.mjs"),candidate.url],{cwd:repoRoot,encoding:"utf8",env:{...process.env,TENCENT_E2E_PROBE_TOKEN:probe},maxBuffer:4*1024*1024});
@@ -143,7 +143,7 @@ function deployAdminWithRuntimeE2E(repoRoot,wranglerVersion,context){
   emit({ok:true,code:"TENCENT_RUNTIME_E2E_CANDIDATE_PASS",commit_sha:context.sha,worker_host:new URL(candidate.url).host});
 
   let finalDeploy;
-  try{finalDeploy=capturedDeploy(wranglerVersion,[`TENCENT_PRODUCTION_E2E_ATTESTED:'${context.sha}'`])}
+  try{finalDeploy=capturedDeploy(wranglerVersion,[`TENCENT_PRODUCTION_E2E_ATTESTED:${context.sha}`])}
   catch(error){rollbackAdmin(wranglerVersion,"Automatic rollback to live-tested Tencent candidate: clean attestation deploy failed");throw error}
 
   const attest=spawnSync(process.execPath,[resolve(repoRoot,"scripts/tencent-production-attestation-verify.mjs"),finalDeploy.url,context.sha],{cwd:repoRoot,encoding:"utf8",env:process.env,maxBuffer:4*1024*1024});
