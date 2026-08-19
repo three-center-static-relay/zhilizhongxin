@@ -1,3 +1,0 @@
-Tencent production gate canary.
-Expected Cloudflare behavior: admin ALLOWED; governance SKIPPED; maintenance SKIPPED.
-No runtime behavior or secret value is changed by this file.
