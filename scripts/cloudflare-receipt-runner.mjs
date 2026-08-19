@@ -32,10 +32,16 @@ async function main(){
   const child=spawn(command,args,{cwd:process.cwd(),env:process.env,stdio:["inherit","pipe","pipe"],shell:false});
   wire(child.stdout,process.stdout,signal);
   wire(child.stderr,process.stderr,signal);
-  const result=await new Promise(resolve=>child.on("close",(code,signalName)=>resolve({code:code??1,signalName})));
+  const result=await new Promise(resolve=>{
+    let settled=false;
+    const finish=value=>{if(settled)return;settled=true;resolve(value)};
+    child.once("error",error=>finish({code:1,spawn_error:clean(error?.message||error,120)}));
+    child.once("close",(code,signalName)=>finish({code:code??1,signalName}));
+  });
   const state=result.code===0?"success":"failure";
   signal.exit_code=result.code;
   if(result.signalName)signal.process_signal=clean(result.signalName,40);
+  if(result.spawn_error)signal.spawn_error=result.spawn_error;
   await post(scope,mode,state,signal);
   process.exitCode=result.code;
 }

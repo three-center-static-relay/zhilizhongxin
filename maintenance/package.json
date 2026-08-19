@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Maintenance Worker participating in shared fail-closed Cloudflare gate validation",
   "scripts": {
-    "cf:build": "node --check src/index.js",
+    "cf:build": "node --check src/index.js && node ../scripts/cloudflare-github-status.test.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-receipt-runner.mjs maintenance preview npm run cf:ci:preview:inner",
     "cf:ci:deploy": "node ../scripts/cloudflare-receipt-runner.mjs maintenance deploy npm run cf:ci:deploy:inner",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",

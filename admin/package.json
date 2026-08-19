@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Admin Worker with fail-closed Tencent runtime E2E gate and deterministic redacted failure marker",
   "scripts": {
-    "cf:build": "node --check src/guard.js && node --check src/index.js && node --check src/production-superguard.js && node --check src/protection.js && node --check src/superguard.js && node --check src/tencent-executor.js && node --check ../scripts/tencent-postdeploy-e2e.mjs && node --check ../scripts/tencent-production-attestation-verify.mjs && node tests/tencent-executor-contract.mjs && node tests/tencent-cloudflare-secret-presence.mjs && node ../scripts/tencent-production-attestation-verify.mjs preview-marker && node -e \"JSON.parse(require('node:fs').readFileSync('openapi.json','utf8'))\"",
+    "cf:build": "node --check src/guard.js && node --check src/index.js && node --check src/production-superguard.js && node --check src/protection.js && node --check src/superguard.js && node --check src/tencent-executor.js && node --check ../scripts/tencent-postdeploy-e2e.mjs && node --check ../scripts/tencent-production-attestation-verify.mjs && node tests/tencent-executor-contract.mjs && node tests/tencent-cloudflare-secret-presence.mjs && node ../scripts/tencent-production-attestation-verify.mjs preview-marker && node -e \"JSON.parse(require('node:fs').readFileSync('openapi.json','utf8'))\" && node ../scripts/cloudflare-github-status.test.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-receipt-runner.mjs admin preview npm run cf:ci:preview:inner",
     "cf:ci:deploy": "node ../scripts/cloudflare-receipt-runner.mjs admin deploy npm run cf:ci:deploy:inner",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
