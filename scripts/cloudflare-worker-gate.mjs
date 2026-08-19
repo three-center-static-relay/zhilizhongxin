@@ -26,10 +26,11 @@ export function validateInvocation(scope,mode,env=process.env){
 }
 export function validateWranglerVersion(version){if(!EXACT_VERSION_PATTERN.test(version||""))throw new Error("EXACT_WRANGLER_VERSION_REQUIRED");return version}
 export function candidateTag(sha){const tag=String(sha||"").slice(0,12);if(!TAG_PATTERN.test(tag))throw new Error("VALID_CANDIDATE_TAG_REQUIRED");return tag}
-export function lifecycleFreeVersionConfig(config){
+export function diagnosticAdminVersionConfig(config){
   const copy=JSON.parse(JSON.stringify(config||{}));
   delete copy.exports;
   delete copy.migrations;
+  delete copy.secrets;
   return copy;
 }
 export function validatePostAllowScript(scope,mode,requested=null){if(!requested)return null;throw new Error("POST_ALLOW_SCRIPT_NOT_ALLOWED")}
@@ -41,7 +42,7 @@ export function wranglerCommand(scope,mode,wranglerVersion,tag=null,configPath=n
   if(!SCOPES.has(scope))throw new Error(`UNSUPPORTED_SCOPE:${scope||"missing"}`);
   if(mode==="preview"&&scope==="admin"){
     if(!TAG_PATTERN.test(tag||""))throw new Error("VALID_CANDIDATE_TAG_REQUIRED");
-    if(!configPath)throw new Error("ADMIN_LIFECYCLE_FREE_CONFIG_REQUIRED");
+    if(!configPath)throw new Error("ADMIN_DIAGNOSTIC_CONFIG_REQUIRED");
     return["--yes",`wrangler@${wranglerVersion}`,"versions","upload","--tag",tag,"--message",`PR candidate ${tag}`,"--config",configPath];
   }
   if(mode==="preview")return["--yes",`wrangler@${wranglerVersion}`,"deploy","--dry-run"];
@@ -64,8 +65,9 @@ function packageContract(scope){const packageJson=JSON.parse(readFileSync(resolv
 function prepareAdminVersionConfig(){
   const source=JSON.parse(readFileSync(resolve(process.cwd(),"wrangler.jsonc"),"utf8"));
   if(!source?.exports||!source?.durable_objects?.bindings?.length)throw new Error("ADMIN_EXPORTS_SOURCE_CONTRACT_REQUIRED");
-  const stripped=lifecycleFreeVersionConfig(source);
-  if(stripped.exports||stripped.migrations)throw new Error("ADMIN_LIFECYCLE_CONFIG_STRIP_FAILED");
+  if(!Array.isArray(source?.secrets?.required)||source.secrets.required.length===0)throw new Error("ADMIN_REQUIRED_SECRETS_SOURCE_CONTRACT_REQUIRED");
+  const stripped=diagnosticAdminVersionConfig(source);
+  if(stripped.exports||stripped.migrations||stripped.secrets)throw new Error("ADMIN_DIAGNOSTIC_CONFIG_STRIP_FAILED");
   if(!stripped?.durable_objects?.bindings?.length)throw new Error("ADMIN_DURABLE_OBJECT_BINDING_MISSING");
   const path=resolve(process.cwd(),".l2-admin-version-upload.wrangler.jsonc");
   writeFileSync(path,JSON.stringify(stripped,null,2));
@@ -81,8 +83,8 @@ export function main(argv=process.argv.slice(2),env=process.env){
     const repoRoot=repositoryRoot(),{parentSha,historyDeepened}=diffContext(repoRoot,context.sha,context.branch),changed=changedPaths(repoRoot,parentSha,context.sha),relevant=relevantPaths(scope,changed);
     if(relevant.length===0){emit({ok:true,skipped:true,code:"CF_PATH_SCOPE_SKIPPED",scope,mode,branch:context.branch,commit_sha:context.sha,parent_sha:parentSha,history_deepened:historyDeepened,changed_path_count:changed.length,l2_executed:false,post_allow_executed:false});return 0}
     const{wranglerVersion}=packageContract(scope),l2=shouldRunL2(scope,mode,changed),tag=mode==="preview"?candidateTag(context.sha):null;
-    const previewSemantics=mode!=="preview"?"production-deploy":scope==="admin"?"admin-owned-lifecycle-free-version-upload":"compile-dry-run-only";
-    emit({ok:true,skipped:false,code:"CF_PATH_SCOPE_ALLOWED",scope,mode,branch:context.branch,commit_sha:context.sha,parent_sha:parentSha,history_deepened:historyDeepened,relevant_paths:relevant,wrangler_version:wranglerVersion,preview_semantics:previewSemantics,candidate_tag:scope==="admin"&&mode==="preview"?tag:null,lifecycle_mutation_allowed:false,l2_requested:l2,post_allow_script:null});
+    const previewSemantics=mode!=="preview"?"production-deploy":scope==="admin"?"admin-owned-diagnostic-version-upload-no-lifecycle-or-required-secret-declarations":"compile-dry-run-only";
+    emit({ok:true,skipped:false,code:"CF_PATH_SCOPE_ALLOWED",scope,mode,branch:context.branch,commit_sha:context.sha,parent_sha:parentSha,history_deepened:historyDeepened,relevant_paths:relevant,wrangler_version:wranglerVersion,preview_semantics:previewSemantics,candidate_tag:scope==="admin"&&mode==="preview"?tag:null,lifecycle_mutation_allowed:false,required_secret_validation_bypassed_for_probe:scope==="admin"&&mode==="preview",remote_secret_values_mutated:false,l2_requested:l2,post_allow_script:null});
     run(process.execPath,[resolve(repoRoot,"scripts/cloudflare-worker-gate.test.mjs")],{cwd:repoRoot,stdio:"inherit"});
     run("npm",["run","cf:build"],{cwd:process.cwd(),stdio:"inherit"});
     if(scope==="admin"&&mode==="preview")ephemeralConfigPath=prepareAdminVersionConfig();
