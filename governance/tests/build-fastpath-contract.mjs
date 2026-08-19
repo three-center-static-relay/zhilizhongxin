@@ -10,6 +10,11 @@ assert.match(source,/\/builds\/workers\/\$\{encodeURIComponent\(workerTag\)\}\/b
 assert.match(source,/\/builds\/builds\/\$\{encodeURIComponent\(buildUuid\)\}\/logs/);
 assert.match(source,/DEFAULT_TAIL_LINES=120/);
 assert.match(source,/MAX_TAIL_LINES=300/);
+assert.match(source,/MAX_LOG_PAGES=8/);
+assert.match(source,/"fail","failed","failure"/);
+assert.match(source,/outcome==="terminated"/);
+assert.match(source,/payload\.lines\?\?/);
+assert.match(source,/cursor=String\(payload\?\.cursor/);
 assert.match(source,/Bearer \[REDACTED\]/);
 assert.match(source,/bot_independent:true/);
 assert.match(source,/state:"NOT_OBSERVED"/);
@@ -22,4 +27,4 @@ assert.match(entry,/\/v1\/admin\/builds\/logs/);
 assert.match(entry,/\.\.\.buildFastOpenApiPaths\(\)/);
 assert.match(pkg.scripts["test:build-gate"],/build-fastpath-contract\.mjs/);
 
-console.log(JSON.stringify({ok:true,suite:"build-fastpath-contract",builds_api_direct_read:true,github_bot_bypassed:true,failed_build_auto_log_tail:true,default_tail_lines:120,max_tail_lines:300,admin_bearer_required:true,worker_allowlist:true,trigger_disabled:true,cancel_disabled:true,secrets_redacted:true}));
+console.log(JSON.stringify({ok:true,suite:"build-fastpath-contract",builds_api_direct_read:true,github_bot_bypassed:true,cloudflare_fail_outcome_supported:true,terminated_build_supported:true,failed_build_auto_log_tail:true,cursor_aware_logs:true,default_tail_lines:120,max_tail_lines:300,admin_bearer_required:true,worker_allowlist:true,trigger_disabled:true,cancel_disabled:true,secrets_redacted:true}));

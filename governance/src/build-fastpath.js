@@ -3,6 +3,7 @@ const REQUEST_TIMEOUT_MS=10000;
 const MAX_RESPONSE_BYTES=524288;
 const DEFAULT_TAIL_LINES=120;
 const MAX_TAIL_LINES=300;
+const MAX_LOG_PAGES=8;
 const ALLOWED_WORKERS=new Set([
   "governance-worker",
   "admin-worker",
@@ -107,20 +108,20 @@ function normalizedBuild(build){
   const outcome=String(build?.build_outcome||build?.buildOutcome||"").toLowerCase();
   const commitHash=String(metadata?.commit_hash||metadata?.commitHash||build?.commit_hash||build?.commitHash||"").trim().toLowerCase();
   const branch=String(metadata?.branch||build?.branch||"").trim();
-  const terminalStatuses=new Set(["success","failed","failure","canceled","cancelled","stopped"]);
-  const terminalOutcomes=new Set(["success","failed","failure","canceled","cancelled"]);
-  const terminal=terminalStatuses.has(status)||terminalOutcomes.has(outcome);
-  const success=status==="success"||outcome==="success";
-  const failed=["failed","failure"].includes(status)||["failed","failure"].includes(outcome);
-  const canceled=["canceled","cancelled"].includes(status)||["canceled","cancelled"].includes(outcome);
-  const state=success?"SUCCESS":failed?"FAILED":canceled?"CANCELED":terminal?"STOPPED":["queued","initializing"].includes(status)?status.toUpperCase():"RUNNING";
+  const terminal=status==="stopped"||["success","fail","failed","failure","skipped","cancelled","canceled","terminated"].includes(outcome);
+  const success=outcome==="success";
+  const failed=["fail","failed","failure"].includes(outcome);
+  const canceled=["cancelled","canceled"].includes(outcome);
+  const terminated=outcome==="terminated";
+  const skipped=outcome==="skipped";
+  const state=success?"SUCCESS":failed?"FAILED":canceled?"CANCELED":terminated?"TERMINATED":skipped?"SKIPPED":status==="stopped"?"STOPPED":["queued","initializing","running"].includes(status)?status.toUpperCase():"UNKNOWN";
   return {
     build_uuid:String(build?.build_uuid||build?.buildUuid||build?.id||"").trim()||null,
-    state,status:status||null,build_outcome:outcome||null,terminal,success,failed,canceled,
+    state,status:status||null,build_outcome:outcome||null,terminal,success,failed,canceled,terminated,skipped,
     branch:branch||null,commit_hash:commitHash||null,
     created_at:build?.created_at||build?.created_on||build?.createdAt||null,
-    initializing_at:build?.initializing_at||build?.initializingAt||null,
-    running_at:build?.running_at||build?.runningAt||null,
+    initializing_at:build?.initializing_at||build?.initializing_on||build?.initializingAt||null,
+    running_at:build?.running_at||build?.running_on||build?.runningAt||null,
     stopped_at:build?.stopped_at||build?.stopped_on||build?.stoppedAt||null
   };
 }
@@ -135,10 +136,11 @@ async function resolveWorkerTag(env,worker){
 
 function logLines(payload){
   let source=payload;
-  if(payload&&typeof payload==="object"&&!Array.isArray(payload))source=payload.logs??payload.lines??payload.data??payload.result??payload;
+  if(payload&&typeof payload==="object"&&!Array.isArray(payload))source=payload.lines??payload.logs??payload.data??payload.result??payload;
   if(Array.isArray(source)){
     return source.map(item=>{
       if(typeof item==="string")return redactText(item);
+      if(Array.isArray(item))return redactText(item.map(part=>String(part??"")).join(" "));
       if(item&&typeof item==="object"){
         const candidate=item.message??item.line??item.text??item.log;
         if(typeof candidate==="string")return redactText(candidate);
@@ -151,9 +153,16 @@ function logLines(payload){
 }
 
 async function buildLogTail(env,buildUuid,tail){
-  const payload=await cfApi(env,`/builds/builds/${encodeURIComponent(buildUuid)}/logs`);
-  const lines=logLines(payload);
-  return {tail_lines:tail,total_lines_observed:lines.length,log_tail:lines.slice(-tail),truncated:lines.length>tail};
+  let cursor=null,pages=0,all=[],apiTruncated=false;
+  do{
+    const suffix=cursor?`?cursor=${encodeURIComponent(cursor)}`:"";
+    const payload=await cfApi(env,`/builds/builds/${encodeURIComponent(buildUuid)}/logs${suffix}`);
+    all.push(...logLines(payload));
+    cursor=String(payload?.cursor||"").trim()||null;
+    apiTruncated=payload?.truncated===true;
+    pages++;
+  }while(cursor&&pages<MAX_LOG_PAGES);
+  return {tail_lines:tail,total_lines_observed:all.length,log_tail:all.slice(-tail),truncated:apiTruncated||Boolean(cursor)||all.length>tail,pages_observed:pages};
 }
 
 async function authorized(request,env,fn){
@@ -174,7 +183,7 @@ export async function getBuildFastStatus(request,env){
     if(!selected)return {ok:true,http_status:200,found:false,state:"NOT_OBSERVED",worker,commit,source:"cloudflare-builds-api",bot_independent:true,observed_at:new Date().toISOString(),secrets_redacted:true};
     const build=normalizedBuild(selected);
     let logs=null;
-    if((build.failed||build.canceled)&&build.build_uuid)logs=await buildLogTail(env,build.build_uuid,tail);
+    if((build.failed||build.canceled||build.terminated)&&build.build_uuid)logs=await buildLogTail(env,build.build_uuid,tail);
     return {ok:true,http_status:200,found:true,worker,worker_tag:workerTag,requested_commit:commit,build,logs,source:"cloudflare-builds-api",bot_independent:true,observed_at:new Date().toISOString(),secrets_redacted:true};
   });
 }
@@ -191,7 +200,7 @@ export async function getBuildLogTail(request,env){
 
 export function buildFastOpenApiPaths(){
   return {
-    "/v1/admin/builds/fast-status":{get:{operationId:"getCloudflareBuildFastStatus",summary:"Read live Cloudflare Workers Build status",description:"Read the latest Cloudflare Workers Build directly from the Builds API, optionally pinned to a commit prefix. Failed or canceled builds automatically include a redacted log tail. This bypasses delayed GitHub bot synchronization and never triggers or cancels builds.",security:[{BearerAuth:[]}],parameters:[{name:"worker",in:"query",required:true,schema:{type:"string",enum:[...ALLOWED_WORKERS]}},{name:"commit",in:"query",required:false,schema:{type:"string",pattern:"^[A-Fa-f0-9]{7,40}$"}},{name:"tail",in:"query",required:false,schema:{type:"integer",minimum:20,maximum:MAX_TAIL_LINES,default:DEFAULT_TAIL_LINES}}],responses:{"200":{description:"Current Build status or NOT_OBSERVED."},"400":{description:"Invalid worker, commit, or tail."},"401":{description:"Unauthorized."},"503":{description:"Builds API credentials unavailable."}}}},
-    "/v1/admin/builds/logs":{get:{operationId:"getCloudflareBuildLogTail",summary:"Read a redacted Cloudflare Build log tail",description:"Read only the tail of one Cloudflare Workers Build log by build UUID. Sensitive-looking fields and bearer/token strings are redacted before return.",security:[{BearerAuth:[]}],parameters:[{name:"build_uuid",in:"query",required:true,schema:{type:"string",minLength:16,maxLength:96}},{name:"tail",in:"query",required:false,schema:{type:"integer",minimum:20,maximum:MAX_TAIL_LINES,default:DEFAULT_TAIL_LINES}}],responses:{"200":{description:"Redacted Build log tail."},"400":{description:"Invalid build_uuid or tail."},"401":{description:"Unauthorized."},"503":{description:"Builds API credentials unavailable."}}}}
+    "/v1/admin/builds/fast-status":{get:{operationId:"getCloudflareBuildFastStatus",summary:"Read live Cloudflare Workers Build status",description:"Read the latest Cloudflare Workers Build directly from the Builds API, optionally pinned to a commit prefix. Failed, canceled, or terminated builds automatically include a redacted log tail. This bypasses delayed GitHub bot synchronization and never triggers or cancels builds.",security:[{BearerAuth:[]}],parameters:[{name:"worker",in:"query",required:true,schema:{type:"string",enum:[...ALLOWED_WORKERS]}},{name:"commit",in:"query",required:false,schema:{type:"string",pattern:"^[A-Fa-f0-9]{7,40}$"}},{name:"tail",in:"query",required:false,schema:{type:"integer",minimum:20,maximum:MAX_TAIL_LINES,default:DEFAULT_TAIL_LINES}}],responses:{"200":{description:"Current Build status or NOT_OBSERVED."},"400":{description:"Invalid worker, commit, or tail."},"401":{description:"Unauthorized."},"503":{description:"Builds API credentials unavailable."}}}},
+    "/v1/admin/builds/logs":{get:{operationId:"getCloudflareBuildLogTail",summary:"Read a redacted Cloudflare Build log tail",description:"Read a bounded, cursor-aware tail of one Cloudflare Workers Build log by build UUID. Sensitive-looking fields and bearer/token strings are redacted before return.",security:[{BearerAuth:[]}],parameters:[{name:"build_uuid",in:"query",required:true,schema:{type:"string",minLength:16,maxLength:96}},{name:"tail",in:"query",required:false,schema:{type:"integer",minimum:20,maximum:MAX_TAIL_LINES,default:DEFAULT_TAIL_LINES}}],responses:{"200":{description:"Redacted Build log tail."},"400":{description:"Invalid build_uuid or tail."},"401":{description:"Unauthorized."},"503":{description:"Builds API credentials unavailable."}}}}
   };
 }
