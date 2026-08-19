@@ -1,0 +1,2 @@
+verify production Tencent project-domain attestation for parent main commit c633039823962f90417d95c3ac42471735949d52
+post-PR trigger: 2026-08-19T10:44Z
