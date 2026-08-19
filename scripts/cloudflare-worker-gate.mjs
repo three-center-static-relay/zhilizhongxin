@@ -28,16 +28,10 @@ export function validatePostAllowScript(scope,mode,requested=null){if(!requested
 export function isRelevantPath(scope,filePath){if(!SCOPES.has(scope))throw new Error(`UNSUPPORTED_SCOPE:${scope||"missing"}`);return filePath.startsWith(`${scope}/`)||SHARED_BUILD_PATHS.has(filePath)}
 export function relevantPaths(scope,paths){return[...new Set(paths.filter(filePath=>isRelevantPath(scope,filePath)))].sort()}
 export function shouldRunL2(scope,mode,changed){return scope==="maintenance"&&mode==="preview"&&changed.includes(L2_TRIGGER_PATH)}
-export function wranglerCommand(scope,mode,wranglerVersion,context){
+export function wranglerCommand(scope,mode,wranglerVersion){
   validateWranglerVersion(wranglerVersion);
   if(!SCOPES.has(scope))throw new Error(`UNSUPPORTED_SCOPE:${scope||"missing"}`);
-  if(mode==="preview"){
-    if(scope==="maintenance"){
-      const shortSha=String(context?.sha||"").slice(0,12);
-      return["--yes",`wrangler@${wranglerVersion}`,"versions","upload","--tag",shortSha,"--message",`candidate ${context?.branch||"preview"} ${shortSha}`];
-    }
-    return["--yes",`wrangler@${wranglerVersion}`,"deploy","--dry-run"];
-  }
+  if(mode==="preview")return["--yes",`wrangler@${wranglerVersion}`,"deploy","--dry-run"];
   if(mode==="deploy")return["--yes",`wrangler@${wranglerVersion}`,"deploy"];
   throw new Error(`UNSUPPORTED_MODE:${mode||"missing"}`);
 }
@@ -63,15 +57,15 @@ export function main(argv=process.argv.slice(2),env=process.env){
     const repoRoot=repositoryRoot(),{parentSha,historyDeepened}=diffContext(repoRoot,context.sha,context.branch),changed=changedPaths(repoRoot,parentSha,context.sha),relevant=relevantPaths(scope,changed);
     if(relevant.length===0){emit({ok:true,skipped:true,code:"CF_PATH_SCOPE_SKIPPED",scope,mode,branch:context.branch,commit_sha:context.sha,parent_sha:parentSha,history_deepened:historyDeepened,changed_path_count:changed.length,l2_executed:false,post_allow_executed:false});return 0}
     const{wranglerVersion}=packageContract(scope),l2=shouldRunL2(scope,mode,changed);
-    const previewSemantics=mode==="preview"?(scope==="maintenance"?"version-upload-no-production-deploy":"compile-dry-run-only"):"production-deploy";
-    emit({ok:true,skipped:false,code:"CF_PATH_SCOPE_ALLOWED",scope,mode,branch:context.branch,commit_sha:context.sha,parent_sha:parentSha,history_deepened:historyDeepened,relevant_paths:relevant,wrangler_version:wranglerVersion,preview_semantics:previewSemantics,candidate_tag:mode==="preview"&&scope==="maintenance"?context.sha.slice(0,12):null,l2_requested:l2,post_allow_script:null});
+    const previewSemantics=mode==="preview"?"compile-dry-run-only":"production-deploy";
+    emit({ok:true,skipped:false,code:"CF_PATH_SCOPE_ALLOWED",scope,mode,branch:context.branch,commit_sha:context.sha,parent_sha:parentSha,history_deepened:historyDeepened,relevant_paths:relevant,wrangler_version:wranglerVersion,preview_semantics:previewSemantics,candidate_tag:null,l2_requested:l2,post_allow_script:null});
     run(process.execPath,[resolve(repoRoot,"scripts/cloudflare-worker-gate.test.mjs")],{cwd:repoRoot,stdio:"inherit"});
     run("npm",["run","cf:build"],{cwd:process.cwd(),stdio:"inherit"});
-    run("npx",wranglerCommand(scope,mode,wranglerVersion,context),{cwd:process.cwd(),stdio:"inherit"});
+    run("npx",wranglerCommand(scope,mode,wranglerVersion),{cwd:process.cwd(),stdio:"inherit"});
     if(l2){
-      emit({event:"L2_EXPERT_ROUTE_ACCEPTANCE_BEGIN",commit_sha:context.sha,tag:context.sha.slice(0,12)});
+      emit({event:"L2_EXPERT_ROUTE_ACCEPTANCE_BEGIN",commit_sha:context.sha,execution_mode:"remote-dev-multiconfig-no-version-upload"});
       run(process.execPath,[resolve(process.cwd(),L2_SCRIPT)],{cwd:process.cwd(),stdio:"inherit"});
-      emit({event:"L2_EXPERT_ROUTE_ACCEPTANCE_COMPLETED",commit_sha:context.sha,tag:context.sha.slice(0,12)});
+      emit({event:"L2_EXPERT_ROUTE_ACCEPTANCE_COMPLETED",commit_sha:context.sha,execution_mode:"remote-dev-multiconfig-no-version-upload"});
     }
     return 0;
   }catch(error){emit({ok:false,skipped:false,code:error.message||"CF_PATH_GATE_FAILED",scope:scope||null,mode:mode||null},process.stderr);return Number.isInteger(error.exitCode)?error.exitCode:1}
