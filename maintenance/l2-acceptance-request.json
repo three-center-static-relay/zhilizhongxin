@@ -2,5 +2,5 @@
   "schema": "expert-l2-acceptance-v1",
   "enabled": true,
   "phase": "predeploy-control-plane",
-  "request_id": "pr94-two-phase-predeploy-20260820-0328"
+  "request_id": "pr94-retrigger-predeploy-20260820-0752"
 }
