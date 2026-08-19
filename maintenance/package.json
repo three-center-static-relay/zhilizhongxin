@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "cf:build": "node --check src/index.js",
+    "cf:build": "echo TENCENT_PRODUCTION_78D8AF13_VERIFY_BEGIN && node --check src/index.js && node ../scripts/tencent-production-attestation-verify.mjs https://admin-worker.a15280020511.workers.dev 78d8af132074f2ab8edba1001687847e5ee206bc",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs maintenance deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
