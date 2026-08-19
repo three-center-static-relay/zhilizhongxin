@@ -2,6 +2,7 @@
   "name": "governance-worker",
   "private": true,
   "type": "module",
+  "description": "Governance Worker with shared fail-closed production acceptance gates",
   "scripts": {
     "policy": "node tests/policy-regression.mjs",
     "policy:hardening": "node tests/policy-hardening-second-layer.mjs",
