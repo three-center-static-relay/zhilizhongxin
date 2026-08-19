@@ -1,107 +1,57 @@
 #!/usr/bin/env node
 import {spawnSync} from "node:child_process";
-import {readFileSync} from "node:fs";
+import {mkdirSync,readFileSync,rmSync,writeFileSync} from "node:fs";
 import {resolve} from "node:path";
 import {pathToFileURL} from "node:url";
 
 const WRANGLER="4.123.0";
-const ADMIN="admin-worker";
 const COMMIT_PATTERN=/^[a-f0-9]{40}$/i;
 const TAG_PATTERN=/^[a-f0-9]{12}$/i;
 const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WRANGLER_TIMEOUT_MS=120000;
-const ADMIN_WAIT_TIMEOUT_MS=120000;
+const PREVIEW_READY_TIMEOUT_MS=60000;
 let phase="boot";
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 function mark(next,details={}){
   phase=next;
-  console.log(JSON.stringify({event:"L2_ADMIN_ZERO_STAGE_PROBE_PHASE",phase,at:new Date().toISOString(),...details,secrets_redacted:true}));
+  console.log(JSON.stringify({event:"L2_STATELESS_PREVIEW_PROBE_PHASE",phase,at:new Date().toISOString(),...details,secrets_redacted:true}));
 }
-function cleanJson(text){
-  const raw=String(text||"").replace(/\x1b\[[0-9;]*m/g,"").trim();
-  const starts=[raw.indexOf("["),raw.indexOf("{")].filter(i=>i>=0).sort((a,b)=>a-b);
-  if(!starts.length)throw new Error("WRANGLER_JSON_MISSING");
-  return JSON.parse(raw.slice(starts[0]));
-}
-function run(args,{json=false}={}){
+function run(args,{cwd=process.cwd(),env={}}={}){
   const result=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{
-    cwd:process.cwd(),encoding:"utf8",env:{...process.env,CI:"1"},maxBuffer:8*1024*1024,timeout:WRANGLER_TIMEOUT_MS,killSignal:"SIGTERM"
+    cwd,encoding:"utf8",env:{...process.env,CI:"1",...env},maxBuffer:8*1024*1024,timeout:WRANGLER_TIMEOUT_MS,killSignal:"SIGTERM"
   });
   if(result.error?.code==="ETIMEDOUT")throw Object.assign(new Error(`WRANGLER_TIMEOUT:${args.join(" ")}`),{stdout:result.stdout,stderr:result.stderr});
   if(result.error||result.status!==0)throw Object.assign(new Error(`WRANGLER_FAILED:${args.join(" ")}`),{stdout:result.stdout,stderr:result.stderr});
   if(result.stdout)process.stdout.write(result.stdout);
   if(result.stderr)process.stderr.write(result.stderr);
-  return json?cleanJson(result.stdout):null;
+  return result;
 }
-function idOf(value){return String(value?.version_id||value?.versionId||value?.id||"").trim()}
-function tagOf(value){return String(value?.tag||value?.annotations?.["workers/tag"]||"").trim()}
-export function findVersionByTag(payload,tag){
-  const rows=Array.isArray(payload)?payload:Array.isArray(payload?.versions)?payload.versions:Array.isArray(payload?.result)?payload.result:[];
-  const hits=rows.filter(row=>tagOf(row)===tag&&UUID_PATTERN.test(idOf(row)));
-  if(hits.length!==1)throw new Error(`CANDIDATE_VERSION_TAG_MATCH:${tag}:${hits.length}`);
-  return idOf(hits[0]);
+export function parseVersionUploadOutput(text){
+  const rows=String(text||"").split(/\r?\n/).map(line=>line.trim()).filter(Boolean).flatMap(line=>{try{return[JSON.parse(line)]}catch{return[]}});
+  const row=[...rows].reverse().find(value=>value?.type==="version-upload");
+  if(!row)throw new Error("VERSION_UPLOAD_STRUCTURED_OUTPUT_MISSING");
+  const versionId=String(row.version_id||"").trim();
+  const previewUrl=String(row.preview_url||row.preview_alias_url||"").trim();
+  if(!UUID_PATTERN.test(versionId))throw new Error("STATELESS_PREVIEW_VERSION_ID_INVALID");
+  if(!/^https:\/\/[A-Za-z0-9.-]+\.workers\.dev\/?$/.test(previewUrl))throw new Error("STATELESS_PREVIEW_URL_INVALID");
+  return{versionId,previewUrl};
 }
-async function waitVersionByTag(worker,tag,timeoutMs=ADMIN_WAIT_TIMEOUT_MS){
-  const deadline=Date.now()+timeoutMs;let lastError=null;
+async function fetchPreview(previewUrl,commit,versionId){
+  const deadline=Date.now()+PREVIEW_READY_TIMEOUT_MS;let last=null;
   while(Date.now()<deadline){
-    try{return findVersionByTag(run(["versions","list","--name",worker,"--json"],{json:true}),tag)}
-    catch(error){lastError=error;await sleep(3000)}
+    try{
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
+      let response;
+      try{response=await fetch(new URL("/health",previewUrl),{headers:{accept:"application/json"},signal:controller.signal})}
+      finally{clearTimeout(timer)}
+      const body=await response.json().catch(()=>null);
+      if(response.ok&&body?.ok===true&&body?.commit_sha===commit&&body?.version_id===versionId)return body;
+      last=new Error(`PREVIEW_RESPONSE_MISMATCH:${response.status}`);
+    }catch(error){last=error}
+    await sleep(2000);
   }
-  throw lastError||new Error(`CANDIDATE_NOT_FOUND:${worker}:${tag}`);
-}
-function deploymentRows(payload){
-  if(Array.isArray(payload))return payload;
-  if(Array.isArray(payload?.deployments))return payload.deployments;
-  if(Array.isArray(payload?.result))return payload.result;
-  if(payload&&typeof payload==="object")return[payload];
-  return[];
-}
-function versionRows(deployment){
-  if(Array.isArray(deployment?.versions))return deployment.versions;
-  if(Array.isArray(deployment?.deployment?.versions))return deployment.deployment.versions;
-  return[];
-}
-export function currentDeployment(payload){
-  const deployment=deploymentRows(payload)[0];
-  if(!deployment)throw new Error("CURRENT_DEPLOYMENT_MISSING");
-  const rows=versionRows(deployment).map(v=>({id:idOf(v),percentage:Number(v.percentage)})).filter(v=>UUID_PATTERN.test(v.id));
-  if(!rows.length){
-    const id=idOf(deployment);
-    if(UUID_PATTERN.test(id))return[{id,percentage:100}];
-    throw new Error("CURRENT_DEPLOYMENT_VERSIONS_MISSING");
-  }
-  if(rows.length===1&&!Number.isFinite(rows[0].percentage))rows[0].percentage=100;
-  if(rows.some(v=>!Number.isFinite(v.percentage)))throw new Error("CURRENT_DEPLOYMENT_PERCENTAGE_MISSING");
-  const total=rows.reduce((sum,v)=>sum+v.percentage,0);
-  if(Math.abs(total-100)>0.001)throw new Error("CURRENT_DEPLOYMENT_PERCENTAGE_INVALID");
-  return rows;
-}
-export function stableVersion(snapshot){
-  const stable=snapshot.find(v=>Math.abs(v.percentage-100)<0.001);
-  if(!stable||!UUID_PATTERN.test(stable.id))throw new Error("CURRENT_DEPLOYMENT_NOT_100_STABLE");
-  if(snapshot.some(v=>v.id!==stable.id&&v.percentage>0))throw new Error("CURRENT_DEPLOYMENT_HAS_ACTIVE_SPLIT");
-  return stable.id;
-}
-export function stageSpecs(snapshot,candidate){
-  if(!UUID_PATTERN.test(candidate))throw new Error("CANDIDATE_VERSION_INVALID");
-  const stable=stableVersion(snapshot);
-  if(candidate===stable)throw new Error("ADMIN_CANDIDATE_ALREADY_STABLE");
-  return[{id:stable,percentage:100},{id:candidate,percentage:0}];
-}
-function normalize(rows){return [...rows].map(v=>({id:v.id,percentage:Number(v.percentage)})).sort((a,b)=>a.id.localeCompare(b.id))}
-export function sameSnapshot(a,b){return JSON.stringify(normalize(a))===JSON.stringify(normalize(b))}
-function snapshot(){return currentDeployment(run(["deployments","status","--name",ADMIN,"--json"],{json:true}))}
-function deploy(rows,message){
-  const specs=rows.map(v=>`${v.id}@${v.percentage}%`);
-  run(["versions","deploy",...specs,"-y","--name",ADMIN,"--message",message]);
-}
-function verifyZeroStage(before,candidate){
-  const observed=snapshot();
-  const row=observed.find(v=>v.id===candidate);
-  if(!row||Math.abs(row.percentage)>0.001)throw new Error("ADMIN_CANDIDATE_NOT_STAGED_AT_ZERO");
-  if(stableVersion(observed)!==stableVersion(before))throw new Error("ADMIN_STABLE_VERSION_CHANGED");
-  return observed;
+  throw last||new Error("STATELESS_PREVIEW_NOT_READY");
 }
 
 async function main(){
@@ -113,37 +63,49 @@ async function main(){
   const tag=commit.slice(0,12);
   if(!TAG_PATTERN.test(tag))throw new Error("L2_TAG_INVALID");
 
-  mark("admin-candidate-resolution-begin",{worker:ADMIN,candidate_tag:tag});
-  const candidate=await waitVersionByTag(ADMIN,tag);
-  const before=snapshot();
-  const stable=stableVersion(before);
-  if(candidate===stable)throw new Error("ADMIN_CANDIDATE_ALREADY_STABLE");
-  mark("admin-stage-zero-begin",{admin_stable_version:stable,admin_candidate_version:candidate,production_candidate_percentage:0});
+  const workerName=`l2-admin-preview-${tag}`;
+  const dir=resolve(".l2-stateless-preview");
+  const outputPath=resolve(dir,"wrangler-output.ndjson");
+  rmSync(dir,{recursive:true,force:true});mkdirSync(dir,{recursive:true});
+  writeFileSync(resolve(dir,"worker.mjs"),`export default{fetch(request,env){const u=new URL(request.url);if(request.method!=="GET"||u.pathname!=="/health")return new Response("not found",{status:404});return Response.json({ok:true,commit_sha:env.L2_COMMIT_SHA,version_id:env.CF_VERSION_METADATA?.id||null,stateless:true})}};\n`);
+  writeFileSync(resolve(dir,"wrangler.jsonc"),JSON.stringify({
+    name:workerName,
+    main:"worker.mjs",
+    compatibility_date:"2026-08-18",
+    compatibility_flags:["nodejs_compat"],
+    workers_dev:true,
+    preview_urls:true,
+    version_metadata:{binding:"CF_VERSION_METADATA"},
+    vars:{L2_COMMIT_SHA:commit}
+  },null,2));
 
-  let staged=false;let primaryError=null;
+  let uploaded=false;let primaryError=null;let receipt=null;
   try{
-    deploy(stageSpecs(before,candidate),`PR49 admin 0% stage probe ${tag}`);
-    staged=true;
-    verifyZeroStage(before,candidate);
-    mark("admin-stage-zero-verified",{admin_stable_version:stable,admin_candidate_version:candidate,production_candidate_percentage:0});
+    mark("version-upload-begin",{worker:workerName,candidate_tag:tag,stateless:true,preview_urls:true});
+    run(["versions","upload","--tag",tag,"--preview-alias",`p-${tag}`,"--config",resolve(dir,"wrangler.jsonc")],{cwd:dir,env:{WRANGLER_OUTPUT_FILE_PATH:outputPath}});
+    uploaded=true;
+    const parsed=parseVersionUploadOutput(readFileSync(outputPath,"utf8"));
+    mark("version-upload-complete",{worker:workerName,version_id:parsed.versionId,preview_url_present:true});
+    const body=await fetchPreview(parsed.previewUrl,commit,parsed.versionId);
+    mark("preview-http-verified",{worker:workerName,version_id:parsed.versionId,http_ok:true});
+    receipt={worker_name:workerName,version_id:parsed.versionId,preview_url_verified:true,commit_sha:body.commit_sha};
   }catch(error){primaryError=error}
 
   const cleanupErrors=[];
-  if(staged){
+  if(uploaded){
     try{
-      mark("admin-restore-begin");
-      deploy(before,`PR49 admin stage probe restore ${tag}`);
-      const restored=snapshot();
-      if(!sameSnapshot(before,restored))throw new Error("ADMIN_DEPLOYMENT_RESTORE_MISMATCH");
-      mark("admin-restore-verified");
+      mark("cleanup-delete-begin",{worker:workerName});
+      run(["delete","--name",workerName,"--force"],{cwd:dir});
+      mark("cleanup-delete-complete",{worker:workerName});
     }catch(error){cleanupErrors.push(String(error?.message||error))}
   }
+  rmSync(dir,{recursive:true,force:true});
   if(primaryError)throw Object.assign(primaryError,{cleanup_errors:cleanupErrors});
-  if(cleanupErrors.length)throw Object.assign(new Error("ADMIN_STAGE_PROBE_CLEANUP_FAILED"),{cleanup_errors:cleanupErrors});
+  if(cleanupErrors.length)throw Object.assign(new Error("STATELESS_PREVIEW_CLEANUP_FAILED"),{cleanup_errors:cleanupErrors});
 
-  console.log(JSON.stringify({event:"L2_ADMIN_ZERO_STAGE_RESTORE_PROBE_PASS",ok:true,commit_sha:commit,candidate_tag:tag,admin_version:candidate,admin_stable_version:stable,admin_candidate_percentage:0,admin_stage_zero:true,admin_restore_verified:true,maintenance_deployment_mutated:false,maintenance_version_upload:false,remote_dev:false,build_secret_value_read:false,ai_gateway_called:false,dynamic_routes_mutated:false,secrets_redacted:true}));
+  console.log(JSON.stringify({event:"L2_STATELESS_VERSION_PREVIEW_PROBE_PASS",ok:true,...receipt,stateless_worker:true,durable_object_implemented:false,preview_url:true,production_deployment_created:false,production_traffic_changed:false,temporary_worker_deleted:true,secret_used:false,ai_gateway_called:false,dynamic_routes_mutated:false,secrets_redacted:true}));
 }
 if(import.meta.url===pathToFileURL(resolve(process.argv[1]||"")).href)main().catch(error=>{
-  console.error(JSON.stringify({event:"L2_ADMIN_ZERO_STAGE_RESTORE_PROBE_FAIL",phase,error:String(error?.message||error),cleanup_errors:error?.cleanup_errors||[],secrets_redacted:true}));
+  console.error(JSON.stringify({event:"L2_STATELESS_VERSION_PREVIEW_PROBE_FAIL",phase,error:String(error?.message||error),cleanup_errors:error?.cleanup_errors||[],secrets_redacted:true}));
   process.exitCode=1;
 });
