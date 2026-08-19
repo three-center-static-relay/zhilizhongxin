@@ -2,9 +2,9 @@
   "name":"admin-worker",
   "private":true,
   "type":"module",
-  "description":"Diagnostic only: Tencent 543eb94 HTTP validation-check subclass, no preview deploy",
+  "description":"Diagnostic only: Tencent failed-check basic group",
   "scripts":{
-    "cf:build":"node ../scripts/tencent-543eb94-failure-bucket.mjs http-validation",
+    "cf:build":"node ../scripts/tencent-543eb94-failed-check-group.mjs basic",
     "cf:ci:preview":"npm run cf:build",
     "cf:ci:deploy":"node ../scripts/cloudflare-worker-gate.mjs admin deploy"
   },
