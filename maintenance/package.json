@@ -2,7 +2,7 @@
   "name": "maintenance-worker",
   "private": true,
   "type": "module",
-  "description": "throwaway Tencent residual classifier; atomic trigger 617",
+  "description": "throwaway Tencent prefix classifier; atomic trigger dc703",
   "scripts": {
     "cf:build": "node tests/tencent-78d-class-nonhttp.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
