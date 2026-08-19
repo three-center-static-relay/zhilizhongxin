@@ -41,6 +41,12 @@ function parseSseEvent(text,eventName){
   }
   return null;
 }
+function safeEventError(value){
+  const code=String(value?.error||value?.code||value?.errorType||value?.message||"").trim();
+  if(!code)return null;
+  const redacted=code.replace(/[A-Za-z0-9_-]{24,}/g,"[REDACTED]").slice(0,120);
+  return /^[A-Za-z0-9_.:\- ]{1,120}$/.test(redacted)?redacted:"SSE_ERROR_PRESENT";
+}
 function activeCustomDomain(item){
   const domain=String(item?.Domain||"").trim();
   if(!domain)return false;
@@ -78,13 +84,7 @@ async function discoverStableExecutor(env){
       const custom=Array.isArray(project.CustomDomains)?project.CustomDomains.find(activeCustomDomain):null;
       const raw=custom?.Domain||project.PresetDomain;
       if(!raw)throw new Error("PROJECT_HAS_NO_STABLE_DOMAIN");
-      const resolved={
-        base:normalizeBase(raw),
-        mode:custom?.Domain?"custom-domain":"project-domain",
-        source:"makers-management-api",
-        project_id:String(project.ProjectId||"")||null,
-        management_api_host:new URL(apiBase).hostname
-      };
+      const resolved={base:normalizeBase(raw),mode:custom?.Domain?"custom-domain":"project-domain",source:"makers-management-api",project_id:String(project.ProjectId||"")||null,management_api_host:new URL(apiBase).hostname};
       discoveryCache={key,expires_at:Date.now()+DISCOVERY_TTL_MS,value:resolved};
       return resolved;
     }catch(e){failures.push(`${new URL(apiBase).hostname}:${String(e?.message||e)}`)}
@@ -103,23 +103,7 @@ export async function tencentExecutorStatus(env){
   let resolved=null,error=null;
   try{resolved=await resolveExecutor(env)}catch(e){error=String(e?.message||e)}
   const ok=executorAuthConfigured&&Boolean(resolved);
-  return json({
-    ok,
-    provider:"tencent-edgeone-makers",
-    role:"agent-executor",
-    lifecycle:ok?"ready":"staging",
-    project:projectName(env),
-    configured_mode:executorMode(env),
-    configured_url_present:Boolean(String(env.TENCENT_MAKERS_EXECUTOR_URL||"").trim()),
-    executor_auth_configured:executorAuthConfigured,
-    management_token_configured:managementTokenConfigured,
-    management_token_usage:"deployment-management-and-stable-domain-discovery-only",
-    stable_domain_configured:Boolean(resolved),
-    resolved_executor:resolved?safeExecutorMeta(resolved):null,
-    discovery_error:error,
-    fail_closed:true,
-    secret_exposed:false
-  },ok?200:503);
+  return json({ok,provider:"tencent-edgeone-makers",role:"agent-executor",lifecycle:ok?"ready":"staging",project:projectName(env),configured_mode:executorMode(env),configured_url_present:Boolean(String(env.TENCENT_MAKERS_EXECUTOR_URL||"").trim()),executor_auth_configured:executorAuthConfigured,management_token_configured:managementTokenConfigured,management_token_usage:"deployment-management-and-stable-domain-discovery-only",stable_domain_configured:Boolean(resolved),resolved_executor:resolved?safeExecutorMeta(resolved):null,discovery_error:error,fail_closed:true,secret_exposed:false},ok?200:503);
 }
 
 export async function tencentExecutorSelftest(env){
@@ -128,21 +112,17 @@ export async function tencentExecutorSelftest(env){
     const resolved=await resolveExecutor(env),base=resolved.base;
     const healthResp=await timedFetch(endpoint(base,"/health"),{method:"GET",headers:{accept:"application/json"}},20000);
     const health=await healthResp.json().catch(()=>null);
-    const capResp=await timedFetch(endpoint(base,"/capabilities"),{
-      method:"POST",headers:executorHeaders(env,{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid}),body:"{}"
-    },30000);
-    const capText=await capResp.text(),capabilities=parseSseEvent(capText,"capabilities");
-    const activeResp=await timedFetch(endpoint(base,"/runtime-selftest"),{
-      method:"POST",headers:executorHeaders(env,{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid}),body:"{}"
-    },90000);
-    const activeText=await activeResp.text(),active=parseSseEvent(activeText,"selftest");
+    const capResp=await timedFetch(endpoint(base,"/capabilities"),{method:"POST",headers:executorHeaders(env,{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid}),body:"{}"},30000);
+    const capText=await capResp.text(),capabilities=parseSseEvent(capText,"capabilities"),capError=parseSseEvent(capText,"error");
+    const activeResp=await timedFetch(endpoint(base,"/runtime-selftest"),{method:"POST",headers:executorHeaders(env,{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid}),body:"{}"},90000);
+    const activeText=await activeResp.text(),active=parseSseEvent(activeText,"selftest"),activeError=parseSseEvent(activeText,"error");
     const activeChecks=Array.isArray(active?.checks)?active.checks:[],activeByName=Object.fromEntries(activeChecks.map(x=>[x?.name,x]));
     const families=capabilities?.families||{};
     const checks=[
       {name:"stable_domain",ok:["project-domain","custom-domain"].includes(resolved.mode),observed:safeExecutorMeta(resolved)},
       {name:"runtime_http",ok:healthResp.ok,observed:healthResp.status},
       {name:"python_runtime",ok:health?.ok===true&&health?.language==="python",observed:health?.python_version||null},
-      {name:"executor_auth",ok:capResp.status!==401&&activeResp.status!==401,observed:{capabilities:capResp.status,active:activeResp.status}},
+      {name:"executor_auth",ok:capResp.status!==401&&activeResp.status!==401&&!safeEventError(capError)?.includes("UNAUTHORIZED")&&!safeEventError(activeError)?.includes("UNAUTHORIZED"),observed:{capabilities:capResp.status,active:activeResp.status}},
       {name:"capability_http",ok:capResp.ok,observed:capResp.status},
       {name:"sandbox_tools_visible",ok:capabilities?.ok===true&&Number(capabilities?.tool_count||0)>0,observed:Number(capabilities?.tool_count||0)},
       {name:"commands_visible",ok:families.commands===true,observed:families.commands===true},
@@ -156,10 +136,8 @@ export async function tencentExecutorSelftest(env){
       {name:"chromium_navigation",ok:activeByName.browser?.ok===true,observed:activeByName.browser||null}
     ];
     const ok=checks.every(x=>x.ok===true)&&active?.validation==="PASS";
-    return json({ok,provider:"tencent-edgeone-makers",selftest:"executor-runtime-v5",validation:ok?"PASS":"FAIL",conversation_id:cid,resolved_executor:safeExecutorMeta(resolved),checks,health,capabilities,active,elapsed_ms:Date.now()-started},ok?200:502);
-  }catch(e){
-    return json({ok:false,provider:"tencent-edgeone-makers",selftest:"executor-runtime-v5",validation:"FAIL",error:e?.name==="AbortError"?"TENCENT_EXECUTOR_TIMEOUT":String(e?.message||e),details:e?.details||undefined,elapsed_ms:Date.now()-started},e?.status||(e?.name==="AbortError"?504:502));
-  }
+    return json({ok,provider:"tencent-edgeone-makers",selftest:"executor-runtime-v6",validation:ok?"PASS":"FAIL",conversation_id:cid,resolved_executor:safeExecutorMeta(resolved),checks,health,capabilities,active,capability_event_error:safeEventError(capError),active_event_error:safeEventError(activeError),elapsed_ms:Date.now()-started},ok?200:502);
+  }catch(e){return json({ok:false,provider:"tencent-edgeone-makers",selftest:"executor-runtime-v6",validation:"FAIL",error:e?.name==="AbortError"?"TENCENT_EXECUTOR_TIMEOUT":String(e?.message||e),details:e?.details||undefined,elapsed_ms:Date.now()-started},e?.status||(e?.name==="AbortError"?504:502));}
 }
 
 export async function tencentAgentInvoke(req,env){
@@ -170,9 +148,7 @@ export async function tencentAgentInvoke(req,env){
   if(message.length>10000)return json({ok:false,error:"MESSAGE_TOO_LONG"},400);
   const requested=String(body?.conversation_id||"").trim(),valid=/^[0-9A-Za-z_.-]{6,36}$/.test(requested),cid=valid?requested:conversationId("agent");
   try{
-    const upstream=await timedFetch(endpoint(resolved.base,"/chat"),{
-      method:"POST",headers:executorHeaders(env,{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid}),body:JSON.stringify({message})
-    },120000);
+    const upstream=await timedFetch(endpoint(resolved.base,"/chat"),{method:"POST",headers:executorHeaders(env,{accept:"text/event-stream","content-type":"application/json","Makers-Conversation-Id":cid}),body:JSON.stringify({message})},120000);
     const headers=new Headers(upstream.headers);headers.set("cache-control","no-store");headers.set("x-tencent-makers-conversation-id",cid);headers.set("x-tencent-executor-domain-kind",resolved.mode);headers.delete("set-cookie");
     return new Response(upstream.body,{status:upstream.status,headers});
   }catch(e){return json({ok:false,error:e?.name==="AbortError"?"TENCENT_AGENT_TIMEOUT":"TENCENT_AGENT_FAILED",message:String(e?.message||e),conversation_id:cid},e?.name==="AbortError"?504:502)}
