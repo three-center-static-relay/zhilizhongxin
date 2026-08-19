@@ -7,8 +7,6 @@ const fail=(c,m,s=409,d)=>json({ok:false,error:c,message:m,...(d?{details:d}:{})
 const tok=req=>{const h=req.headers.get("authorization")||"";return h.startsWith("Bearer ")?h.slice(7).trim():""};
 function eq(a,b){a=String(a||"");b=String(b||"");if(a.length!==b.length)return false;let x=0;for(let i=0;i<a.length;i++)x|=a.charCodeAt(i)^b.charCodeAt(i);return x===0}
 async function auth(req,env){if(!env.ADMIN_GPT_TOKEN)throw Object.assign(new Error("ADMIN_TOKEN_NOT_CONFIGURED"),{status:503});if(!eq(tok(req),env.ADMIN_GPT_TOKEN))throw Object.assign(new Error("UNAUTHORIZED"),{status:401})}
-async function sha256hex(s){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(String(s||"")));return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
-const TEMP_TENCENT_E2E_PROBE_SHA256="020815396c791de5cca82e9b14928548d401a80492ed5b7ecf586a0a1628b212";
 
 async function literatureSelftest(req,env){
   await auth(req,env);
@@ -24,13 +22,6 @@ async function literatureSelftest(req,env){
 
 export default{async fetch(req,env,ctx){try{
   const u=new URL(req.url);
-  if(req.method==="GET"&&u.pathname==="/_e2e/tencent"){
-    const supplied=u.searchParams.get("probe")||"";
-    if(!eq(await sha256hex(supplied),TEMP_TENCENT_E2E_PROBE_SHA256))return fail("NOT_FOUND","Not found",404);
-    const r=await tencentExecutorSelftest(env);
-    const body=await r.json().catch(()=>({ok:false,error:"BAD_SELFTEST_RESPONSE"}));
-    return json({probe:"tencent-one-time-e2e",...body},r.status);
-  }
   if(req.method==="POST"&&u.pathname==="/v1/admin/selftest/literature")return await literatureSelftest(req,env);
   if(req.method==="GET"&&u.pathname==="/v1/admin/tencent/status"){await auth(req,env);return tencentExecutorStatus(env)}
   if(req.method==="POST"&&u.pathname==="/v1/admin/tencent/selftest"){await auth(req,env);return await tencentExecutorSelftest(env)}
