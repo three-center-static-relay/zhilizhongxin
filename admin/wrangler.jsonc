@@ -30,6 +30,7 @@
     "TENCENT_MAKERS_PROJECT_NAME": "python-starter-agent",
     // Resolve the current fixed PresetDomain / active CustomDomain from Tencent Makers at runtime.
     // The old per-project-looking URL is intentionally no longer an authority.
+    // Production promotion still requires the existing 15-check runtime-v5 gate.
     "TENCENT_MAKERS_EXECUTOR_MODE": "auto-discovery"
   }
 }
