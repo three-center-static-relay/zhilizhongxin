@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "cf:build": "node --check src/index.js",
+    "cf:build": "node --check src/index.js && node ../scripts/tencent-production-attestation-verify.mjs https://admin-worker.a15280020511.workers.dev 8eff4949cc373c859ea95d97c5c21c27551d89b3",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs maintenance deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
