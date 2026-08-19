@@ -7,7 +7,7 @@ import {pathToFileURL} from "node:url";
 const SCOPES=new Set(["admin","governance","maintenance"]);
 const MODES=new Set(["preview","deploy"]);
 const SHARED_BUILD_PATHS=new Set([".npmrc","scripts/cloudflare-worker-gate.mjs","scripts/cloudflare-worker-gate.test.mjs"]);
-const L2_TRIGGER_PATH="maintenance/l2-acceptance-request.json";
+const L2_TRIGGER_PATH="admin/l2-acceptance-request.json";
 const L2_SCRIPT="scripts/run-l2-candidate-acceptance.mjs";
 const SHA_PATTERN=/^[a-f0-9]{40,64}$/i;
 const TAG_PATTERN=/^[a-f0-9]{12}$/i;
@@ -36,7 +36,7 @@ export function diagnosticAdminVersionConfig(config){
 export function validatePostAllowScript(scope,mode,requested=null){if(!requested)return null;throw new Error("POST_ALLOW_SCRIPT_NOT_ALLOWED")}
 export function isRelevantPath(scope,filePath){if(!SCOPES.has(scope))throw new Error(`UNSUPPORTED_SCOPE:${scope||"missing"}`);return filePath.startsWith(`${scope}/`)||SHARED_BUILD_PATHS.has(filePath)}
 export function relevantPaths(scope,paths){return[...new Set(paths.filter(filePath=>isRelevantPath(scope,filePath)))].sort()}
-export function shouldRunL2(scope,mode,changed){return scope==="maintenance"&&mode==="preview"&&changed.includes(L2_TRIGGER_PATH)}
+export function shouldRunL2(scope,mode,changed){return scope==="admin"&&mode==="preview"&&changed.includes(L2_TRIGGER_PATH)}
 export function wranglerCommand(scope,mode,wranglerVersion,tag=null,configPath=null){
   validateWranglerVersion(wranglerVersion);
   if(!SCOPES.has(scope))throw new Error(`UNSUPPORTED_SCOPE:${scope||"missing"}`);
@@ -84,15 +84,15 @@ export function main(argv=process.argv.slice(2),env=process.env){
     if(relevant.length===0){emit({ok:true,skipped:true,code:"CF_PATH_SCOPE_SKIPPED",scope,mode,branch:context.branch,commit_sha:context.sha,parent_sha:parentSha,history_deepened:historyDeepened,changed_path_count:changed.length,l2_executed:false,post_allow_executed:false});return 0}
     const{wranglerVersion}=packageContract(scope),l2=shouldRunL2(scope,mode,changed),tag=mode==="preview"?candidateTag(context.sha):null;
     const previewSemantics=mode!=="preview"?"production-deploy":scope==="admin"?"admin-owned-diagnostic-version-upload-no-lifecycle-or-required-secret-declarations":"compile-dry-run-only";
-    emit({ok:true,skipped:false,code:"CF_PATH_SCOPE_ALLOWED",scope,mode,branch:context.branch,commit_sha:context.sha,parent_sha:parentSha,history_deepened:historyDeepened,relevant_paths:relevant,wrangler_version:wranglerVersion,preview_semantics:previewSemantics,candidate_tag:scope==="admin"&&mode==="preview"?tag:null,lifecycle_mutation_allowed:false,required_secret_validation_bypassed_for_probe:scope==="admin"&&mode==="preview",remote_secret_values_mutated:false,l2_requested:l2,post_allow_script:null});
+    emit({ok:true,skipped:false,code:"CF_PATH_SCOPE_ALLOWED",scope,mode,branch:context.branch,commit_sha:context.sha,parent_sha:parentSha,history_deepened:historyDeepened,relevant_paths:relevant,wrangler_version:wranglerVersion,preview_semantics:previewSemantics,candidate_tag:scope==="admin"&&mode==="preview"?tag:null,lifecycle_mutation_allowed:l2,required_secret_validation_bypassed_for_probe:scope==="admin"&&mode==="preview",remote_secret_values_mutated:false,l2_requested:l2,post_allow_script:null});
     run(process.execPath,[resolve(repoRoot,"scripts/cloudflare-worker-gate.test.mjs")],{cwd:repoRoot,stdio:"inherit"});
     run("npm",["run","cf:build"],{cwd:process.cwd(),stdio:"inherit"});
     if(scope==="admin"&&mode==="preview")ephemeralConfigPath=prepareAdminVersionConfig();
     run("npx",wranglerCommand(scope,mode,wranglerVersion,tag,ephemeralConfigPath),{cwd:process.cwd(),stdio:"inherit"});
     if(l2){
-      emit({event:"L2_EXPERT_ROUTE_ACCEPTANCE_BEGIN",commit_sha:context.sha,execution_mode:"dual-zero-stage-coordination-probe"});
+      emit({event:"L2_EXPERT_ROUTE_ACCEPTANCE_BEGIN",commit_sha:context.sha,execution_mode:"admin-ephemeral-driver-dual-deployment-restore",temporary_admin_100_percent:true,maintenance_candidate_percentage:0});
       run(process.execPath,[resolve(process.cwd(),L2_SCRIPT)],{cwd:process.cwd(),stdio:"inherit"});
-      emit({event:"L2_EXPERT_ROUTE_ACCEPTANCE_COMPLETED",commit_sha:context.sha,execution_mode:"dual-zero-stage-coordination-probe"});
+      emit({event:"L2_EXPERT_ROUTE_ACCEPTANCE_COMPLETED",commit_sha:context.sha,execution_mode:"admin-ephemeral-driver-dual-deployment-restore",temporary_admin_100_percent:true,maintenance_candidate_percentage:0});
     }
     return 0;
   }catch(error){emit({ok:false,skipped:false,code:error.message||"CF_PATH_GATE_FAILED",scope:scope||null,mode:mode||null},process.stderr);return Number.isInteger(error.exitCode)?error.exitCode:1}

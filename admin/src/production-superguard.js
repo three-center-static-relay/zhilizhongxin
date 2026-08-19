@@ -6,6 +6,9 @@ const H={"content-type":"application/json;charset=utf-8","cache-control":"no-sto
 const json=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:H});
 const fail=(c,m,s=409,d)=>json({ok:false,error:c,message:m,...(d?{details:d}:{})},s);
 const VERSION_OVERRIDE_HEADER="Cloudflare-Workers-Version-Overrides";
+const MAINTENANCE_WORKER="maintenance-worker";
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SHA=/^[a-f0-9]{40}$/i;
 const versionId=env=>String(env.CF_VERSION_METADATA?.id||"").trim()||null;
 async function auth(req,env){if(!env.ADMIN_GPT_TOKEN)throw Object.assign(new Error("ADMIN_TOKEN_NOT_CONFIGURED"),{status:503});if(!await verifyBearer(req,env.ADMIN_GPT_TOKEN))throw Object.assign(new Error("UNAUTHORIZED"),{status:401})}
 
@@ -41,6 +44,33 @@ async function runCandidateRefresh(req,env,requestId){
   const receipt=call.body||{ok:false,http_status:call.response.status,error:"MAINTENANCE_CONTROL_BAD_RESPONSE"};
   const ok=receipt?.ok===true,status=ok?200:receipt?.http_status===409?409:502;
   return json({ ...receipt, ok, operation:"expert-route-refresh", transport:"fetch-version-override", maintenance_transport:receipt?.transport||null, admin_version:versionId(env) },status);
+}
+
+async function l2MaintenanceCandidate(req,env){
+  const nonce=String(env.L2_ACCEPTANCE_NONCE||""),expiresAt=Number(env.L2_ACCEPTANCE_EXPIRES_AT||0),commit=String(env.L2_ACCEPTANCE_COMMIT||"").trim();
+  if(!nonce||!Number.isFinite(expiresAt)||Date.now()>expiresAt||!SHA.test(commit))return fail("NOT_FOUND","Not found",404);
+  if(!await verifyBearer(req,nonce))return fail("UNAUTHORIZED","Unauthorized",401);
+  const body=await req.json().catch(()=>({})),requestId=validRequestId(body.request_id),adminVersion=String(body.admin_version||"").trim(),maintenanceVersion=String(body.maintenance_version||"").trim();
+  if(!requestId||body.commit_sha!==commit||!UUID.test(adminVersion)||!UUID.test(maintenanceVersion))return fail("INVALID_REQUEST","L2 request contract is invalid",400);
+  const currentAdminVersion=versionId(env);
+  if(currentAdminVersion!==adminVersion)return fail("ADMIN_VERSION_MISMATCH","Admin runtime version mismatch",409,{expected:adminVersion,observed:currentAdminVersion});
+  const override=`${MAINTENANCE_WORKER}="${maintenanceVersion}"`;
+  const driverRequest=new Request(req.url,{headers:{[VERSION_OVERRIDE_HEADER]:override}});
+  const call=await fetchMaintenanceControl(driverRequest,env.MAINTENANCE_CONTROL,"/v1/control/expert-route/refresh",{method:"POST",headers:{accept:"application/json","content-type":"application/json"},body:JSON.stringify({request_id:requestId})});
+  const receipt=call.body||{ok:false,http_status:call.response.status,error:"MAINTENANCE_CONTROL_BAD_RESPONSE"};
+  const result=receipt?.result||null,routeFamily=Array.isArray(result?.route_family)?result.route_family:[],lanes=Array.isArray(result?.company_lanes)?result.company_lanes:[];
+  const companies=lanes.map(lane=>String(lane?.company||"")).filter(Boolean);
+  const checks={
+    admin_version_exact:currentAdminVersion===adminVersion,
+    maintenance_version_override_exact:receipt?.maintenance_version===maintenanceVersion,
+    route_family_eight:routeFamily.length===8,
+    company_lanes_eight:lanes.length===8&&new Set(companies).size===8,
+    expert_selftest_ok:result?.selftest?.ok===true,
+    company_diverse:result?.selftest?.company_diverse===true,
+    route_rollback_ok:receipt?.rollback_rehearsal?.ok===true
+  };
+  const ok=call.response.ok&&receipt?.ok===true&&Object.values(checks).every(Boolean);
+  return json({ok,request_id:requestId,commit_sha:commit,admin_version:currentAdminVersion,maintenance_version:receipt?.maintenance_version||null,checks,result,rollback_rehearsal:receipt?.rollback_rehearsal||null,error:ok?null:receipt?.error||"L2_ACCEPTANCE_CONTRACT_FAILED",secrets_redacted:true},ok?200:502);
 }
 
 async function expertRouteRefresh(req,env){
@@ -97,4 +127,4 @@ export class AdminAcceptanceControl extends WorkerEntrypoint{
   }
 }
 
-export default{async fetch(req,env,ctx){try{const u=new URL(req.url);if(req.method==="POST"&&u.pathname==="/v1/admin/selftest/literature")return await literatureSelftest(req,env);if(req.method==="POST"&&u.pathname==="/v1/admin/maintenance/expert-route/refresh")return await expertRouteRefresh(req,env);if(req.method==="GET"&&u.pathname==="/v1/admin/maintenance/expert-route/latest")return await expertRouteLatest(req,env);return await superguard.fetch(req,env,ctx)}catch(e){return fail(String(e?.message||"INTERNAL_ERROR"),e?.status>=500?"Internal operation failed":String(e?.message||"Request failed"),e?.status||500,e?.details)}}};
+export default{async fetch(req,env,ctx){try{const u=new URL(req.url);if(req.method==="POST"&&u.pathname==="/v1/admin/l2/maintenance-candidate")return await l2MaintenanceCandidate(req,env);if(req.method==="POST"&&u.pathname==="/v1/admin/selftest/literature")return await literatureSelftest(req,env);if(req.method==="POST"&&u.pathname==="/v1/admin/maintenance/expert-route/refresh")return await expertRouteRefresh(req,env);if(req.method==="GET"&&u.pathname==="/v1/admin/maintenance/expert-route/latest")return await expertRouteLatest(req,env);return await superguard.fetch(req,env,ctx)}catch(e){return fail(String(e?.message||"INTERNAL_ERROR"),e?.status>=500?"Internal operation failed":String(e?.message||"Request failed"),e?.status||500,e?.details)}}};
