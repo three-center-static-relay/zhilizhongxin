@@ -31,6 +31,9 @@ assert.equal(isRelevantPath("governance","governance/docs/canary.md"),true);
 assert.equal(isRelevantPath("maintenance",".npmrc"),true);
 assert.equal(isRelevantPath("maintenance","scripts/cloudflare-worker-gate.mjs"),true);
 assert.equal(isRelevantPath("admin","scripts/tencent-postdeploy-e2e.mjs"),true);
+assert.equal(isRelevantPath("admin","scripts/tencent-production-attestation-verify.mjs"),true);
+assert.equal(isRelevantPath("governance","scripts/tencent-production-attestation-verify.mjs"),true);
+assert.equal(isRelevantPath("maintenance","scripts/tencent-production-attestation-verify.mjs"),true);
 assert.deepEqual(relevantPaths("governance",["admin/a.js","governance/z.js","governance/a.js","governance/a.js"]),["governance/a.js","governance/z.js"]);
 
 assert.equal(parseWorkersDevUrl("Deployed https://admin-worker.example123.workers.dev in 1s"),"https://admin-worker.example123.workers.dev");
@@ -57,6 +60,7 @@ console.log(JSON.stringify({
   fail_closed_context:true,
   exact_wrangler_pin:true,
   per_worker_path_isolation:true,
+  production_attestation_shared_gate:true,
   workers_dev_url_parsing:true,
   tencent_runtime_receipt_validation:true,
   automatic_rollback_path:true
