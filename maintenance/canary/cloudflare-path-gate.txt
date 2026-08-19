@@ -1,0 +1,3 @@
+Maintenance path-isolation canary.
+Expected Cloudflare behavior: maintenance ALLOWED; admin SKIPPED; governance SKIPPED.
+No runtime behavior or secret value is changed by this file.
