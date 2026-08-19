@@ -28,8 +28,9 @@
     "RATE_LIMIT_PER_MIN": "120",
     "AUTO_PROMOTE": "false",
     "TENCENT_MAKERS_PROJECT_NAME": "python-starter-agent",
-    "TENCENT_MAKERS_EXECUTOR_URL": "https://python-starter-agent-xpfsqhql.edgeone.cool",
-    // Tencent Makers project domains are fixed and follow the latest deployment.
-    "TENCENT_MAKERS_EXECUTOR_MODE": "project-domain"
+    // Resolve the current fixed PresetDomain / active CustomDomain from Tencent Makers at runtime.
+    // The old per-project-looking URL is intentionally no longer an authority.
+    // Production promotion still requires the existing 15-check runtime-v5 gate.
+    "TENCENT_MAKERS_EXECUTOR_MODE": "auto-discovery"
   }
 }
