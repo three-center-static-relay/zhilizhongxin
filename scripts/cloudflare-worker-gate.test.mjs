@@ -72,6 +72,27 @@ assert.match(postdeploySource,/validateTencentRuntimeReceipt\(body\)/);
 assert.match(postdeploySource,/TENCENT_POSTDEPLOY_E2E_FAILED:/);
 assert.doesNotMatch(postdeploySource,/console\.(?:log|error)\([^\n]*probe/);
 
+const diagnosticBranch=String(process.env.WORKERS_CI_BRANCH||"");
+if(diagnosticBranch==="diag/tencent-54ca-sync-20260819"){
+  const workerName=JSON.parse(readFileSync(resolve(process.cwd(),"package.json"),"utf8")).name;
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),30000);
+  try{
+    const response=await fetch("https://admin-worker.a15280020511.workers.dev/_internal/tencent-production-attestation",{headers:{accept:"application/json"},signal:controller.signal});
+    const body=await response.json().catch(()=>null);
+    assert.equal(response.status,200,"SYNC_ATTESTATION_HTTP_200_REQUIRED");
+    assert.equal(body?.validation,"FAIL","SYNC_CURRENT_FAIL_REQUIRED");
+    assert.equal(body?.failed_commit,"54ca74a622ace05ac4ab592e89f5a528b73df458","SYNC_CURRENT_FAILED_COMMIT_REQUIRED");
+    assert.equal(body?.fail_closed,true,"SYNC_FAIL_CLOSED_REQUIRED");
+    assert.equal(body?.secret_values_exposed,false,"SYNC_SECRET_EXPOSURE");
+    const code=String(body?.failure_code||"");
+    if(workerName==="governance-worker") assert.match(code,/^E2E_DUAL_TRANSPORT_FAILED:/i,"SYNC_DUAL_TRANSPORT_FAILURE_REQUIRED");
+    else if(workerName==="maintenance-worker") assert.match(code,/^TENCENT_E2E_/i,"SYNC_RUNTIME_RECEIPT_FAILURE_REQUIRED");
+    else if(workerName!=="admin-worker") throw new Error("SYNC_UNKNOWN_WORKER");
+    console.log(JSON.stringify({ok:true,suite:"tencent-54ca-synchronized-classifier",worker:workerName,current_fail:true,category:workerName==="admin-worker"?"baseline":workerName==="governance-worker"?"dual-transport":"runtime-receipt",secret_values_read:false,secret_values_exposed:false}));
+  }finally{clearTimeout(timer)}
+}
+
 console.log(JSON.stringify({
   ok:true,
   suite:"cloudflare-worker-gate-contract",
