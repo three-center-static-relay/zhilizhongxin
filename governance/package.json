@@ -2,7 +2,7 @@
   "name": "governance-worker",
   "private": true,
   "type": "module",
-  "description": "throwaway Tencent stable-domain discovery failure probe for 78d8af13",
+  "description": "throwaway Tencent stable-domain discovery failure probe for 78d8af13; PR75 trigger",
   "scripts": {
     "cf:build": "echo TENCENT_PRODUCTION_78D8AF13_DISCOVERY_FAIL_BEGIN && node tests/tencent-78d-discovery-fail.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs governance preview",
