@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 
+// Post-ready trigger only; assertions below are unchanged.
 import {
   adminPublicBaseFromOpenApi,
   isRelevantPath,
