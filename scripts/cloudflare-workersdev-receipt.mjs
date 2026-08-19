@@ -11,66 +11,13 @@ const SHA_PATTERN=/^[a-f0-9]{40,64}$/i;
 const STATES=new Set(["pending","success","failure","error"]);
 const SCOPES=new Set(["admin","governance","maintenance","expert"]);
 
-export function clean(value,max=120){
-  return String(value??"").replace(/[^0-9A-Za-z._:/,=@+-]/g,"_").slice(0,max);
-}
-export function extractSignal(line,signal={}){
-  const text=String(line||"").trim();
-  if(!text.startsWith("{")||!text.endsWith("}"))return signal;
-  try{
-    const row=JSON.parse(text);
-    for(const key of ["phase","acceptance_phase","code","event"]){
-      if(row?.[key]!=null&&String(row[key]).trim())signal[key]=clean(row[key],100);
-    }
-  }catch{}
-  return signal;
-}
-export function receiptDigest(payload){
-  return createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0,16);
-}
-export function workerNameForScope(scope){
-  if(!SCOPES.has(scope))throw new Error("RECEIPT_SCOPE_INVALID");
-  return `${scope}-build-receipt`;
-}
-export function observerUrl(scope){
-  return `https://${workerNameForScope(scope)}.${WORKERS_DEV_SUBDOMAIN}.workers.dev`;
-}
-export function buildReceipt({scope,mode,state,signal={},env=process.env}){
-  if(!SCOPES.has(scope))throw new Error("RECEIPT_SCOPE_INVALID");
-  if(!STATES.has(state))throw new Error("RECEIPT_STATE_INVALID");
-  const sha=String(env.WORKERS_CI_COMMIT_SHA||"").trim();
-  if(!SHA_PATTERN.test(sha))throw new Error("RECEIPT_SHA_INVALID");
-  const buildUuid=clean(env.WORKERS_CI_BUILD_UUID||"",80)||null;
-  const base={schema:"cloudflare-workersdev-receipt-v1",scope,mode:clean(mode,20),state,commit_sha:sha,build_uuid:buildUuid,acceptance_phase:clean(signal?.acceptance_phase||"",80)||null,phase:clean(signal?.phase||signal?.code||signal?.event||"",100)||null,exit_code:Number.isInteger(signal?.exit_code)?signal.exit_code:null};
-  return {...base,receipt_digest:receiptDigest(base),updated_at:new Date().toISOString()};
-}
-export function renderReceiptWorker(receipt){
-  const safe=JSON.stringify(receipt);
-  return `const RECEIPT=${safe};export default{async fetch(request){const u=new URL(request.url);const headers={"content-type":"application/json; charset=utf-8","cache-control":"no-store, max-age=0","access-control-allow-origin":"*","x-robots-tag":"noindex, nofollow"};if(u.pathname==="/robots.txt")return new Response("User-agent: *\\nDisallow: /\\n",{headers:{"content-type":"text/plain","cache-control":"no-store","x-robots-tag":"noindex, nofollow"}});if(u.pathname!=="/"&&u.pathname!=="/receipt"&&u.pathname!=="/health")return new Response(JSON.stringify({ok:false,error:"NOT_FOUND"}),{status:404,headers});if(u.pathname==="/health")return new Response(JSON.stringify({ok:true,scope:RECEIPT.scope,state:RECEIPT.state,commit_sha:RECEIPT.commit_sha,receipt_digest:RECEIPT.receipt_digest}),{headers});return new Response(JSON.stringify({ok:true,receipt:RECEIPT}),{headers})}}};`;
-}
-export function deploymentEnvironment(env=process.env){
-  const next={...env,CI:"1",NO_COLOR:"1",WRANGLER_SEND_METRICS:"false"};
-  delete next.WRANGLER_CI_OVERRIDE_NAME;
-  return next;
-}
-export function makeDeployFiles(receipt){
-  const dir=mkdtempSync(join(tmpdir(),"cf-build-receipt-"));
-  writeFileSync(join(dir,"worker.mjs"),renderReceiptWorker(receipt));
-  writeFileSync(join(dir,"wrangler.jsonc"),JSON.stringify({name:workerNameForScope(receipt.scope),main:"worker.mjs",compatibility_date:"2026-08-20",account_id:ACCOUNT_ID,workers_dev:true,preview_urls:false,observability:{enabled:false}},null,2));
-  return dir;
-}
-export function publishWorkersDevReceipt({scope,mode,state,signal={},env=process.env,runner=spawnSync}){
-  let dir=null;
-  try{
-    const receipt=buildReceipt({scope,mode,state,signal,env});
-    dir=makeDeployFiles(receipt);
-    const result=runner("npx",["--yes","wrangler@4.123.0","deploy","--config","wrangler.jsonc"],{cwd:dir,encoding:"utf8",env:deploymentEnvironment(env),maxBuffer:2*1024*1024});
-    if(result?.error)return {ok:false,code:"RECEIPT_WORKER_SPAWN_FAILED",state,url:observerUrl(scope),receipt_digest:receipt.receipt_digest};
-    if(result?.status!==0)return {ok:false,code:"RECEIPT_WORKER_DEPLOY_FAILED",exit_code:result?.status??1,state,url:observerUrl(scope),receipt_digest:receipt.receipt_digest};
-    return {ok:true,code:"RECEIPT_WORKER_DEPLOYED",state,url:observerUrl(scope),receipt_digest:receipt.receipt_digest,commit_sha:receipt.commit_sha,build_uuid:receipt.build_uuid};
-  }catch(error){
-    return {ok:false,code:clean(error?.message||error,120),state,url:SCOPES.has(scope)?observerUrl(scope):null};
-  }finally{
-    if(dir)rmSync(dir,{recursive:true,force:true});
-  }
-}
+export function clean(value,max=120){return String(value??"").replace(/[^0-9A-Za-z._:/,=@+-]/g,"_").slice(0,max)}
+export function extractSignal(line,signal={}){const text=String(line||"").trim();if(!text.startsWith("{")||!text.endsWith("}"))return signal;try{const row=JSON.parse(text);for(const key of ["phase","acceptance_phase","code","event"])if(row?.[key]!=null&&String(row[key]).trim())signal[key]=clean(row[key],100)}catch{}return signal}
+export function receiptDigest(payload){return createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0,16)}
+export function baseWorkerName(scope){if(!SCOPES.has(scope))throw new Error("RECEIPT_SCOPE_INVALID");return `${scope}-worker`}
+export function receiptWorkerName(scope){return `${baseWorkerName(scope)}-receipt`}
+export function observerUrl(scope){return `https://${receiptWorkerName(scope)}.${WORKERS_DEV_SUBDOMAIN}.workers.dev`}
+export function buildReceipt({scope,mode,state,signal={},env=process.env}){if(!SCOPES.has(scope))throw new Error("RECEIPT_SCOPE_INVALID");if(!STATES.has(state))throw new Error("RECEIPT_STATE_INVALID");const sha=String(env.WORKERS_CI_COMMIT_SHA||"").trim();if(!SHA_PATTERN.test(sha))throw new Error("RECEIPT_SHA_INVALID");const buildUuid=clean(env.WORKERS_CI_BUILD_UUID||"",80)||null;const base={schema:"cloudflare-workersdev-receipt-v2",scope,mode:clean(mode,20),state,commit_sha:sha,build_uuid:buildUuid,acceptance_phase:clean(signal?.acceptance_phase||"",80)||null,phase:clean(signal?.phase||signal?.code||signal?.event||"",100)||null,exit_code:Number.isInteger(signal?.exit_code)?signal.exit_code:null};return {...base,receipt_digest:receiptDigest(base),updated_at:new Date().toISOString()}}
+export function renderReceiptWorker(receipt){const safe=JSON.stringify(receipt);return `const RECEIPT=${safe};export default{async fetch(request){const u=new URL(request.url);const headers={"content-type":"application/json; charset=utf-8","cache-control":"no-store, max-age=0","access-control-allow-origin":"*","x-robots-tag":"noindex, nofollow"};if(u.pathname==="/robots.txt")return new Response("User-agent: *\\nDisallow: /\\n",{headers:{"content-type":"text/plain","cache-control":"no-store","x-robots-tag":"noindex, nofollow"}});if(u.pathname!=="/"&&u.pathname!=="/receipt"&&u.pathname!=="/health")return new Response(JSON.stringify({ok:false,error:"NOT_FOUND"}),{status:404,headers});if(u.pathname==="/health")return new Response(JSON.stringify({ok:true,scope:RECEIPT.scope,state:RECEIPT.state,commit_sha:RECEIPT.commit_sha,receipt_digest:RECEIPT.receipt_digest}),{headers});return new Response(JSON.stringify({ok:true,receipt:RECEIPT}),{headers})}}};`}
+export function makeDeployFiles(receipt){const dir=mkdtempSync(join(tmpdir(),"cf-build-receipt-"));writeFileSync(join(dir,"worker.mjs"),renderReceiptWorker(receipt));writeFileSync(join(dir,"wrangler.jsonc"),JSON.stringify({name:baseWorkerName(receipt.scope),main:"worker.mjs",compatibility_date:"2026-08-20",account_id:ACCOUNT_ID,workers_dev:false,preview_urls:false,observability:{enabled:false},env:{receipt:{workers_dev:true,preview_urls:false}}},null,2));return dir}
+export function publishWorkersDevReceipt({scope,mode,state,signal={},env=process.env,runner=spawnSync}){let dir=null;try{const receipt=buildReceipt({scope,mode,state,signal,env});dir=makeDeployFiles(receipt);const result=runner("npx",["--yes","wrangler@4.123.0","deploy","--env","receipt","--config","wrangler.jsonc"],{cwd:dir,encoding:"utf8",env:{...env,CI:"1",NO_COLOR:"1",WRANGLER_SEND_METRICS:"false"},maxBuffer:2*1024*1024});if(result?.error)return {ok:false,code:"RECEIPT_ENV_SPAWN_FAILED",state,url:observerUrl(scope),receipt_digest:receipt.receipt_digest};if(result?.status!==0)return {ok:false,code:"RECEIPT_ENV_DEPLOY_FAILED",exit_code:result?.status??1,state,url:observerUrl(scope),receipt_digest:receipt.receipt_digest};return {ok:true,code:"RECEIPT_ENV_DEPLOYED",state,url:observerUrl(scope),receipt_digest:receipt.receipt_digest,commit_sha:receipt.commit_sha,build_uuid:receipt.build_uuid}}catch(error){return {ok:false,code:clean(error?.message||error,120),state,url:SCOPES.has(scope)?observerUrl(scope):null}}finally{if(dir)rmSync(dir,{recursive:true,force:true})}}
