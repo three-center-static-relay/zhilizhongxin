@@ -5,6 +5,7 @@ const base=String(process.argv[2]||"").replace(/\/+$/,""),probe=process.env.TENC
 assert.match(base,/^https:\/\/[a-z0-9.-]+\.workers\.dev$/i,"VALID_WORKERS_DEV_URL_REQUIRED");
 assert.match(probe,/^[a-f0-9]{64}$/i,"VALID_DEPLOY_PROBE_REQUIRED");
 
+const safe=x=>String(x||"").replace(/[^0-9A-Za-z_.:,=-]/g,"_").slice(0,240);
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 let lastError="NO_ATTEMPT";
 for(let attempt=1;attempt<=8;attempt++){
@@ -32,9 +33,12 @@ for(let attempt=1;attempt<=8;attempt++){
       }));
       process.exit(0);
     }
-    lastError=`HTTP_${response.status}:${String(body?.error||body?.message||"UNEXPECTED_RESPONSE")}`;
+    const failedChecks=Array.isArray(body?.checks)?body.checks.filter(x=>x?.ok!==true).map(x=>String(x?.name||"unknown")):[];
+    const upstreamError=safe(body?.error||body?.message||"VALIDATION_FAIL");
+    lastError=safe(`HTTP_${response.status}:${upstreamError}${failedChecks.length?`:FAILED=${failedChecks.join(",")}`:""}`);
+    console.error(JSON.stringify({ok:false,suite:"tencent-cloudflare-runtime-e2e",attempt,http_status:response.status,error:upstreamError,failed_checks:failedChecks,secret_values_read:false}));
   }catch(error){
-    lastError=error?.name==="AbortError"?"E2E_REQUEST_TIMEOUT":String(error?.message||error);
+    lastError=error?.name==="AbortError"?"E2E_REQUEST_TIMEOUT":safe(String(error?.message||error));
   }finally{clearTimeout(timer)}
   if(attempt<8)await sleep(2000);
 }
