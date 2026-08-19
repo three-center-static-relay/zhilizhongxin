@@ -1,4 +1,5 @@
 import superguard,{AdminCoordinator} from "./superguard.js";
+import {tencentExecutorStatus,tencentExecutorSelftest,tencentAgentInvoke} from "./tencent-executor.js";
 export {AdminCoordinator};
 const H={"content-type":"application/json;charset=utf-8","cache-control":"no-store"};
 const json=(x,s=200)=>new Response(JSON.stringify(x),{status:s,headers:H});
@@ -19,4 +20,11 @@ async function literatureSelftest(req,env){
   finally{clearTimeout(timer)}
 }
 
-export default{async fetch(req,env,ctx){try{const u=new URL(req.url);if(req.method==="POST"&&u.pathname==="/v1/admin/selftest/literature")return await literatureSelftest(req,env);return await superguard.fetch(req,env,ctx)}catch(e){return fail(String(e?.message||"INTERNAL_ERROR"),e?.status>=500?"Internal operation failed":String(e?.message||"Request failed"),e?.status||500,e?.details)}}};
+export default{async fetch(req,env,ctx){try{
+  const u=new URL(req.url);
+  if(req.method==="POST"&&u.pathname==="/v1/admin/selftest/literature")return await literatureSelftest(req,env);
+  if(req.method==="GET"&&u.pathname==="/v1/admin/tencent/status"){await auth(req,env);return tencentExecutorStatus(env)}
+  if(req.method==="POST"&&u.pathname==="/v1/admin/tencent/selftest"){await auth(req,env);return await tencentExecutorSelftest(env)}
+  if(req.method==="POST"&&u.pathname==="/v1/admin/tencent/agent"){await auth(req,env);return await tencentAgentInvoke(req,env)}
+  return await superguard.fetch(req,env,ctx)
+}catch(e){return fail(String(e?.message||"INTERNAL_ERROR"),e?.status>=500?"Internal operation failed":String(e?.message||"Request failed"),e?.status||500,e?.details)}}};
