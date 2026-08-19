@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+// Post-PR synchronization trigger: all three worker predicates below are now prepared.
 const category=String(process.argv[2]||'');
 const expected=String(process.argv[3]||'');
 const base='https://admin-worker.a15280020511.workers.dev';
