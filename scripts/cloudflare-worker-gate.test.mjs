@@ -70,6 +70,9 @@ assert.match(postdeploySource,/request as httpsRequest/);
 assert.match(postdeploySource,/E2E_DUAL_TRANSPORT_FAILED/);
 assert.match(postdeploySource,/validateTencentRuntimeReceipt\(body\)/);
 assert.match(postdeploySource,/TENCENT_POSTDEPLOY_E2E_FAILED:/);
+assert.equal(postdeploySource.includes('throw new Error(`TENCENT_POSTDEPLOY_E2E_FAILED:${lastError}`)'),false,"POSTDEPLOY_FAILURE_MARKER_MUST_NOT_USE_UNCAUGHT_THROW");
+assert.equal(postdeploySource.includes('console.error(`TENCENT_POSTDEPLOY_E2E_FAILED:${lastError}`)'),true,"POSTDEPLOY_FAILURE_MARKER_MUST_BE_SINGLE_RUNTIME_LINE");
+assert.match(postdeploySource,/process\.exitCode=1/);
 assert.doesNotMatch(postdeploySource,/console\.(?:log|error)\([^\n]*probe/);
 
 console.log(JSON.stringify({
@@ -84,5 +87,6 @@ console.log(JSON.stringify({
   tencent_runtime_receipt_validation:true,
   tencent_postdeploy_dual_transport_syntax:true,
   tencent_postdeploy_probe_not_logged:true,
+  tencent_postdeploy_single_runtime_failure_marker:true,
   automatic_rollback_path:true
 }));
