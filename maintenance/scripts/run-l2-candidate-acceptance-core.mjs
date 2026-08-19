@@ -5,20 +5,30 @@ import {resolve} from "node:path";
 import {pathToFileURL} from "node:url";
 
 const WRANGLER="4.123.0";
-const ADMIN="admin-worker";
 const MAINTENANCE="maintenance-worker";
 const OVERRIDE_HEADER="Cloudflare-Workers-Version-Overrides";
 const TAG_PATTERN=/^[a-f0-9]{12}$/i;
 const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WRANGLER_TIMEOUT_MS=90000;
+const CANDIDATE_WAIT_TIMEOUT_MS=90000;
 const REMOTE_READY_TIMEOUT_MS=60000;
-const REMOTE_RUN_TIMEOUT_MS=360000;
+const REMOTE_RUN_TIMEOUT_MS=300000;
+const EXECUTION_DEADLINE_MS=12*60*1000;
 let currentPhase="boot";
+let executionDeadlineAt=0;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function markPhase(phase,details={}){
   currentPhase=phase;
   console.log(JSON.stringify({event:"L2_PHASE",phase,at:new Date().toISOString(),...details,secrets_redacted:true}));
 }
+function beginDeadline(){executionDeadlineAt=Date.now()+EXECUTION_DEADLINE_MS}
+function boundedTimeout(cap,enforceDeadline=true){
+  if(!enforceDeadline||!executionDeadlineAt)return cap;
+  const remaining=executionDeadlineAt-Date.now();
+  if(remaining<=5000)throw new Error("L2_EXECUTION_DEADLINE_EXCEEDED");
+  return Math.max(1000,Math.min(cap,remaining-5000));
+}
+function assertWithinDeadline(){boundedTimeout(60000,true)}
 
 function cleanJson(text){
   const raw=String(text||"").replace(/\x1b\[[0-9;]*m/g,"").trim();
@@ -26,14 +36,16 @@ function cleanJson(text){
   if(!starts.length)throw new Error("WRANGLER_JSON_MISSING");
   return JSON.parse(raw.slice(starts[0]));
 }
-function runJson(args){
-  const r=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{encoding:"utf8",env:{...process.env,CI:"1"},maxBuffer:4*1024*1024,timeout:WRANGLER_TIMEOUT_MS,killSignal:"SIGTERM"});
+function runJson(args,{enforceDeadline=true,timeoutMs=WRANGLER_TIMEOUT_MS}={}){
+  const timeout=boundedTimeout(timeoutMs,enforceDeadline);
+  const r=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{encoding:"utf8",env:{...process.env,CI:"1"},maxBuffer:4*1024*1024,timeout,killSignal:"SIGTERM"});
   if(r.error?.code==="ETIMEDOUT")throw Object.assign(new Error(`WRANGLER_TIMEOUT:${args.join(" ")}`),{stderr:r.stderr,stdout:r.stdout});
   if(r.error||r.status!==0)throw Object.assign(new Error(`WRANGLER_FAILED:${args.join(" ")}`),{stderr:r.stderr,stdout:r.stdout});
   return cleanJson(r.stdout);
 }
-function run(args){
-  const r=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{encoding:"utf8",env:{...process.env,CI:"1"},stdio:"inherit",timeout:WRANGLER_TIMEOUT_MS,killSignal:"SIGTERM"});
+function run(args,{enforceDeadline=true,timeoutMs=WRANGLER_TIMEOUT_MS}={}){
+  const timeout=boundedTimeout(timeoutMs,enforceDeadline);
+  const r=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{encoding:"utf8",env:{...process.env,CI:"1"},stdio:"inherit",timeout,killSignal:"SIGTERM"});
   if(r.error?.code==="ETIMEDOUT")throw new Error(`WRANGLER_TIMEOUT:${args.join(" ")}`);
   if(r.error||r.status!==0)throw new Error(`WRANGLER_FAILED:${args.join(" ")}`);
 }
@@ -85,21 +97,31 @@ export function stageSpecs(snapshot,candidate){
   if(candidate===stable)return snapshot;
   return[{id:stable,percentage:100},{id:candidate,percentage:0}];
 }
+export function shadowWorkerName(tag,stamp="test"){
+  if(!TAG_PATTERN.test(tag))throw new Error("L2_SHADOW_TAG_INVALID");
+  const suffix=String(stamp||"").toLowerCase().replace(/[^a-z0-9-]/g,"-").replace(/-+/g,"-").replace(/^-|-$/g,"").slice(0,20)||"run";
+  return `admin-l2-shadow-${tag}-${suffix}`.slice(0,63).replace(/-$/g,"");
+}
 function specs(rows){return rows.map(v=>`${v.id}@${v.percentage}%`)}
 function deploy(worker,rows,message){run(["versions","deploy",...specs(rows),"-y","--name",worker,"--message",message])}
-async function waitCandidate(worker,tag,timeoutMs=90000){
-  const end=Date.now()+timeoutMs;
+async function waitCandidate(worker,tag,timeoutMs=CANDIDATE_WAIT_TIMEOUT_MS){
+  const end=Date.now()+Math.min(timeoutMs,boundedTimeout(timeoutMs,true));
   let last;
   while(Date.now()<end){
+    assertWithinDeadline();
     try{return findVersionByTag(runJson(["versions","list","--name",worker,"--json"]),tag)}
     catch(e){last=e;await sleep(3000)}
   }
   throw last||new Error(`CANDIDATE_NOT_FOUND:${worker}:${tag}`);
 }
-function snapshot(worker){return currentDeployment(runJson(["deployments","status","--name",worker,"--json"]))}
+function snapshot(worker,configPath=null,{enforceDeadline=true}={}){
+  const args=["deployments","status","--name",worker,"--json"];
+  if(configPath)args.push("--config",configPath);
+  return currentDeployment(runJson(args,{enforceDeadline}));
+}
 export function validateReceipt(body,adminVersion,maintenanceVersion){
   if(body?.ok!==true)throw new Error(`L2_RESPONSE_NOT_OK:${body?.error||"unknown"}`);
-  if(body?.admin_version!==adminVersion)throw new Error("ADMIN_STABLE_VERSION_NOT_OBSERVED");
+  if(body?.admin_version!==adminVersion)throw new Error("ADMIN_SHADOW_VERSION_NOT_OBSERVED");
   if(body?.maintenance_version!==maintenanceVersion)throw new Error("MAINTENANCE_VERSION_OVERRIDE_NOT_APPLIED");
   if(body?.transport!=="fetch-version-override")throw new Error("ADMIN_TRANSPORT_NOT_VERSION_OVERRIDE_FETCH");
   if(body?.maintenance_transport!=="fetch")throw new Error("MAINTENANCE_TRANSPORT_NOT_FETCH");
@@ -115,7 +137,7 @@ export function validateReceipt(body,adminVersion,maintenanceVersion){
   if((body.rollback_rehearsal?.mismatches||[]).length!==0)throw new Error("ROLLBACK_SNAPSHOT_MISMATCH");
   return{
     ok:true,
-    admin_mode:"stable-deployment",
+    admin_mode:"shadow-worker",
     admin_version:adminVersion,
     maintenance_version:maintenanceVersion,
     route_versions:result.route_family.map(r=>({route_name:r.route_name,route_id:r.route_id,version_id:r.version_id,previous_version_id:r.previous_version_id||null})),
@@ -128,7 +150,32 @@ export function validateReceipt(body,adminVersion,maintenanceVersion){
   };
 }
 
-async function remoteHarness(adminVersion,maintenanceVersion,requestId){
+function prepareAdminShadow(name){
+  const dir=resolve(".l2-admin-shadow");
+  rmSync(dir,{recursive:true,force:true});mkdirSync(dir,{recursive:true});
+  writeFileSync(resolve(dir,"worker.mjs"),`export {AdminAcceptanceControl} from "../../admin/src/production-superguard.js";\nexport default{fetch(){return Response.json({ok:false,error:"SHADOW_HTTP_DISABLED"},{status:404})}};\n`);
+  const configPath=resolve(dir,"wrangler.jsonc");
+  writeFileSync(configPath,JSON.stringify({
+    name,
+    main:"worker.mjs",
+    compatibility_date:"2026-08-18",
+    compatibility_flags:["nodejs_compat"],
+    workers_dev:false,
+    preview_urls:false,
+    services:[{binding:"MAINTENANCE_CONTROL",service:MAINTENANCE,entrypoint:"MaintenanceControl",props:{caller:"admin-worker",capability:"expert-route-refresh"}}],
+    version_metadata:{binding:"CF_VERSION_METADATA"}
+  },null,2));
+  return{dir,configPath};
+}
+function deployAdminShadow(name,configPath){
+  run(["deploy","--config",configPath,"--name",name]);
+  return stableVersion(snapshot(name,configPath));
+}
+function deleteAdminShadow(name,configPath){
+  run(["delete","--name",name,"--config",configPath],{enforceDeadline:false,timeoutMs:WRANGLER_TIMEOUT_MS});
+}
+
+async function remoteHarness(adminService,adminVersion,maintenanceVersion,requestId){
   const dir=resolve(".l2-runtime");
   rmSync(dir,{recursive:true,force:true});mkdirSync(dir,{recursive:true});
   writeFileSync(resolve(dir,"worker.mjs"),`export default{async fetch(request,env){const u=new URL(request.url);if(u.pathname==="/health")return Response.json({ok:true});if(request.method==="POST"&&u.pathname==="/run"){const body=await request.text();const h=new Headers({"content-type":"application/json","accept":"application/json"});const o=request.headers.get("${OVERRIDE_HEADER}");if(o)h.set("${OVERRIDE_HEADER}",o);return env.ADMIN_ACCEPTANCE.fetch(new Request("https://admin.accept/v1/control/expert-route/refresh",{method:"POST",headers:h,body}))}return Response.json({ok:false,error:"NOT_FOUND"},{status:404})}};`);
@@ -138,22 +185,27 @@ async function remoteHarness(adminVersion,maintenanceVersion,requestId){
     compatibility_date:"2026-08-18",
     workers_dev:false,
     preview_urls:false,
-    services:[{binding:"ADMIN_ACCEPTANCE",service:ADMIN,entrypoint:"AdminAcceptanceControl",props:{caller:"expert-l2-acceptance",capability:"expert-route-acceptance"}}]
+    services:[{binding:"ADMIN_ACCEPTANCE",service:adminService,entrypoint:"AdminAcceptanceControl",props:{caller:"expert-l2-acceptance",capability:"expert-route-acceptance"}}]
   },null,2));
-  markPhase("remote-dev-start",{admin_mode:"stable-deployment",admin_version:adminVersion,maintenance_version:maintenanceVersion});
+  markPhase("remote-dev-start",{admin_mode:"shadow-worker",admin_service:adminService,admin_version:adminVersion,maintenance_version:maintenanceVersion});
   const child=spawn("npx",["--yes",`wrangler@${WRANGLER}`,"dev","--remote","--config",resolve(dir,"wrangler.jsonc"),"--port","8787"],{stdio:["ignore","pipe","pipe"],env:{...process.env,CI:"1"}});
   let logs=""; child.stdout.on("data",d=>logs+=d);child.stderr.on("data",d=>logs+=d);
   try{
-    const end=Date.now()+REMOTE_READY_TIMEOUT_MS;let ready=false;
+    const readyTimeout=boundedTimeout(REMOTE_READY_TIMEOUT_MS,true),end=Date.now()+readyTimeout;let ready=false;
     while(Date.now()<end){
+      assertWithinDeadline();
       if(child.exitCode!==null)throw new Error(`REMOTE_DEV_EXITED:${child.exitCode}:${logs.slice(-2000)}`);
-      try{const r=await fetch("http://127.0.0.1:8787/health");if(r.ok){ready=true;break}}catch{}
+      try{
+        const c=new AbortController(),t=setTimeout(()=>c.abort(),5000);
+        try{const r=await fetch("http://127.0.0.1:8787/health",{signal:c.signal});if(r.ok){ready=true;break}}
+        finally{clearTimeout(t)}
+      }catch{}
       await sleep(1500);
     }
     if(!ready)throw new Error(`REMOTE_DEV_NOT_READY:${logs.slice(-2000)}`);
     markPhase("remote-dev-ready");
-    const override=`${ADMIN}="${adminVersion}", ${MAINTENANCE}="${maintenanceVersion}"`;
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),REMOTE_RUN_TIMEOUT_MS);
+    const override=`${MAINTENANCE}="${maintenanceVersion}"`;
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),boundedTimeout(REMOTE_RUN_TIMEOUT_MS,true));
     let response;
     try{
       markPhase("remote-run-begin",{request_id:requestId});
@@ -173,6 +225,7 @@ async function remoteHarness(adminVersion,maintenanceVersion,requestId){
 }
 
 async function main(){
+  beginDeadline();
   markPhase("trigger-read");
   const request=JSON.parse(readFileSync("l2-acceptance-request.json","utf8"));
   if(request?.schema!=="expert-l2-acceptance-v1"||request?.enabled!==true)throw new Error("L2_TRIGGER_INVALID");
@@ -183,24 +236,46 @@ async function main(){
   markPhase("maintenance-candidate-lookup-begin",{maintenance_candidate_tag:maintenanceTag,request_id:requestId});
   const maintenanceCandidate=await waitCandidate(MAINTENANCE,maintenanceTag);
   markPhase("snapshot-begin");
-  const adminSnapshot=snapshot(ADMIN),maintenanceSnapshot=snapshot(MAINTENANCE);
-  const adminVersion=stableVersion(adminSnapshot);
-  markPhase("snapshot-complete",{admin_mode:"stable-deployment",admin_version:adminVersion,maintenance_version:maintenanceCandidate});
-  let maintenanceStaged=false;
+  const maintenanceSnapshot=snapshot(MAINTENANCE);
+  markPhase("snapshot-complete",{admin_mode:"shadow-worker",maintenance_version:maintenanceCandidate});
+
+  const shadowName=shadowWorkerName(maintenanceTag,Date.now().toString(36));
+  const shadow=prepareAdminShadow(shadowName);
+  let shadowDeployed=false,maintenanceStaged=false,receipt=null,primaryError=null,primaryPhase=null;
   try{
+    markPhase("admin-shadow-deploy-begin",{admin_service:shadowName,public_routes:false,preview_urls:false});
+    const adminVersion=deployAdminShadow(shadowName,shadow.configPath);shadowDeployed=true;
+    markPhase("admin-shadow-deploy-complete",{admin_service:shadowName,admin_version:adminVersion});
     markPhase("maintenance-stage-begin");
     deploy(MAINTENANCE,stageSpecs(maintenanceSnapshot,maintenanceCandidate),`L2 0% maintenance candidate ${maintenanceTag}`);maintenanceStaged=true;
     markPhase("maintenance-stage-complete");
-    await sleep(5000);
+    await sleep(5000);assertWithinDeadline();
     markPhase("remote-harness-begin");
-    const receipt=await remoteHarness(adminVersion,maintenanceCandidate,requestId);
-    console.log(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_PASS",admin_mode:"stable-deployment",maintenance_candidate_tag:maintenanceTag,request_id:requestId,...receipt}));
-  }finally{
-    markPhase("restore-begin",{admin_staged:false,maintenance_staged:maintenanceStaged});
-    const restoreErrors=[];
-    if(maintenanceStaged){try{deploy(MAINTENANCE,maintenanceSnapshot,`L2 restore maintenance ${maintenanceTag}`)}catch(error){restoreErrors.push({worker:MAINTENANCE,error:String(error?.message||error)})}}
-    if(restoreErrors.length)throw Object.assign(new Error("WORKER_DEPLOYMENT_RESTORE_FAILED"),{body:{restore_errors:restoreErrors}});
-    markPhase("restore-complete");
+    receipt=await remoteHarness(shadowName,adminVersion,maintenanceCandidate,requestId);
+  }catch(error){
+    primaryError=error;primaryPhase=currentPhase;
   }
+
+  markPhase("restore-begin",{admin_shadow_deployed:shadowDeployed,maintenance_staged:maintenanceStaged});
+  const cleanupErrors=[];
+  if(maintenanceStaged){
+    try{deploy(MAINTENANCE,maintenanceSnapshot,`L2 restore maintenance ${maintenanceTag}`)}
+    catch(error){cleanupErrors.push({resource:MAINTENANCE,error:String(error?.message||error)})}
+  }
+  if(shadowDeployed){
+    markPhase("admin-shadow-delete-begin",{admin_service:shadowName});
+    try{deleteAdminShadow(shadowName,shadow.configPath);markPhase("admin-shadow-delete-complete",{admin_service:shadowName})}
+    catch(error){cleanupErrors.push({resource:shadowName,error:String(error?.message||error)})}
+  }
+  rmSync(shadow.dir,{recursive:true,force:true});
+  markPhase("restore-complete",{cleanup_error_count:cleanupErrors.length});
+
+  if(primaryError){
+    if(cleanupErrors.length)primaryError.body={...(primaryError?.body||{}),cleanup_errors:cleanupErrors};
+    primaryError.phase=primaryPhase;throw primaryError;
+  }
+  if(cleanupErrors.length)throw Object.assign(new Error("L2_CLEANUP_FAILED"),{body:{cleanup_errors:cleanupErrors},phase:"restore"});
+  if(!receipt?.ok)throw Object.assign(new Error("L2_RECEIPT_MISSING"),{phase:"remote-harness"});
+  console.log(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_PASS",admin_mode:"shadow-worker",maintenance_candidate_tag:maintenanceTag,request_id:requestId,...receipt}));
 }
-if(import.meta.url===pathToFileURL(resolve(process.argv[1]||"")).href)main().catch(error=>{console.error(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_FAIL",phase:currentPhase,error:String(error?.message||error),details:error?.body||null,secrets_redacted:true}));process.exitCode=1});
+if(import.meta.url===pathToFileURL(resolve(process.argv[1]||"")).href)main().catch(error=>{console.error(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_FAIL",phase:error?.phase||currentPhase,error:String(error?.message||error),details:error?.body||null,secrets_redacted:true}));process.exitCode=1});
