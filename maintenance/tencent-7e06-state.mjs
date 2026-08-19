@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+// Post-PR synchronized trigger. This probe is read-only and never exposes the failure code.
 const expected='7e06f53d48df2ea27d9c622bcbb8e984d4555dbc';
 const base='https://admin-worker.a15280020511.workers.dev';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
