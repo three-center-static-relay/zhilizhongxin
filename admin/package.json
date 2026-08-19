@@ -2,6 +2,7 @@
   "name": "admin-worker",
   "private": true,
   "type": "module",
+  "description": "throwaway Tencent production FAIL-state probe",
   "scripts": {
     "cf:build": "node ../scripts/tencent-c633-failure-bucket.mjs fail",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs admin preview",
