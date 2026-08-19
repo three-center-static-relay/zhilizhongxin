@@ -2,9 +2,9 @@
   "name": "maintenance-worker",
   "private": true,
   "type": "module",
-  "description": "throwaway exact Tencent production verifier for 7f4b3397",
+  "description": "throwaway exact Tencent production FAIL verifier for 7f4b3397",
   "scripts": {
-    "cf:build": "echo TENCENT_PRODUCTION_7F4B3397_VERIFY_BEGIN && node --check src/index.js && node ../scripts/tencent-production-attestation-verify.mjs https://admin-worker.a15280020511.workers.dev 7f4b3397cc693cc07669747f3c04e3077415efaa",
+    "cf:build": "echo TENCENT_PRODUCTION_7F4B3397_FAIL_VERIFY_BEGIN && node --check src/index.js && node tencent-7f4-diagnose.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs maintenance deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
