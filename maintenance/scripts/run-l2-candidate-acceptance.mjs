@@ -104,8 +104,8 @@ function main(){
   }
   if(requestId.startsWith(UPLOAD_DIAG_PREFIX)){
     const adminCwd=resolve(process.cwd(),"../admin");
-    adminWrangler(["versions","upload","--name",ADMIN,"--tag",tag,"--message",`L2 upload-only admin candidate ${tag}`],adminCwd,{stdio:"inherit"});
-    console.log(JSON.stringify({event:"L2_ADMIN_UPLOAD_BISECT_PASS",tag,request_id:requestId,secrets_redacted:true}));
+    run("npx",["--yes",`wrangler@${WRANGLER}`,"versions","upload","--name",ADMIN,"--tag",tag,"--message",`L2 upload-only admin candidate no-ci-override ${tag}`],adminCwd,{stdio:"inherit",stripCiOverride:true});
+    console.log(JSON.stringify({event:"L2_ADMIN_UPLOAD_BISECT_PASS",tag,request_id:requestId,ci_override_removed:true,secrets_redacted:true}));
     return;
   }
   const admin=ensureAdminCandidate(tag);
