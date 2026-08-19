@@ -8,6 +8,11 @@ const MONITORED_WORKERS=Object.freeze(["governance-worker","admin-worker","maint
 
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
 
+async function sha256Text(text){
+  const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(String(text)));
+  return [...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+
 function configuration(env){
   const accountId=String(env.CLOUDFLARE_ACCOUNT_ID||"").trim();
   const token=String(env.CLOUDFLARE_BUILDS_API_TOKEN||"").trim();
@@ -155,5 +160,8 @@ export async function enrichSystemHealthWithBuilds(response,env){
   const body=await response.json().catch(()=>null);
   if(!body||typeof body!=="object")return fallback;
   const cloudflare_builds=await collectBuildFastStatus(env);
-  return json({...body,data:{...(body.data||{}),cloudflare_builds}},response.status);
+  const base={...body,data:{...(body.data||{}),cloudflare_builds}};
+  delete base.receipt_digest;
+  const receipt_digest=await sha256Text(JSON.stringify(base));
+  return json({...base,receipt_digest},response.status);
 }

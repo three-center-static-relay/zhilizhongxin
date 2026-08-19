@@ -20,6 +20,9 @@ assert.match(source,/latest_failure_logs/);
 assert.match(source,/Bearer \[REDACTED\]/);
 assert.match(source,/export async function collectBuildFastStatus/);
 assert.match(source,/export async function enrichSystemHealthWithBuilds/);
+assert.match(source,/crypto\.subtle\.digest\("SHA-256"/);
+assert.match(source,/delete base\.receipt_digest/);
+assert.match(source,/receipt_digest=await sha256Text\(JSON\.stringify\(base\)\)/);
 assert.doesNotMatch(source,/\/cancel/);
 assert.doesNotMatch(source,/method:"POST"/);
 
@@ -31,4 +34,4 @@ assert.doesNotMatch(entry,/buildFastOpenApiPaths/);
 assert.match(entry,/paths:\{\.\.\.\(spec\.paths\|\|\{\}\),\.\.\.adminOpenApiPaths\(\)\}/);
 assert.match(pkg.scripts["test:build-gate"],/build-fastpath-contract\.mjs/);
 
-console.log(JSON.stringify({ok:true,suite:"build-fastpath-contract",health_enrichment:true,action_schema_unchanged:true,builds_api_direct_read:true,github_bot_bypassed:true,recent_build_limit:5,failed_build_auto_log_tail:true,cursor_aware_logs:true,default_failure_tail_lines:120,admin_bearer_inherited:true,trigger_disabled:true,cancel_disabled:true,secrets_redacted:true}));
+console.log(JSON.stringify({ok:true,suite:"build-fastpath-contract",health_enrichment:true,action_schema_unchanged:true,receipt_digest_covers_build_status:true,builds_api_direct_read:true,github_bot_bypassed:true,recent_build_limit:5,failed_build_auto_log_tail:true,cursor_aware_logs:true,default_failure_tail_lines:120,admin_bearer_inherited:true,trigger_disabled:true,cancel_disabled:true,secrets_redacted:true}));
