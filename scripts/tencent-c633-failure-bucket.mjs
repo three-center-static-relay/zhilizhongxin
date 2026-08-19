@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+// Synchronized post-PR trigger: PASS / FAIL / STALE predicates are all prepared before this commit.
 const state=String(process.argv[2]||'');
 const expected='8f8f3528c9d795497ff26a912a67878af2a02f51';
 const base='https://admin-worker.a15280020511.workers.dev';
