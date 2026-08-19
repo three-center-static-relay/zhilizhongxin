@@ -2,9 +2,9 @@
   "name": "governance-worker",
   "private": true,
   "type": "module",
-  "description": "throwaway exact Tencent production verifier for 78d8af13",
+  "description": "throwaway exact Tencent production FAIL verifier for 78d8af13",
   "scripts": {
-    "cf:build": "echo TENCENT_PRODUCTION_78D8AF13_GOVERNANCE_ONLY_BEGIN && node ../scripts/tencent-production-attestation-verify.mjs https://admin-worker.a15280020511.workers.dev 78d8af132074f2ab8edba1001687847e5ee206bc",
+    "cf:build": "echo TENCENT_PRODUCTION_78D8AF13_FAIL_BEGIN && node tests/tencent-78d-exact-fail.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs governance preview",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs governance deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
