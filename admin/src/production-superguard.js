@@ -9,6 +9,9 @@ function eq(a,b){a=String(a||"");b=String(b||"");if(a.length!==b.length)return f
 async function auth(req,env){if(!env.ADMIN_GPT_TOKEN)throw Object.assign(new Error("ADMIN_TOKEN_NOT_CONFIGURED"),{status:503});if(!eq(tok(req),env.ADMIN_GPT_TOKEN))throw Object.assign(new Error("UNAUTHORIZED"),{status:401})}
 function deployProbeToken(){return typeof TENCENT_DEPLOY_E2E_PROBE==="string"?TENCENT_DEPLOY_E2E_PROBE:""}
 function productionAttestedCommit(){return typeof TENCENT_PRODUCTION_E2E_ATTESTED==="string"?TENCENT_PRODUCTION_E2E_ATTESTED:""}
+function productionFailureCode(){return typeof TENCENT_PRODUCTION_E2E_FAILURE==="string"?TENCENT_PRODUCTION_E2E_FAILURE:""}
+function productionFailedCommit(){return typeof TENCENT_PRODUCTION_E2E_FAILED_COMMIT==="string"?TENCENT_PRODUCTION_E2E_FAILED_COMMIT:""}
+function productionTencentFailed(){return Boolean(productionFailureCode())}
 
 async function deployTencentE2E(req,env){
   const expected=deployProbeToken(),provided=req.headers.get("x-tencent-deploy-probe")||"";
@@ -22,8 +25,7 @@ async function deployTencentE2E(req,env){
 
 function tencentProductionAttestation(){
   const commit=productionAttestedCommit();
-  if(!/^[a-f0-9]{40,64}$/i.test(commit))return new Response(null,{status:404,headers:{"cache-control":"no-store"}});
-  return json({
+  if(/^[a-f0-9]{40,64}$/i.test(commit))return json({
     ok:true,
     provider:"tencent-edgeone-makers",
     role:"agent-executor",
@@ -38,6 +40,23 @@ function tencentProductionAttestation(){
     secret_values_exposed:false,
     deploy_probe_active:Boolean(deployProbeToken())
   });
+  const failure=productionFailureCode(),failedCommit=productionFailedCommit();
+  if(failure&&/^[a-f0-9]{40,64}$/i.test(failedCommit))return json({
+    ok:false,
+    provider:"tencent-edgeone-makers",
+    role:"agent-executor",
+    validation:"FAIL",
+    runtime_e2e:false,
+    selftest:"executor-runtime-v5",
+    failed_commit:failedCommit,
+    failure_code:failure,
+    production_routing:false,
+    agent_execution_enabled:false,
+    fail_closed:true,
+    secret_values_exposed:false,
+    deploy_probe_active:Boolean(deployProbeToken())
+  });
+  return new Response(null,{status:404,headers:{"cache-control":"no-store"}});
 }
 
 async function literatureSelftest(req,env){
@@ -59,6 +78,10 @@ export default{async fetch(req,env,ctx){try{
   if(req.method==="POST"&&u.pathname==="/v1/admin/selftest/literature")return await literatureSelftest(req,env);
   if(req.method==="GET"&&u.pathname==="/v1/admin/tencent/status"){await auth(req,env);return await tencentExecutorStatus(env)}
   if(req.method==="POST"&&u.pathname==="/v1/admin/tencent/selftest"){await auth(req,env);return await tencentExecutorSelftest(env)}
-  if(req.method==="POST"&&u.pathname==="/v1/admin/tencent/agent"){await auth(req,env);return await tencentAgentInvoke(req,env)}
+  if(req.method==="POST"&&u.pathname==="/v1/admin/tencent/agent"){
+    await auth(req,env);
+    if(productionTencentFailed())return fail("TENCENT_PRODUCTION_E2E_NOT_PASSED","Tencent executor remains fail-closed until production E2E passes",503,{failed_commit:productionFailedCommit()||null});
+    return await tencentAgentInvoke(req,env)
+  }
   return await superguard.fetch(req,env,ctx)
 }catch(e){return fail(String(e?.message||"INTERNAL_ERROR"),e?.status>=500?"Internal operation failed":String(e?.message||"Request failed"),e?.status||500,e?.details)}}};
