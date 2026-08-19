@@ -23,7 +23,7 @@ async function literatureSelftest(req,env){
 export default{async fetch(req,env,ctx){try{
   const u=new URL(req.url);
   if(req.method==="POST"&&u.pathname==="/v1/admin/selftest/literature")return await literatureSelftest(req,env);
-  if(req.method==="GET"&&u.pathname==="/v1/admin/tencent/status"){await auth(req,env);return tencentExecutorStatus(env)}
+  if(req.method==="GET"&&u.pathname==="/v1/admin/tencent/status"){await auth(req,env);return await tencentExecutorStatus(env)}
   if(req.method==="POST"&&u.pathname==="/v1/admin/tencent/selftest"){await auth(req,env);return await tencentExecutorSelftest(env)}
   if(req.method==="POST"&&u.pathname==="/v1/admin/tencent/agent"){await auth(req,env);return await tencentAgentInvoke(req,env)}
   return await superguard.fetch(req,env,ctx)
