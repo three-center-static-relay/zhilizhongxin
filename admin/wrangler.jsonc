@@ -3,25 +3,65 @@
   "name": "admin-worker",
   "main": "src/production-superguard.js",
   "compatibility_date": "2026-08-18",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "workers_dev": true,
   "preview_urls": false,
-  "secrets": {"required": ["ADMIN_GPT_TOKEN", "CF_API_TOKEN"]},
+  "secrets": {
+    "required": [
+      "ADMIN_GPT_TOKEN",
+      "CF_API_TOKEN"
+    ]
+  },
   "durable_objects": {
     "bindings": [
-      {"name": "ADMIN_COORDINATOR", "class_name": "AdminCoordinator"}
+      {
+        "name": "ADMIN_COORDINATOR",
+        "class_name": "AdminCoordinator"
+      }
     ]
   },
   "exports": {
-    "AdminCoordinator": {"type": "durable-object", "storage": "sqlite"}
+    "AdminCoordinator": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
   },
   "services": [
-    {"binding": "GOVERNANCE_CENTER", "service": "governance-worker"},
-    {"binding": "INTELLIGENCE_CENTER", "service": "intelligence-worker"},
-    {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
-    {"binding": "EXPERT_CENTER", "service": "expert-worker"},
-    {"binding": "MAINTENANCE_CENTER", "service": "maintenance-worker"}
+    {
+      "binding": "GOVERNANCE_CENTER",
+      "service": "governance-worker"
+    },
+    {
+      "binding": "INTELLIGENCE_CENTER",
+      "service": "intelligence-worker"
+    },
+    {
+      "binding": "COMPUTE_CENTER",
+      "service": "compute-worker"
+    },
+    {
+      "binding": "EXPERT_CENTER",
+      "service": "expert-worker"
+    },
+    {
+      "binding": "MAINTENANCE_CENTER",
+      "service": "maintenance-worker"
+    },
+    {
+      "binding": "MAINTENANCE_CONTROL",
+      "service": "maintenance-worker",
+      "entrypoint": "MaintenanceControl",
+      "props": {
+        "caller": "admin-worker",
+        "capability": "expert-route-refresh"
+      }
+    }
   ],
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
+  },
   "vars": {
     "ENVIRONMENT": "production",
     "CF_ACCOUNT_ID": "e3aec027af13c557bbcb831d29c1e7b4",
@@ -31,5 +71,15 @@
     "RATE_LIMIT_PER_MIN": "120",
     "AUTO_PROMOTE": "false"
   },
-  "observability": {"enabled": true,"logs":{"enabled":true,"head_sampling_rate":1},"traces":{"enabled":true,"head_sampling_rate":0.05}}
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.05
+    }
+  }
 }

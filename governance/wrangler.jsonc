@@ -5,9 +5,11 @@
   "compatibility_date": "2026-08-18",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  "preview_urls": false,
   "version_metadata": {"binding": "CF_VERSION_METADATA"},
+  "secrets": {"required": ["ADMIN_GPT_TOKEN", "CLOUDFLARE_BUILDS_API_TOKEN"]},
+  "vars": {"ENVIRONMENT": "production", "CLOUDFLARE_ACCOUNT_ID": "e3aec027af13c557bbcb831d29c1e7b4", "AI_GATEWAY_ID": "test"},
   "ai": {"binding": "AI"},
-  "vars": {"AI_GATEWAY_ID": "test"},
   "services": [
     {"binding": "OPENROUTER_RELAY", "service": "expert-worker"},
     {"binding": "INTELLIGENCE_CENTER", "service": "intelligence-worker"},

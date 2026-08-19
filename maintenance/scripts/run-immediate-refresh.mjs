@@ -1,0 +1,62 @@
+#!/usr/bin/env node
+import {spawnSync} from "node:child_process";
+import {readFileSync,writeFileSync,unlinkSync} from "node:fs";
+import {randomBytes} from "node:crypto";
+
+const WRANGLER="4.123.0";
+const NORMAL_CONFIG="wrangler.jsonc";
+const TEMP_CONFIG=".wrangler.immediate.runtime.json";
+const URL="https://maintenance-worker.a15280020511.workers.dev/v1/maintenance/refresh-now";
+
+function run(args){
+  const r=spawnSync("npx",["--yes",`wrangler@${WRANGLER}`,...args],{stdio:"inherit",env:process.env,encoding:"utf8"});
+  if(r.error||r.status!==0)throw new Error(`WRANGLER_FAILED:${args.join(" ")}`);
+}
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function runtimeConfig(){
+  const normal=JSON.parse(readFileSync(NORMAL_CONFIG,"utf8"));
+  const nonce=randomBytes(32).toString("hex");
+  const triggerId=`immediate-${Date.now()}-${randomBytes(8).toString("hex")}`;
+  const temp={...normal,workers_dev:true,preview_urls:false,vars:{...(normal.vars||{}),IMMEDIATE_REFRESH_ENABLED:"true",IMMEDIATE_REFRESH_ID:triggerId,IMMEDIATE_REFRESH_NONCE:nonce}};
+  writeFileSync(TEMP_CONFIG,JSON.stringify(temp,null,2));
+  return{nonce,triggerId};
+}
+async function invoke(nonce){
+  let last=null;
+  for(let attempt=1;attempt<=8;attempt++){
+    try{
+      const response=await fetch(URL,{method:"POST",headers:{"x-immediate-refresh-nonce":nonce,"accept":"application/json"}});
+      const text=await response.text();
+      let body=null;try{body=text?JSON.parse(text):null}catch{}
+      console.log(JSON.stringify({event:"IMMEDIATE_REFRESH_RESPONSE",attempt,http_status:response.status,body}));
+      if(response.ok&&body?.ok===true)return body;
+      if(response.status===409){last=new Error("IMMEDIATE_REFRESH_BUSY");await sleep(4000);continue;}
+      throw Object.assign(new Error("IMMEDIATE_REFRESH_REJECTED"),{details:{status:response.status,body}});
+    }catch(error){
+      last=error;
+      if(String(error?.message||"").includes("IMMEDIATE_REFRESH_REJECTED"))throw error;
+      if(attempt<8){await sleep(4000);continue;}
+    }
+  }
+  throw last||new Error("IMMEDIATE_REFRESH_FAILED");
+}
+
+let primaryError=null,result=null;
+const runtime=runtimeConfig();
+try{
+  console.log(JSON.stringify({event:"TEMP_WORKERS_DEV_DEPLOY_BEGIN",trigger_id:runtime.triggerId}));
+  run(["deploy","--config",TEMP_CONFIG]);
+  await sleep(3000);
+  result=await invoke(runtime.nonce);
+  console.log(JSON.stringify({event:"IMMEDIATE_REFRESH_PASS",result}));
+}catch(error){
+  primaryError=error;
+  console.error(JSON.stringify({event:"IMMEDIATE_REFRESH_FAIL",error:String(error?.message||error),details:error?.details||null}));
+}finally{
+  console.log(JSON.stringify({event:"NORMAL_DEPLOY_RESTORE_BEGIN"}));
+  try{run(["deploy","--config",NORMAL_CONFIG]);console.log(JSON.stringify({event:"NORMAL_DEPLOY_RESTORED"}));}
+  catch(error){console.error(JSON.stringify({event:"NORMAL_DEPLOY_RESTORE_FAILED",error:String(error?.message||error)}));if(!primaryError)primaryError=error;}
+  try{unlinkSync(TEMP_CONFIG)}catch{}
+}
+if(primaryError)process.exitCode=1;
+else console.log(JSON.stringify({ok:true,code:"IMMEDIATE_EXPERT_ROUTE_REFRESH_COMPLETED",route_status:result?.result?.status||null,route_id:result?.result?.route_id||null,version_id:result?.result?.version_id||null,previous_version_id:result?.result?.previous_version_id||null,element_count:result?.result?.element_count||null,model_count:result?.result?.model_count||null,selftest:result?.result?.selftest||null,secrets_redacted:true}));
