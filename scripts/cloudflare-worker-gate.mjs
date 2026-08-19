@@ -82,34 +82,56 @@ function changedPaths(repoRoot,parentSha,sha){return run("git",["diff","--name-o
 function packageContract(scope){const p=JSON.parse(readFileSync(resolve(process.cwd(),"package.json"),"utf8"));if(p.name!==`${scope}-worker`)throw new Error("WORKER_PACKAGE_SCOPE_MISMATCH");return {wranglerVersion:validateWranglerVersion(p.devDependencies?.wrangler)}}
 function emit(payload,stream=process.stdout){stream.write(`${JSON.stringify(payload)}\n`)}
 function printCaptured(result){if(result.stdout)process.stdout.write(result.stdout);if(result.stderr)process.stderr.write(result.stderr)}
+function safeFailure(value){return String(value||"UNKNOWN_FAILURE").replace(/[^0-9A-Za-z_.:,=-]/g,"_").slice(0,240)}
+function failureFromVerify(verify){const text=`${verify?.stderr||""}\n${verify?.stdout||""}`;const m=text.match(/TENCENT_POSTDEPLOY_E2E_FAILED:([^\r\n]+)/);return safeFailure(m?.[1]||`E2E_EXIT_${verify?.status??"UNKNOWN"}`)}
 
 function rollbackAdmin(wranglerVersion,message="Automatic rollback: Tencent production gate failed"){
   try{run("npx",["--yes",`wrangler@${wranglerVersion}`,"rollback","--message",message],{cwd:process.cwd(),stdio:"inherit"});emit({ok:true,code:"ADMIN_AUTOMATIC_ROLLBACK_COMPLETE"},process.stderr);return true}
   catch(error){emit({ok:false,code:"ADMIN_AUTOMATIC_ROLLBACK_FAILED",error:String(error?.message||error)},process.stderr);return false}
 }
 
-function capturedDeploy(wranglerVersion,defineArg){
+function capturedDeploy(wranglerVersion,defineArgs=[]){
   const args=["--yes",`wrangler@${wranglerVersion}`,"deploy"];
-  if(defineArg)args.push("--define",defineArg);
+  for(const defineArg of (Array.isArray(defineArgs)?defineArgs:[defineArgs]).filter(Boolean))args.push("--define",defineArg);
   const result=run("npx",args,{cwd:process.cwd(),encoding:"utf8",maxBuffer:4*1024*1024});
   printCaptured(result);
   return {result,url:parseWorkersDevUrl(`${result.stdout||""}\n${result.stderr||""}`)};
 }
 
+function publishFailureAttestation(wranglerVersion,context,failureCode){
+  try{
+    const clean=safeFailure(failureCode);
+    const deployed=capturedDeploy(wranglerVersion,[`TENCENT_PRODUCTION_E2E_FAILURE:'${clean}'`,`TENCENT_PRODUCTION_E2E_FAILED_COMMIT:'${context.sha}'`]);
+    emit({ok:false,code:"TENCENT_RUNTIME_E2E_FAILURE_ATTESTED",commit_sha:context.sha,worker_host:new URL(deployed.url).host,failure_code:clean,probe_persisted:false,agent_execution_enabled:false},process.stderr);
+    return true;
+  }catch(error){
+    if(error.stdout)process.stdout.write(error.stdout);
+    if(error.stderr)process.stderr.write(error.stderr);
+    rollbackAdmin(wranglerVersion,"Automatic rollback: failed to publish redacted Tencent E2E failure attestation");
+    return false;
+  }
+}
+
 function deployAdminWithRuntimeE2E(repoRoot,wranglerVersion,context){
   const probe=randomBytes(32).toString("hex");
   let candidate;
-  try{candidate=capturedDeploy(wranglerVersion,`TENCENT_DEPLOY_E2E_PROBE:'${probe}'`)}
+  try{candidate=capturedDeploy(wranglerVersion,[`TENCENT_DEPLOY_E2E_PROBE:'${probe}'`])}
   catch(error){if(error.stdout)process.stdout.write(error.stdout);if(error.stderr)process.stderr.write(error.stderr);throw error}
 
   const verify=spawnSync(process.execPath,[resolve(repoRoot,"scripts/tencent-postdeploy-e2e.mjs"),candidate.url],{cwd:repoRoot,encoding:"utf8",env:{...process.env,TENCENT_E2E_PROBE_TOKEN:probe},maxBuffer:4*1024*1024});
   printCaptured(verify);
-  if(verify.error){rollbackAdmin(wranglerVersion);throw verify.error}
-  if(verify.status!==0){const rolledBack=rollbackAdmin(wranglerVersion);const error=new Error(rolledBack?"TENCENT_RUNTIME_E2E_FAILED_ROLLED_BACK":"TENCENT_RUNTIME_E2E_FAILED_ROLLBACK_FAILED");error.exitCode=verify.status||1;throw error}
+  if(verify.error){
+    const published=publishFailureAttestation(wranglerVersion,context,"E2E_VERIFIER_SPAWN_ERROR");
+    const error=new Error(published?"TENCENT_RUNTIME_E2E_FAILED_DIAGNOSTIC_PUBLISHED":"TENCENT_RUNTIME_E2E_FAILED_DIAGNOSTIC_DEPLOY_FAILED");error.exitCode=1;throw error;
+  }
+  if(verify.status!==0){
+    const failure=failureFromVerify(verify),published=publishFailureAttestation(wranglerVersion,context,failure);
+    const error=new Error(published?"TENCENT_RUNTIME_E2E_FAILED_DIAGNOSTIC_PUBLISHED":"TENCENT_RUNTIME_E2E_FAILED_DIAGNOSTIC_DEPLOY_FAILED");error.exitCode=verify.status||1;throw error;
+  }
   emit({ok:true,code:"TENCENT_RUNTIME_E2E_CANDIDATE_PASS",commit_sha:context.sha,worker_host:new URL(candidate.url).host});
 
   let finalDeploy;
-  try{finalDeploy=capturedDeploy(wranglerVersion,`TENCENT_PRODUCTION_E2E_ATTESTED:'${context.sha}'`)}
+  try{finalDeploy=capturedDeploy(wranglerVersion,[`TENCENT_PRODUCTION_E2E_ATTESTED:'${context.sha}'`])}
   catch(error){rollbackAdmin(wranglerVersion,"Automatic rollback to live-tested Tencent candidate: clean attestation deploy failed");throw error}
 
   const attest=spawnSync(process.execPath,[resolve(repoRoot,"scripts/tencent-production-attestation-verify.mjs"),finalDeploy.url,context.sha],{cwd:repoRoot,encoding:"utf8",env:process.env,maxBuffer:4*1024*1024});
