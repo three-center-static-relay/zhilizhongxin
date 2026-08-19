@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "cf:build": "node ../scripts/tencent-failure-category-probe.mjs discovery 8eff4949cc373c859ea95d97c5c21c27551d89b3",
+    "cf:build": "node ../scripts/tencent-failure-category-probe.mjs discovery-exact 8eff4949cc373c859ea95d97c5c21c27551d89b3",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs admin preview",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs admin deploy",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
