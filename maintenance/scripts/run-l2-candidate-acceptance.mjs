@@ -14,7 +14,7 @@ function run(command,args,cwd,{stdio="pipe",stripCiOverride=false}={}){
   return r;
 }
 function main(){
-  console.log(JSON.stringify({event:"L2_PREBUILT_ADMIN_CANDIDATE_MODE",cross_worker_admin_write:false,secrets_redacted:true}));
+  console.log(JSON.stringify({event:"L2_STABLE_ADMIN_DEPLOYMENT_MODE",admin_candidate_upload:false,admin_candidate_staging:false,maintenance_candidate_staging:true,secrets_redacted:true}));
   run(process.execPath,[resolve(process.cwd(),"scripts/run-l2-candidate-acceptance-core.mjs")],process.cwd(),{stdio:"inherit",stripCiOverride:true});
 }
 if(import.meta.url===pathToFileURL(resolve(process.argv[1]||"")).href){

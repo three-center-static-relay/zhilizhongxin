@@ -1,6 +1,5 @@
 {
   "schema": "expert-l2-acceptance-v1",
   "enabled": true,
-  "request_id": "pr49-l2-prebuilt-admin-candidate-20260819",
-  "admin_candidate_tag": "2f8c742c689c"
+  "request_id": "pr49-l2-stable-admin-maintenance-candidate-20260819"
 }

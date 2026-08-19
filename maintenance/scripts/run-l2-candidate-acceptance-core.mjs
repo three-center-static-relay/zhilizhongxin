@@ -72,13 +72,18 @@ export function currentDeployment(payload){
   if(Math.abs(sum-100)>0.001)throw new Error("CURRENT_DEPLOYMENT_PERCENTAGE_INVALID");
   return rows;
 }
-export function stageSpecs(snapshot,candidate){
-  if(!UUID_PATTERN.test(candidate))throw new Error("CANDIDATE_VERSION_INVALID");
+export function stableVersion(snapshot){
   const stable=snapshot.find(v=>Math.abs(v.percentage-100)<0.001);
   if(!stable)throw new Error("CURRENT_DEPLOYMENT_NOT_100_STABLE");
   if(snapshot.some(v=>v.percentage>0&&v.id!==stable.id))throw new Error("CURRENT_DEPLOYMENT_HAS_ACTIVE_SPLIT");
-  if(candidate===stable.id)return snapshot;
-  return[{id:stable.id,percentage:100},{id:candidate,percentage:0}];
+  if(!UUID_PATTERN.test(stable.id))throw new Error("CURRENT_STABLE_VERSION_INVALID");
+  return stable.id;
+}
+export function stageSpecs(snapshot,candidate){
+  if(!UUID_PATTERN.test(candidate))throw new Error("CANDIDATE_VERSION_INVALID");
+  const stable=stableVersion(snapshot);
+  if(candidate===stable)return snapshot;
+  return[{id:stable,percentage:100},{id:candidate,percentage:0}];
 }
 function specs(rows){return rows.map(v=>`${v.id}@${v.percentage}%`)}
 function deploy(worker,rows,message){run(["versions","deploy",...specs(rows),"-y","--name",worker,"--message",message])}
@@ -94,7 +99,7 @@ async function waitCandidate(worker,tag,timeoutMs=90000){
 function snapshot(worker){return currentDeployment(runJson(["deployments","status","--name",worker,"--json"]))}
 export function validateReceipt(body,adminVersion,maintenanceVersion){
   if(body?.ok!==true)throw new Error(`L2_RESPONSE_NOT_OK:${body?.error||"unknown"}`);
-  if(body?.admin_version!==adminVersion)throw new Error("ADMIN_VERSION_OVERRIDE_NOT_APPLIED");
+  if(body?.admin_version!==adminVersion)throw new Error("ADMIN_STABLE_VERSION_NOT_OBSERVED");
   if(body?.maintenance_version!==maintenanceVersion)throw new Error("MAINTENANCE_VERSION_OVERRIDE_NOT_APPLIED");
   if(body?.transport!=="fetch-version-override")throw new Error("ADMIN_TRANSPORT_NOT_VERSION_OVERRIDE_FETCH");
   if(body?.maintenance_transport!=="fetch")throw new Error("MAINTENANCE_TRANSPORT_NOT_FETCH");
@@ -110,6 +115,7 @@ export function validateReceipt(body,adminVersion,maintenanceVersion){
   if((body.rollback_rehearsal?.mismatches||[]).length!==0)throw new Error("ROLLBACK_SNAPSHOT_MISMATCH");
   return{
     ok:true,
+    admin_mode:"stable-deployment",
     admin_version:adminVersion,
     maintenance_version:maintenanceVersion,
     route_versions:result.route_family.map(r=>({route_name:r.route_name,route_id:r.route_id,version_id:r.version_id,previous_version_id:r.previous_version_id||null})),
@@ -134,7 +140,7 @@ async function remoteHarness(adminVersion,maintenanceVersion,requestId){
     preview_urls:false,
     services:[{binding:"ADMIN_ACCEPTANCE",service:ADMIN,entrypoint:"AdminAcceptanceControl",props:{caller:"expert-l2-acceptance",capability:"expert-route-acceptance"}}]
   },null,2));
-  markPhase("remote-dev-start",{admin_version:adminVersion,maintenance_version:maintenanceVersion});
+  markPhase("remote-dev-start",{admin_mode:"stable-deployment",admin_version:adminVersion,maintenance_version:maintenanceVersion});
   const child=spawn("npx",["--yes",`wrangler@${WRANGLER}`,"dev","--remote","--config",resolve(dir,"wrangler.jsonc"),"--port","8787"],{stdio:["ignore","pipe","pipe"],env:{...process.env,CI:"1"}});
   let logs=""; child.stdout.on("data",d=>logs+=d);child.stderr.on("data",d=>logs+=d);
   try{
@@ -171,34 +177,28 @@ async function main(){
   const request=JSON.parse(readFileSync("l2-acceptance-request.json","utf8"));
   if(request?.schema!=="expert-l2-acceptance-v1"||request?.enabled!==true)throw new Error("L2_TRIGGER_INVALID");
   const maintenanceTag=String(process.env.WORKERS_CI_COMMIT_SHA||"").slice(0,12);
-  const adminCandidateTag=String(request.admin_candidate_tag||"").trim();
   if(!TAG_PATTERN.test(maintenanceTag))throw new Error("L2_MAINTENANCE_TAG_INVALID");
-  if(!TAG_PATTERN.test(adminCandidateTag))throw new Error("L2_ADMIN_CANDIDATE_TAG_INVALID");
   const requestId=String(request.request_id||`l2-${maintenanceTag}`);
   if(!/^[A-Za-z0-9._:-]{1,128}$/.test(requestId))throw new Error("L2_REQUEST_ID_INVALID");
-  markPhase("candidate-lookup-begin",{admin_candidate_tag:adminCandidateTag,maintenance_candidate_tag:maintenanceTag,request_id:requestId});
-  const adminCandidate=await waitCandidate(ADMIN,adminCandidateTag),maintenanceCandidate=await waitCandidate(MAINTENANCE,maintenanceTag);
-  markPhase("candidate-lookup-complete",{admin_candidate_tag:adminCandidateTag,maintenance_candidate_tag:maintenanceTag,admin_version:adminCandidate,maintenance_version:maintenanceCandidate});
+  markPhase("maintenance-candidate-lookup-begin",{maintenance_candidate_tag:maintenanceTag,request_id:requestId});
+  const maintenanceCandidate=await waitCandidate(MAINTENANCE,maintenanceTag);
   markPhase("snapshot-begin");
   const adminSnapshot=snapshot(ADMIN),maintenanceSnapshot=snapshot(MAINTENANCE);
-  markPhase("snapshot-complete");
-  let adminStaged=false,maintenanceStaged=false;
+  const adminVersion=stableVersion(adminSnapshot);
+  markPhase("snapshot-complete",{admin_mode:"stable-deployment",admin_version:adminVersion,maintenance_version:maintenanceCandidate});
+  let maintenanceStaged=false;
   try{
-    markPhase("admin-stage-begin");
-    deploy(ADMIN,stageSpecs(adminSnapshot,adminCandidate),`L2 0% admin candidate ${adminCandidateTag}`);adminStaged=true;
-    markPhase("admin-stage-complete");
     markPhase("maintenance-stage-begin");
     deploy(MAINTENANCE,stageSpecs(maintenanceSnapshot,maintenanceCandidate),`L2 0% maintenance candidate ${maintenanceTag}`);maintenanceStaged=true;
     markPhase("maintenance-stage-complete");
     await sleep(5000);
     markPhase("remote-harness-begin");
-    const receipt=await remoteHarness(adminCandidate,maintenanceCandidate,requestId);
-    console.log(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_PASS",admin_candidate_tag:adminCandidateTag,maintenance_candidate_tag:maintenanceTag,request_id:requestId,...receipt}));
+    const receipt=await remoteHarness(adminVersion,maintenanceCandidate,requestId);
+    console.log(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_PASS",admin_mode:"stable-deployment",maintenance_candidate_tag:maintenanceTag,request_id:requestId,...receipt}));
   }finally{
-    markPhase("restore-begin",{admin_staged:adminStaged,maintenance_staged:maintenanceStaged});
+    markPhase("restore-begin",{admin_staged:false,maintenance_staged:maintenanceStaged});
     const restoreErrors=[];
     if(maintenanceStaged){try{deploy(MAINTENANCE,maintenanceSnapshot,`L2 restore maintenance ${maintenanceTag}`)}catch(error){restoreErrors.push({worker:MAINTENANCE,error:String(error?.message||error)})}}
-    if(adminStaged){try{deploy(ADMIN,adminSnapshot,`L2 restore admin ${adminCandidateTag}`)}catch(error){restoreErrors.push({worker:ADMIN,error:String(error?.message||error)})}}
     if(restoreErrors.length)throw Object.assign(new Error("WORKER_DEPLOYMENT_RESTORE_FAILED"),{body:{restore_errors:restoreErrors}});
     markPhase("restore-complete");
   }

@@ -13,13 +13,13 @@ assert.equal(validateWranglerVersion("4.123.0"),"4.123.0");
 assert.throws(()=>validateWranglerVersion("^4.123.0"),/EXACT_WRANGLER_VERSION_REQUIRED/);
 assert.equal(validatePostAllowScript("maintenance","preview",null),null);
 assert.throws(()=>validatePostAllowScript("maintenance","preview","scripts/run-immediate-refresh.mjs"),/POST_ALLOW_SCRIPT_NOT_ALLOWED/);
-for(const scope of["admin","maintenance"]){
-  const command=wranglerCommand(scope,"preview","4.123.0",previewContext);
-  assert.deepEqual(command.slice(0,4),["--yes","wrangler@4.123.0","versions","upload"]);
-  assert.equal(command.includes("--dry-run"),false);
-  assert.equal(command[command.indexOf("--tag")+1],"aaaaaaaaaaaa");
+const maintenanceCommand=wranglerCommand("maintenance","preview","4.123.0",previewContext);
+assert.deepEqual(maintenanceCommand.slice(0,4),["--yes","wrangler@4.123.0","versions","upload"]);
+assert.equal(maintenanceCommand.includes("--dry-run"),false);
+assert.equal(maintenanceCommand[maintenanceCommand.indexOf("--tag")+1],"aaaaaaaaaaaa");
+for(const scope of["admin","governance"]){
+  assert.deepEqual(wranglerCommand(scope,"preview","4.123.0",previewContext),["--yes","wrangler@4.123.0","deploy","--dry-run"]);
 }
-assert.deepEqual(wranglerCommand("governance","preview","4.123.0",previewContext),["--yes","wrangler@4.123.0","deploy","--dry-run"]);
 assert.equal(shouldRunL2("maintenance","preview",["maintenance/l2-acceptance-request.json"]),true);
 assert.equal(shouldRunL2("maintenance","preview",["maintenance/src/index.js"]),false);
 assert.equal(shouldRunL2("admin","preview",["maintenance/l2-acceptance-request.json"]),false);
@@ -28,4 +28,4 @@ assert.equal(isRelevantPath("maintenance","maintenance/l2-acceptance-request.jso
 assert.equal(isRelevantPath("maintenance","scripts/cloudflare-worker-gate.mjs"),true);
 assert.equal(isRelevantPath("admin","maintenance/l2-acceptance-request.json"),false);
 assert.deepEqual(relevantPaths("governance",["admin/a.js","governance/z.js","governance/a.js","governance/a.js"]),["governance/a.js","governance/z.js"]);
-console.log(JSON.stringify({ok:true,suite:"cloudflare-worker-gate-contract",fail_closed_context:true,exact_wrangler_pin:true,per_worker_path_isolation:true,build_side_effect_post_hooks_disabled:true,admin_and_maintenance_preview_create_tagged_versions:true,governance_preview_remains_dry_run:true,l2_requires_explicit_trigger_path:true,l2_only_runs_in_maintenance_preview:true}));
+console.log(JSON.stringify({ok:true,suite:"cloudflare-worker-gate-contract",fail_closed_context:true,exact_wrangler_pin:true,per_worker_path_isolation:true,build_side_effect_post_hooks_disabled:true,maintenance_preview_creates_tagged_version:true,admin_preview_is_dry_run_due_durable_object_exports:true,governance_preview_remains_dry_run:true,l2_requires_explicit_trigger_path:true,l2_only_runs_in_maintenance_preview:true}));
