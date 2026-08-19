@@ -53,6 +53,10 @@ async function fetchPreview(previewUrl,commit,versionId){
   }
   throw last||new Error("STATELESS_PREVIEW_NOT_READY");
 }
+function config(name,main,commit){return{
+  name,main,compatibility_date:"2026-08-18",compatibility_flags:["nodejs_compat"],
+  workers_dev:false,preview_urls:true,version_metadata:{binding:"CF_VERSION_METADATA"},vars:{L2_COMMIT_SHA:commit}
+}}
 
 async function main(){
   mark("trigger-read");
@@ -66,33 +70,33 @@ async function main(){
   const workerName=`l2-admin-preview-${tag}`;
   const dir=resolve(".l2-stateless-preview");
   const outputPath=resolve(dir,"wrangler-output.ndjson");
+  const scaffoldConfig=resolve(dir,"wrangler.scaffold.jsonc");
+  const candidateConfig=resolve(dir,"wrangler.candidate.jsonc");
   rmSync(dir,{recursive:true,force:true});mkdirSync(dir,{recursive:true});
-  writeFileSync(resolve(dir,"worker.mjs"),`export default{fetch(request,env){const u=new URL(request.url);if(request.method!=="GET"||u.pathname!=="/health")return new Response("not found",{status:404});return Response.json({ok:true,commit_sha:env.L2_COMMIT_SHA,version_id:env.CF_VERSION_METADATA?.id||null,stateless:true})}};\n`);
-  writeFileSync(resolve(dir,"wrangler.jsonc"),JSON.stringify({
-    name:workerName,
-    main:"worker.mjs",
-    compatibility_date:"2026-08-18",
-    compatibility_flags:["nodejs_compat"],
-    workers_dev:true,
-    preview_urls:true,
-    version_metadata:{binding:"CF_VERSION_METADATA"},
-    vars:{L2_COMMIT_SHA:commit}
-  },null,2));
+  writeFileSync(resolve(dir,"scaffold.mjs"),`export default{fetch(){return new Response("not found",{status:404})}};\n`);
+  writeFileSync(resolve(dir,"candidate.mjs"),`export default{fetch(request,env){const u=new URL(request.url);if(request.method!=="GET"||u.pathname!=="/health")return new Response("not found",{status:404});return Response.json({ok:true,commit_sha:env.L2_COMMIT_SHA,version_id:env.CF_VERSION_METADATA?.id||null,stateless:true})}};\n`);
+  writeFileSync(scaffoldConfig,JSON.stringify(config(workerName,"scaffold.mjs",commit),null,2));
+  writeFileSync(candidateConfig,JSON.stringify(config(workerName,"candidate.mjs",commit),null,2));
 
-  let uploaded=false;let primaryError=null;let receipt=null;
+  let workerCreated=false;let primaryError=null;let receipt=null;
   try{
-    mark("version-upload-begin",{worker:workerName,candidate_tag:tag,stateless:true,preview_urls:true});
-    run(["versions","upload","--tag",tag,"--preview-alias",`p-${tag}`,"--config",resolve(dir,"wrangler.jsonc")],{cwd:dir,env:{WRANGLER_OUTPUT_FILE_PATH:outputPath}});
-    uploaded=true;
+    mark("scaffold-deploy-begin",{worker:workerName,workers_dev:false,preview_urls:true,no_routes:true,stateless:true});
+    run(["deploy","--config",scaffoldConfig],{cwd:dir});
+    workerCreated=true;
+    mark("scaffold-deploy-complete",{worker:workerName,production_route:false,workers_dev:false});
+
+    mark("candidate-version-upload-begin",{worker:workerName,candidate_tag:tag,stateless:true,preview_urls:true});
+    rmSync(outputPath,{force:true});
+    run(["versions","upload","--tag",tag,"--preview-alias",`p-${tag}`,"--config",candidateConfig],{cwd:dir,env:{WRANGLER_OUTPUT_FILE_PATH:outputPath}});
     const parsed=parseVersionUploadOutput(readFileSync(outputPath,"utf8"));
-    mark("version-upload-complete",{worker:workerName,version_id:parsed.versionId,preview_url_present:true});
+    mark("candidate-version-upload-complete",{worker:workerName,version_id:parsed.versionId,preview_url_present:true});
     const body=await fetchPreview(parsed.previewUrl,commit,parsed.versionId);
     mark("preview-http-verified",{worker:workerName,version_id:parsed.versionId,http_ok:true});
     receipt={worker_name:workerName,version_id:parsed.versionId,preview_url_verified:true,commit_sha:body.commit_sha};
   }catch(error){primaryError=error}
 
   const cleanupErrors=[];
-  if(uploaded){
+  if(workerCreated){
     try{
       mark("cleanup-delete-begin",{worker:workerName});
       run(["delete","--name",workerName],{cwd:dir});
@@ -103,7 +107,7 @@ async function main(){
   if(primaryError)throw Object.assign(primaryError,{cleanup_errors:cleanupErrors});
   if(cleanupErrors.length)throw Object.assign(new Error("STATELESS_PREVIEW_CLEANUP_FAILED"),{cleanup_errors:cleanupErrors});
 
-  console.log(JSON.stringify({event:"L2_STATELESS_VERSION_PREVIEW_PROBE_PASS",ok:true,...receipt,stateless_worker:true,durable_object_implemented:false,preview_url:true,production_deployment_created:false,production_traffic_changed:false,temporary_worker_deleted:true,secret_used:false,ai_gateway_called:false,dynamic_routes_mutated:false,secrets_redacted:true}));
+  console.log(JSON.stringify({event:"L2_STATELESS_VERSION_PREVIEW_PROBE_PASS",ok:true,...receipt,scaffold_first_deployment:true,scaffold_workers_dev:false,scaffold_routes:false,stateless_worker:true,durable_object_implemented:false,preview_url:true,existing_production_workers_mutated:false,existing_production_traffic_changed:false,temporary_worker_deleted:true,secret_used:false,ai_gateway_called:false,dynamic_routes_mutated:false,secrets_redacted:true}));
 }
 if(import.meta.url===pathToFileURL(resolve(process.argv[1]||"")).href)main().catch(error=>{
   console.error(JSON.stringify({event:"L2_STATELESS_VERSION_PREVIEW_PROBE_FAIL",phase,error:String(error?.message||error),cleanup_errors:error?.cleanup_errors||[],secrets_redacted:true}));
