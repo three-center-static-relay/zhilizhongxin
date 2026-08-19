@@ -139,7 +139,7 @@ export function validateReceipt(body,maintenanceVersion,adminCommit){
   if((body.rollback_rehearsal?.mismatches||[]).length!==0)throw new Error("ROLLBACK_SNAPSHOT_MISMATCH");
   return{
     ok:true,
-    admin_mode:"remote-dev-multiconfig",
+    admin_mode:"remote-dev-ctx-exports",
     admin_candidate_commit:adminCommit,
     admin_version:adminVersion,
     maintenance_version:maintenanceVersion,
@@ -157,14 +157,17 @@ function prepareAdminCandidate(name,adminCommit){
   if(!COMMIT_PATTERN.test(adminCommit))throw new Error("L2_ADMIN_CANDIDATE_COMMIT_INVALID");
   const dir=resolve(".l2-admin-candidate");
   rmSync(dir,{recursive:true,force:true});mkdirSync(dir,{recursive:true});
-  writeFileSync(resolve(dir,"worker.mjs"),`export {AdminAcceptanceControl} from "../../admin/src/production-superguard.js";\nexport default{fetch(){return Response.json({ok:false,error:"CANDIDATE_HTTP_DISABLED"},{status:404})}};\n`);
+  writeFileSync(resolve(dir,"worker.mjs"),`import {AdminAcceptanceControl} from "../../admin/src/production-superguard.js";
+export {AdminAcceptanceControl};
+export default{async fetch(request,env,ctx){const u=new URL(request.url);if(u.pathname==="/health")return Response.json({ok:true});if(request.method==="POST"&&u.pathname==="/run"){const body=await request.text();const h=new Headers({"content-type":"application/json","accept":"application/json"});const o=request.headers.get("${OVERRIDE_HEADER}");if(o)h.set("${OVERRIDE_HEADER}",o);const control=ctx.exports.AdminAcceptanceControl({props:{caller:"expert-l2-acceptance",capability:"expert-route-acceptance"}});return control.fetch(new Request("https://admin.accept/v1/control/expert-route/refresh",{method:"POST",headers:h,body}))}return Response.json({ok:false,error:"NOT_FOUND"},{status:404})}};
+`);
   const configPath=resolve(dir,"wrangler.jsonc");
   writeFileSync(configPath,JSON.stringify({
     name,
     account_id:ACCOUNT_ID,
     main:"worker.mjs",
     compatibility_date:"2026-08-18",
-    compatibility_flags:["nodejs_compat"],
+    compatibility_flags:["nodejs_compat","enable_ctx_exports"],
     workers_dev:false,
     preview_urls:false,
     services:[{binding:"MAINTENANCE_CONTROL",service:MAINTENANCE,props:{caller:"admin-worker",capability:"expert-route-refresh"}}],
@@ -175,21 +178,8 @@ function prepareAdminCandidate(name,adminCommit){
 }
 
 async function remoteHarness(adminCandidate,maintenanceVersion,requestId){
-  const dir=resolve(".l2-runtime");
-  rmSync(dir,{recursive:true,force:true});mkdirSync(dir,{recursive:true});
-  const runtimeConfigPath=resolve(dir,"wrangler.jsonc");
-  writeFileSync(resolve(dir,"worker.mjs"),`export default{async fetch(request,env){const u=new URL(request.url);if(u.pathname==="/health")return Response.json({ok:true});if(request.method==="POST"&&u.pathname==="/run"){const body=await request.text();const h=new Headers({"content-type":"application/json","accept":"application/json"});const o=request.headers.get("${OVERRIDE_HEADER}");if(o)h.set("${OVERRIDE_HEADER}",o);return env.ADMIN_ACCEPTANCE.fetch(new Request("https://admin.accept/v1/control/expert-route/refresh",{method:"POST",headers:h,body}))}return Response.json({ok:false,error:"NOT_FOUND"},{status:404})}};`);
-  writeFileSync(runtimeConfigPath,JSON.stringify({
-    name:`expert-l2-${Date.now().toString(36)}`.slice(0,48),
-    account_id:ACCOUNT_ID,
-    main:"worker.mjs",
-    compatibility_date:"2026-08-18",
-    workers_dev:false,
-    preview_urls:false,
-    services:[{binding:"ADMIN_ACCEPTANCE",service:adminCandidate.name,entrypoint:"AdminAcceptanceControl",props:{caller:"expert-l2-acceptance",capability:"expert-route-acceptance"}}]
-  },null,2));
-  markPhase("remote-dev-start",{admin_mode:"remote-dev-multiconfig",admin_service:adminCandidate.name,admin_candidate_commit:adminCandidate.adminCommit,maintenance_version:maintenanceVersion,persistent_admin_write:false});
-  const child=spawn("npx",["--yes",`wrangler@${WRANGLER}`,"dev","--remote","--config",runtimeConfigPath,"--config",adminCandidate.configPath,"--port","8787"],{stdio:["ignore","pipe","pipe"],env:{...process.env,CI:"1"}});
+  markPhase("remote-dev-start",{admin_mode:"remote-dev-ctx-exports",admin_service:adminCandidate.name,admin_candidate_commit:adminCandidate.adminCommit,maintenance_version:maintenanceVersion,persistent_admin_write:false,ctx_exports_loopback:true});
+  const child=spawn("npx",["--yes",`wrangler@${WRANGLER}`,"dev","--remote","--config",adminCandidate.configPath,"--port","8787"],{stdio:["ignore","pipe","pipe"],env:{...process.env,CI:"1"}});
   let logs=""; child.stdout.on("data",d=>logs+=d);child.stderr.on("data",d=>logs+=d);
   try{
     const readyTimeout=boundedTimeout(REMOTE_READY_TIMEOUT_MS,true),end=Date.now()+readyTimeout;let ready=false;
@@ -204,7 +194,7 @@ async function remoteHarness(adminCandidate,maintenanceVersion,requestId){
       await sleep(1500);
     }
     if(!ready)throw new Error(`REMOTE_DEV_NOT_READY:${logs.slice(-2000)}`);
-    markPhase("remote-dev-ready",{admin_service:adminCandidate.name});
+    markPhase("remote-dev-ready",{admin_service:adminCandidate.name,ctx_exports_loopback:true});
     const override=`${MAINTENANCE}="${maintenanceVersion}"`;
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),boundedTimeout(REMOTE_RUN_TIMEOUT_MS,true));
     let response;
@@ -221,7 +211,6 @@ async function remoteHarness(adminCandidate,maintenanceVersion,requestId){
     return validateReceipt(body,maintenanceVersion,adminCandidate.adminCommit);
   }finally{
     child.kill("SIGTERM");await Promise.race([new Promise(r=>child.once("exit",r)),sleep(5000)]);if(child.exitCode===null)child.kill("SIGKILL");
-    rmSync(dir,{recursive:true,force:true});
   }
 }
 
@@ -240,7 +229,7 @@ async function main(){
   const maintenanceCandidate=await waitCandidate(MAINTENANCE,maintenanceTag);
   markPhase("snapshot-begin");
   const maintenanceSnapshot=snapshot(MAINTENANCE);
-  markPhase("snapshot-complete",{admin_mode:"remote-dev-multiconfig",maintenance_version:maintenanceCandidate});
+  markPhase("snapshot-complete",{admin_mode:"remote-dev-ctx-exports",maintenance_version:maintenanceCandidate});
 
   const candidateName=adminCandidateWorkerName(maintenanceTag,Date.now().toString(36));
   const adminCandidate=prepareAdminCandidate(candidateName,adminCommit);
@@ -271,6 +260,6 @@ async function main(){
   }
   if(cleanupErrors.length)throw Object.assign(new Error("L2_CLEANUP_FAILED"),{body:{cleanup_errors:cleanupErrors},phase:"restore"});
   if(!receipt?.ok)throw Object.assign(new Error("L2_RECEIPT_MISSING"),{phase:"remote-harness"});
-  console.log(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_PASS",admin_mode:"remote-dev-multiconfig",admin_candidate_commit:adminCommit,maintenance_candidate_tag:maintenanceTag,request_id:requestId,...receipt}));
+  console.log(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_PASS",admin_mode:"remote-dev-ctx-exports",admin_candidate_commit:adminCommit,maintenance_candidate_tag:maintenanceTag,request_id:requestId,...receipt}));
 }
 if(import.meta.url===pathToFileURL(resolve(process.argv[1]||"")).href)main().catch(error=>{console.error(JSON.stringify({event:"L2_EXPERT_ROUTE_ACCEPTANCE_FAIL",phase:error?.phase||currentPhase,error:String(error?.message||error),details:error?.body||null,secrets_redacted:true}));process.exitCode=1});

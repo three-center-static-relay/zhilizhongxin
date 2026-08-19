@@ -14,7 +14,7 @@ function run(command,args,cwd,{stdio="pipe",stripCiOverride=false}={}){
   return r;
 }
 function main(){
-  console.log(JSON.stringify({event:"L2_ADMIN_REMOTE_DEV_MULTICONFIG_MODE",admin_persistent_worker_write:false,admin_versions_upload:false,admin_deploy:false,admin_delete:false,admin_remote_dev_multiconfig:true,maintenance_candidate_staging:true,secrets_redacted:true}));
+  console.log(JSON.stringify({event:"L2_ADMIN_REMOTE_DEV_CTX_EXPORTS_MODE",admin_persistent_worker_write:false,admin_versions_upload:false,admin_deploy:false,admin_delete:false,admin_remote_dev_ctx_exports:true,maintenance_candidate_staging:true,secrets_redacted:true}));
   run(process.execPath,[resolve(process.cwd(),"scripts/run-l2-candidate-acceptance-core.mjs")],process.cwd(),{stdio:"inherit",stripCiOverride:true});
 }
 if(import.meta.url===pathToFileURL(resolve(process.argv[1]||"")).href){
