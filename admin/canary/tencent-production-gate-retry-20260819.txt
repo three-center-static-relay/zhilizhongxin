@@ -1,0 +1,4 @@
+Purpose: clean one-shot retrigger of the existing Tencent production gate after canonical Admin E2E target fix.
+Behavior change: none.
+Safety: existing fail-closed production gate remains authoritative; no secret values are stored here.
+Trigger: post-PR Admin preview synchronization.
