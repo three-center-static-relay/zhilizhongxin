@@ -8,6 +8,7 @@ const WRANGLER="4.123.0";
 const ADMIN="admin-worker";
 const MAINTENANCE="maintenance-worker";
 const DIAG_PREFIX="pr49-l2-snapshot-bisect-";
+const ADMIN_DIAG_PREFIX="pr49-l2-admin-candidate-bisect-";
 const TAG_PATTERN=/^[a-f0-9]{12}$/i;
 const UUID_PATTERN=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -79,6 +80,12 @@ function main(){
   if(!TAG_PATTERN.test(tag))throw new Error("L2_TAG_INVALID");
   const admin=ensureAdminCandidate(tag);
   console.log(JSON.stringify({event:"L2_SELF_CONTAINED_ADMIN_CANDIDATE_READY",tag,...admin,secrets_redacted:true}));
+  const request=JSON.parse(readFileSync(resolve(process.cwd(),"l2-acceptance-request.json"),"utf8"));
+  const requestId=String(request?.request_id||"");
+  if(requestId.startsWith(ADMIN_DIAG_PREFIX)){
+    console.log(JSON.stringify({event:"L2_ADMIN_CANDIDATE_BISECT_PASS",tag,request_id:requestId,admin_version:admin.version_id,reused:admin.reused,secrets_redacted:true}));
+    return;
+  }
   if(snapshotBisect(tag))return;
   run(process.execPath,[resolve(process.cwd(),"scripts/run-l2-candidate-acceptance-core.mjs")],process.cwd(),{stdio:"inherit",stripCiOverride:true});
 }
