@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { Annotation, StateGraph, START, END } from "@langchain/langgraph";
+import { Annotation, StateGraph, START, END } from "@langchain/langgraph/web";
 
 const TestState = Annotation.Root({
   value: Annotation(),
@@ -26,7 +26,8 @@ const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url
 
 assert.equal(pkg.dependencies?.["@langchain/langgraph"], "1.4.10");
 assert.equal(pkg.dependencies?.["@langchain/core"], "1.2.6");
-assert.match(runtimeSource, /from "@langchain\/langgraph"/);
+assert.match(runtimeSource, /from "@langchain\/langgraph\/web"/);
+assert.doesNotMatch(runtimeSource, /from "@langchain\/langgraph"/);
 assert.match(runtimeSource, /new StateGraph\(/);
 assert.match(runtimeSource, /collectCapabilityManifests/);
 assert.match(runtimeSource, /compileTaskPlan/);
