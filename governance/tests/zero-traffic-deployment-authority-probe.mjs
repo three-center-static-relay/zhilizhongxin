@@ -1,3 +1,4 @@
+// PR #151 observable trigger: runtime smoke semantics unchanged.
 import assert from "node:assert/strict";
 import {mkdtempSync,readFileSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
