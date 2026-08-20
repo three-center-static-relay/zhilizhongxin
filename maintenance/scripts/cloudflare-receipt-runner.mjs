@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+import {spawn} from "node:child_process";
+import {resolve} from "node:path";
+import {pathToFileURL} from "node:url";
+import {clean,extractSignal,publishWorkersDevReceipt} from "./cloudflare-workersdev-receipt.mjs";
+function emit(row,stream=process.stdout){stream.write(`${JSON.stringify({...row,secrets_redacted:true})}\n`)}
+function publish(scope,mode,state,signal){const result=publishWorkersDevReceipt({scope,mode,state,signal});emit({event:"CLOUDFLARE_WORKERSDEV_RECEIPT",...result},result.ok?process.stdout:process.stderr);return result}
+function wire(stream,target,signal){let buffer="";stream?.on("data",chunk=>{const text=String(chunk);target.write(text);buffer+=text;let i;while((i=buffer.indexOf("\n"))>=0){const line=buffer.slice(0,i);buffer=buffer.slice(i+1);extractSignal(line,signal)}});stream?.on("end",()=>{if(buffer.trim())extractSignal(buffer,signal)})}
+async function main(){const [scope,mode,command,...args]=process.argv.slice(2);if(!scope||!mode||!command)throw new Error("RECEIPT_RUNNER_USAGE");const signal={phase:"start"};publish(scope,mode,"pending",signal);const child=spawn(command,args,{cwd:process.cwd(),env:process.env,stdio:["inherit","pipe","pipe"],shell:false});wire(child.stdout,process.stdout,signal);wire(child.stderr,process.stderr,signal);const result=await new Promise(resolve=>{let settled=false;child.once("error",error=>{if(settled)return;settled=true;resolve({code:1,spawn_error:clean(error?.message||error,100)})});child.once("close",(code,signalName)=>{if(settled)return;settled=true;resolve({code:code??1,signalName})})});signal.exit_code=result.code;if(result.spawn_error){signal.phase="child-spawn-failed";signal.error_code="CHILD_SPAWN_FAILED"}if(result.signalName)signal.process_signal=clean(result.signalName,40);publish(scope,mode,result.code===0?"success":"failure",signal);process.exitCode=result.code}
+const invoked=process.argv[1]?pathToFileURL(resolve(process.argv[1])).href:"";if(import.meta.url===invoked)main().catch(error=>{emit({event:"CLOUDFLARE_RECEIPT_RUNNER_FAIL",error_code:"RECEIPT_RUNNER_FAILED"},process.stderr);process.exitCode=1});

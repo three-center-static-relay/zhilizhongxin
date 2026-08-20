@@ -1,0 +1,16 @@
+import assert from "node:assert/strict";
+import {buildReceipt,deploymentEnvironment,extractSignal,observerUrl,publishWorkersDevReceipt,renderReceiptWorker,workerNameForScope} from "../scripts/cloudflare-workersdev-receipt.mjs";
+const env={WORKERS_CI_COMMIT_SHA:"a".repeat(40),WORKERS_CI_BUILD_UUID:"build-123",WRANGLER_CI_OVERRIDE_NAME:"maintenance-worker",SOME_OTHER:"ok"};
+const signal={};extractSignal('{"event":"L2_BROKER_READONLY_CANARY_RETRY","phase":"broker-read-retry","error_code":"RPC_TIMEOUT","attempt":4,"broker_rpc":false,"routes_readable":false}',signal);
+const receipt=buildReceipt({scope:"maintenance",mode:"preview",state:"failure",signal,env});
+assert.equal(receipt.commit_sha,"a".repeat(40));
+assert.equal(receipt.error_code,"RPC_TIMEOUT");
+assert.equal(receipt.attempt,4);
+assert.equal(receipt.broker_rpc,false);
+assert.equal(workerNameForScope("maintenance"),"maintenance-build-receipt");
+assert.equal(observerUrl("maintenance"),"https://maintenance-build-receipt.a15280020511.workers.dev");
+const deployEnv=deploymentEnvironment(env);assert.equal(deployEnv.WRANGLER_CI_OVERRIDE_NAME,undefined);assert.equal(deployEnv.SOME_OTHER,"ok");
+const source=renderReceiptWorker(receipt);assert.ok(source.includes(receipt.receipt_digest));assert.ok(!source.includes("WRANGLER_CI_OVERRIDE_NAME"));
+let captured=null;const fakeRunner=(cmd,args,opts)=>{captured={cmd,args,opts};return{status:0,stdout:"",stderr:""}};
+const result=publishWorkersDevReceipt({scope:"maintenance",mode:"preview",state:"failure",signal,env,runner:fakeRunner});assert.equal(result.ok,true);assert.equal(captured.cmd,"npx");assert.equal(captured.opts.env.WRANGLER_CI_OVERRIDE_NAME,undefined);
+console.log(JSON.stringify({ok:true,suite:"maintenance-cloudflare-workersdev-receipt-contract",no_new_secret:true,observer_worker_isolated:true,raw_error_not_published:true,secrets_redacted:true}));
