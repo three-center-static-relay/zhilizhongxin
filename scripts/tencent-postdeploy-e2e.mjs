@@ -4,15 +4,17 @@ import {validateTencentRuntimeReceipt} from "./cloudflare-worker-gate.mjs";
 
 // Keep live runtime verification fail-closed across Node HTTP client transport anomalies.
 // Three attempts are sufficient for bounded transient recovery; more retries amplify
-// Agent/Sandbox pressure and are intentionally forbidden.
+// Agent/Sandbox pressure and are intentionally forbidden. Give the canonical workers.dev
+// deployment a short bounded propagation window before the first probe.
 const base=String(process.argv[2]||"").replace(/\/+$/,""),probe=process.env.TENCENT_E2E_PROBE_TOKEN||"";
-const MAX_ATTEMPTS=3;
+const MAX_ATTEMPTS=3,INITIAL_SETTLE_MS=7000,RETRY_DELAY_MS=5000;
 assert.match(base,/^https:\/\/[a-z0-9.-]+\.workers\.dev$/i,"VALID_WORKERS_DEV_URL_REQUIRED");
 assert.match(probe,/^[a-f0-9]{64}$/i,"VALID_DEPLOY_PROBE_REQUIRED");
 
 const safe=x=>String(x||"").replace(/[^0-9A-Za-z_.:,=-]/g,"_").slice(0,240);
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const headers={"x-tencent-deploy-probe":probe,"accept":"application/json"};
+const sandboxCodes=body=>[...new Set((JSON.stringify(body||{}).match(/SANDBOX_[A-Z0-9_]+/g)||[]))].slice(0,4);
 
 async function fetchJson(url,timeoutMs=90000){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
@@ -68,6 +70,7 @@ async function requestJson(url){
   }
 }
 
+await sleep(INITIAL_SETTLE_MS);
 let lastError="NO_ATTEMPT";
 for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
   try{
@@ -79,6 +82,8 @@ for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
         suite:"tencent-cloudflare-runtime-e2e",
         attempt,
         max_attempts:MAX_ATTEMPTS,
+        initial_settle_ms:INITIAL_SETTLE_MS,
+        retry_delay_ms:RETRY_DELAY_MS,
         http_status:result.status,
         transport:result.transport,
         validation:receipt.validation,
@@ -93,7 +98,8 @@ for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
     const failedChecks=Array.isArray(body?.checks)?body.checks.filter(x=>x?.ok!==true).map(x=>String(x?.name||"unknown")):[];
     const upstreamError=safe(body?.error||body?.message||"VALIDATION_FAIL");
     const discoveryAttempts=Array.isArray(body?.details?.attempts)?body.details.attempts.map(x=>safe(x)).filter(Boolean):[];
-    lastError=safe(`HTTP_${result.status}:${upstreamError}${failedChecks.length?`:FAILED=${failedChecks.join(",")}`:""}${discoveryAttempts.length?`:DISCOVERY=${discoveryAttempts.join(",")}`:""}`);
+    const codes=sandboxCodes(body);
+    lastError=safe(`HTTP_${result.status}:${upstreamError}${failedChecks.length?`:FAILED=${failedChecks.join(",")}`:""}${codes.length?`:SANDBOX=${codes.join(",")}`:""}${discoveryAttempts.length?`:DISCOVERY=${discoveryAttempts.join(",")}`:""}`);
     console.error(JSON.stringify({
       ok:false,
       suite:"tencent-cloudflare-runtime-e2e",
@@ -103,6 +109,7 @@ for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
       transport:result.transport,
       error:upstreamError,
       failed_checks:failedChecks,
+      sandbox_error_codes:codes,
       discovery_attempt_count:discoveryAttempts.length,
       discovery_reason_codes:discoveryAttempts.map(x=>x.split(":").slice(1).join(":")),
       secret_values_read:false
@@ -110,7 +117,7 @@ for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
   }catch(error){
     lastError=error?.name==="AbortError"?"E2E_REQUEST_TIMEOUT":safe(String(error?.message||error));
   }
-  if(attempt<MAX_ATTEMPTS)await sleep(2000);
+  if(attempt<MAX_ATTEMPTS)await sleep(RETRY_DELAY_MS);
 }
 // Emit exactly one machine-readable failure marker. Avoid an uncaught Error stack,
 // because Node echoes the source template before the runtime message and can poison
