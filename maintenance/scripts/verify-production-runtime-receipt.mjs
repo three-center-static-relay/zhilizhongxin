@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import {request as httpsRequest} from "node:https";
 
+// PR #118 observable trigger: zero-write production runtime receipt verification only.
 const URL="https://maintenance-worker.a15280020511.workers.dev/health";
 const ATTEMPTS=8,DELAY_MS=5000,TIMEOUT_MS=10000;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
