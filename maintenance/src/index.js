@@ -1,4 +1,5 @@
 import {aiGatewayCredentialRoutesList} from "./ai-gateway-credential-read.js";
+import {aiGatewayDynamicRouteWriteCanary} from "./ai-gateway-write-canary.js";
 export {AIGatewayCredentialRead} from "./ai-gateway-credential-read.js";
 
 const SERVICE="maintenance-worker",API_VERSION="2026-08-20.credential-read-v2";
@@ -10,6 +11,7 @@ async function probe(env,n,path){const b=binding(env,n);if(!b?.fetch)return{ok:f
 function store(env){return env.MAINTENANCE_STATE.get(env.MAINTENANCE_STATE.idFromName("global"))}
 async function ss(env,p,m="GET",b){const i={method:m,headers:{"content-type":"application/json"}};if(b!==undefined)i.body=JSON.stringify(b);const r=await store(env).fetch(new Request(`https://state.internal${p}`,i));return{http:r.status,...await r.json()}}
 function constantTimeEqual(a,b){a=String(a||"");b=String(b||"");if(a.length!==b.length)return false;let diff=0;for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);return diff===0}
+function safeCode(value){return String(value||"UNKNOWN").replace(/[^0-9A-Za-z_.:-]/g,"_").slice(0,160)}
 function credentialFailureCode(error){const m=String(error?.message||error||"").toUpperCase();if(m.includes("NOT_CONFIGURED"))return"AI_GATEWAY_CREDENTIAL_NOT_CONFIGURED";if(m.includes("UPSTREAM_401")||m.includes("UPSTREAM_403"))return"AI_GATEWAY_CREDENTIAL_PERMISSION";if(m.includes("UPSTREAM_404"))return"AI_GATEWAY_CREDENTIAL_UPSTREAM_NOT_FOUND";if(m.includes("UPSTREAM_429"))return"AI_GATEWAY_CREDENTIAL_RATE_LIMIT";if(m.includes("TIMEOUT"))return"AI_GATEWAY_CREDENTIAL_TIMEOUT";return"AI_GATEWAY_CREDENTIAL_READ_FAILED"}
 async function probeAiGatewayControl(env){
   let timer;
@@ -32,15 +34,29 @@ async function probeAdminControlRoundtrip(env){
   }catch(error){return{ok:false,binding:true,service_binding:false,transport:"service-binding-fetch",routes_readable:false,error_code:String(error?.name==="AbortError"?"ADMIN_CONTROL_ROUNDTRIP_TIMEOUT":"ADMIN_CONTROL_ROUNDTRIP_FAILED")}}finally{clearTimeout(timer)}
 }
 async function run(env,trigger){const owner=`${trigger}:${Math.floor(Date.now()/60000)}`,a=await ss(env,"/acquire","POST",{owner});if(!a.ok)return{ok:false,skipped:true,reason:"BUSY"};try{const before=(await ss(env,"/latest")).latest||null,checks=[];for(const n of ["governance","intelligence","compute","expert"]){for(const p of ["/health","/v1/policy","/v1/capabilities","/source"]){checks.push({center:n,path:p,...await probe(env,n,p)})}}const control_plane=await probeAiGatewayControl(env),ok=checks.every(x=>x.ok)&&control_plane.ok,failure_streak=ok?0:Math.max(0,Number(before?.failure_streak||0))+1,status=ok?"healthy":failure_streak===1?"degraded":"persistent_failure",failed_checks=checks.filter(x=>!x.ok),rec={ok,status,trigger,checked_at:now(),failure_streak,failed_checks,checks,control_plane,next_action:ok?"none":failure_streak===1?"retry_next_schedule":"credential_recovery_required",policy:POLICY,secrets_redacted:true};await ss(env,"/latest","POST",rec);return rec}finally{await ss(env,"/release","POST",{owner})}}
-async function runtimeSelftest(req,env){
+function authorizeProbe(req,env){
   const expected=String(env.MAINTENANCE_RUNTIME_E2E_PROBE||"");
-  if(!expected)return json({ok:false,error:"NOT_FOUND"},404);
+  if(!expected)return{ok:false,response:json({ok:false,error:"NOT_FOUND"},404)};
   const supplied=req.headers.get("x-maintenance-e2e-probe")||"";
-  if(!constantTimeEqual(expected,supplied))return json({ok:false,error:"UNAUTHORIZED"},401);
+  if(!constantTimeEqual(expected,supplied))return{ok:false,response:json({ok:false,error:"UNAUTHORIZED"},401)};
+  return{ok:true};
+}
+async function runtimeSelftest(req,env){
+  const auth=authorizeProbe(req,env);if(!auth.ok)return auth.response;
   const control=await probeAiGatewayControl(env);
   const roundtrip=await probeAdminControlRoundtrip(env);
   const ok=control.ok&&control.credential_broker&&control.routes_readable&&roundtrip.ok&&roundtrip.binding&&roundtrip.service_binding&&roundtrip.routes_readable;
   return json({ok,selftest:"maintenance-ai-gateway-credential-read-v2",service:SERVICE,ai_gateway_control:{credential_broker:control.credential_broker,routes_readable:control.routes_readable,credential_source:control.credential_source,error_code:control.error_code},admin_control_roundtrip:{binding:roundtrip.binding,service_binding:roundtrip.service_binding,transport:roundtrip.transport,routes_readable:roundtrip.routes_readable,error_code:roundtrip.error_code},production_worker_mutated:false,production_worker_traffic_changed:false,dynamic_route_mutation:false,secrets_redacted:true},ok?200:502)
 }
-export default{async fetch(req,env){const u=new URL(req.url);if(req.method==="GET"&&u.pathname==="/health"){const l=await ss(env,"/latest");return json({ok:true,status:"ready",service:SERVICE,api_version:API_VERSION,last_check:l.latest||null})}if(req.method==="GET"&&u.pathname==="/v1/maintenance/latest")return json(await ss(env,"/latest"));if(req.method==="GET"&&u.pathname==="/v1/maintenance/policy")return json({ok:true,service:SERVICE,api_version:API_VERSION,policy:POLICY});if(req.method==="GET"&&u.pathname==="/v1/maintenance/runtime-selftest")return runtimeSelftest(req,env);return json({ok:false,error:"READ_ONLY"},403)},async scheduled(controller,env,ctx){ctx.waitUntil(run(env,"scheduled"))}};
+async function runtimeWriteCanary(req,env){
+  const auth=authorizeProbe(req,env);if(!auth.ok)return auth.response;
+  if(String(env.MAINTENANCE_AI_GATEWAY_WRITE_CANARY||"")!=="1")return json({ok:false,error:"NOT_FOUND"},404);
+  try{
+    const result=await aiGatewayDynamicRouteWriteCanary(env);
+    return json({ok:true,selftest:"maintenance-ai-gateway-write-canary-v1",service:SERVICE,...result,temporary_dynamic_route_mutation:true,temporary_route_deleted:true,production_worker_mutated:false,production_worker_traffic_changed:false,secrets_redacted:true});
+  }catch(error){
+    return json({ok:false,selftest:"maintenance-ai-gateway-write-canary-v1",service:SERVICE,error_code:safeCode(error?.message||error),permission:"ai_gateway_write",temporary_dynamic_route_mutation:true,temporary_route_deleted:false,production_worker_mutated:false,production_worker_traffic_changed:false,secrets_redacted:true},502);
+  }
+}
+export default{async fetch(req,env){const u=new URL(req.url);if(req.method==="GET"&&u.pathname==="/health"){const l=await ss(env,"/latest");return json({ok:true,status:"ready",service:SERVICE,api_version:API_VERSION,last_check:l.latest||null})}if(req.method==="GET"&&u.pathname==="/v1/maintenance/latest")return json(await ss(env,"/latest"));if(req.method==="GET"&&u.pathname==="/v1/maintenance/policy")return json({ok:true,service:SERVICE,api_version:API_VERSION,policy:POLICY});if(req.method==="GET"&&u.pathname==="/v1/maintenance/runtime-selftest")return runtimeSelftest(req,env);if(req.method==="GET"&&u.pathname==="/v1/maintenance/runtime-write-canary")return runtimeWriteCanary(req,env);return json({ok:false,error:"READ_ONLY"},403)},async scheduled(controller,env,ctx){ctx.waitUntil(run(env,"scheduled"))}};
 export class MaintenanceState{constructor(state){this.state=state}async fetch(req){const u=new URL(req.url),s=this.state.storage,j=async()=>{try{return await req.json()}catch{return{}}};if(req.method==="GET"&&u.pathname==="/latest")return json({ok:true,latest:await s.get("latest")||null});if(req.method==="POST"&&u.pathname==="/latest"){const b=await j();await s.put("latest",b);return json({ok:true})}if(req.method==="POST"&&u.pathname==="/acquire"){const b=await j(),x=await s.get("lock");if(x&&x.expires>Date.now()&&x.owner!==b.owner)return json({ok:false,error:"BUSY"},409);const l={owner:String(b.owner||""),expires:Date.now()+600000};await s.put("lock",l);return json({ok:true,lock:l})}if(req.method==="POST"&&u.pathname==="/release"){const b=await j(),x=await s.get("lock");if(!x)return json({ok:true,released:false});if(x.owner!==b.owner)return json({ok:false,error:"LOCK_OWNER_MISMATCH",active:x},409);await s.delete("lock");return json({ok:true,released:true})}return json({ok:false,error:"NOT_FOUND"},404)}}
