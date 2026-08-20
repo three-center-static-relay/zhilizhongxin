@@ -23,11 +23,25 @@ async function requestJson(fetchImpl,url,{method="GET",token,body}={}){
 function cloudflareCode(payload){return Array.isArray(payload?.errors)&&payload.errors[0]?.code!=null?String(payload.errors[0].code):"unknown"}
 function requireOk(response,payload,label){if(!response.ok||payload?.success===false)throw fail(`${label}_HTTP_${response.status}_CF_${cloudflareCode(payload)}`,response.status||502)}
 function resultData(payload){return payload?.result??payload?.data??payload??null}
+function routeRows(payload){const data=resultData(payload);return Array.isArray(data?.routes)?data.routes:Array.isArray(data)?data:[]}
 function canaryElements(){return[
   {id:"start",type:"start",outputs:{next:{elementId:"model"}}},
   {id:"model",type:"model",properties:{provider:"workers-ai",model:CANARY_MODEL,timeout:30000,retries:0},outputs:{success:{elementId:"end"},fallback:{elementId:"end"}}},
   {id:"end",type:"end",outputs:{}}
 ]}
+export async function aiGatewayWriteScopeProbe(env,fetchImpl=fetch){
+  const{accountId,token}=credentials(env),gateway=gatewayId(env),base=baseUrl(accountId,gateway);
+  const probeId=crypto.randomUUID();
+  const listed=await requestJson(fetchImpl,`${base}?per_page=100`,{token});
+  requireOk(listed.response,listed.payload,"AI_GATEWAY_WRITE_SCOPE_LIST");
+  if(routeRows(listed.payload).some(route=>String(route?.id||"")===probeId))throw fail("AI_GATEWAY_WRITE_SCOPE_ID_COLLISION",500);
+  const response=await fetchImpl(`${base}/${encodeURIComponent(probeId)}`,{method:"DELETE",headers:{authorization:`Bearer ${token}`,accept:"application/json"}});
+  const payload=await response.json().catch(()=>null);
+  if(response.status===403)throw fail(`AI_GATEWAY_WRITE_SCOPE_DENIED_CF_${cloudflareCode(payload)}`,403);
+  if(response.status===401)throw fail(`AI_GATEWAY_WRITE_SCOPE_UNAUTHORIZED_CF_${cloudflareCode(payload)}`,401);
+  if(response.status===404)return{ok:true,permission:"ai_gateway_write",authorized:true,probe_operation:"delete-nonexistent-route",resource_existed:false,resource_mutated:false,production_route_changed:false,model_invoked:false,secrets_redacted:true};
+  throw fail(`AI_GATEWAY_WRITE_SCOPE_AMBIGUOUS_HTTP_${response.status}_CF_${cloudflareCode(payload)}`,502);
+}
 export async function aiGatewayDynamicRouteWriteCanary(env,fetchImpl=fetch){
   const{accountId,token}=credentials(env),gateway=gatewayId(env),base=baseUrl(accountId,gateway);
   const name=`expert-write-canary-${Date.now()}-${crypto.randomUUID().slice(0,8)}`;
@@ -50,9 +64,7 @@ export async function aiGatewayDynamicRouteWriteCanary(env,fetchImpl=fetch){
       const remove=await requestJson(fetchImpl,`${base}/${encodeURIComponent(routeId)}`,{method:"DELETE",token});
       requireOk(remove.response,remove.payload,"AI_GATEWAY_WRITE_DELETE");
       deleted=true;
-    }catch(error){
-      throw fail(`AI_GATEWAY_WRITE_CANARY_CLEANUP_FAILED:${String(error?.message||error).replace(/[^0-9A-Za-z_.:-]/g,"_").slice(0,120)}`,502);
-    }
+    }catch(error){throw fail(`AI_GATEWAY_WRITE_CANARY_CLEANUP_FAILED:${String(error?.message||error).replace(/[^0-9A-Za-z_.:-]/g,"_").slice(0,120)}`,502)}
   }
   if(primaryError)throw primaryError;
   if(!created||!verified||!deleted)throw fail("AI_GATEWAY_WRITE_CANARY_INCOMPLETE",502);
