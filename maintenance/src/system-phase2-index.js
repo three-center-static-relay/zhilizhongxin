@@ -97,8 +97,8 @@ async function computeFinish(env,start){
 
 async function expertBusiness(env){
   const result=await bindingJson(env.EXPERT_CENTER,new Request("https://expert.internal/v1/run",{
-    method:"POST",headers:{accept:"application/json","content-type":"application/json","x-three-center-selftest":"1"},body:JSON.stringify({task_id:`expert-complex-${crypto.randomUUID()}`,prompt:"Complex systems acceptance. Analyze whether a hypothetical service should launch under uncertain demand. Use independent strategy, quantitative, risk and adversarial perspectives; keep the final answer concise and self-contained. Do not use external facts.",model_count:4,judge_count:1,rounds:1,max_tokens:192,timeout_seconds:240,cost_mode:"free-first"})
-  }),300000),body=result.body||{};
+    method:"POST",headers:{accept:"application/json","content-type":"application/json"},body:JSON.stringify({task_id:`expert-complex-${crypto.randomUUID()}`,prompt:"Complex quantitative systems acceptance. Analyze whether a hypothetical service should launch under uncertain demand using independent strategy, quantitative, risk and adversarial perspectives. Explicitly compare competing assumptions, stress-test downside scenarios, and identify a decision threshold. Keep the final answer concise and self-contained. Do not use external facts.",task_domain:"quantitative",task_type:"analysis",complexity:"high",reasoning_depth:"deep",cost_priority:"economy",model_count:4,rounds:1,max_tokens:192,timeout_seconds:300,cost_mode:"free-first"})
+  }),360000),body=result.body||{};
   const experts=Array.isArray(body?.experts)?body.experts:[],judges=Array.isArray(body?.judges)?body.judges:[],participants=[...experts,...judges];
   const receipts=participants.map(p=>({model:String(p?.model||""),provider:String(p?.provider||""),company:String(p?.company||""),lane:Number(p?.meta?.lane||p?.lane||0),route_shard:routeShard(p?.meta?.lane||p?.lane)}));
   const companies=new Set(receipts.map(x=>x.company.toLowerCase()).filter(Boolean)),shards=new Set(receipts.map(x=>x.route_shard).filter(Boolean));
