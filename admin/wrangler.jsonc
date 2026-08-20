@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "admin-worker",
+  // Runtime refresh marker: production-entry exports the internal AIGatewayControl WorkerEntrypoint.
   "main": "src/production-entry.js",
   "compatibility_date": "2026-08-14",
   "workers_dev": true,
