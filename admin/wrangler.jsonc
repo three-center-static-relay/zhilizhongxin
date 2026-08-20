@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "admin-worker",
-  // Runtime refresh marker: production-entry exports the internal AIGatewayControl WorkerEntrypoint.
+  // Observable PR refresh marker 2026-08-20: broker-enabled runtime must still pass the existing Tencent E2E gate before production.
   "main": "src/production-entry.js",
   "compatibility_date": "2026-08-14",
   "workers_dev": true,
