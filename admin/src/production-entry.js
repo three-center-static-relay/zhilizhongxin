@@ -1,6 +1,7 @@
 import handler,{AdminCoordinator} from "./production-superguard.js";
 import {WorkerEntrypoint} from "cloudflare:workers";
 import {aiGatewayControlRequest,operationRequest} from "./ai-gateway-control.js";
+import {handleLangGraphControl} from "./langgraph-control.js";
 
 export {AdminCoordinator};
 
@@ -29,6 +30,8 @@ export class AIGatewayControl extends WorkerEntrypoint {
 
 export default{
   async fetch(request,env,ctx){
+    const langgraph=await handleLangGraphControl(request,env);
+    if(langgraph)return langgraph;
     const probe=await credentialReadProbe(request,env);
     if(probe)return probe;
     return handler.fetch(request,env,ctx);
