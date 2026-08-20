@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "maintenance-complex-e2e-20260821",
-  "main": "src/complex-system-e2e-index.js",
+  "main": "src/complex-stage-probe-index.js",
   "compatibility_date": "2026-08-14",
   "workers_dev": true,
   "preview_urls": false,
@@ -12,8 +12,5 @@
     {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
     {"binding": "EXPERT_CENTER", "service": "expert-worker"}
   ],
-  "vars": {
-    "MAINTENANCE_COMPLEX_E2E_PROBE": "0"
-  },
   "observability": {"enabled": true, "logs": {"enabled": true, "head_sampling_rate": 1}}
 }
