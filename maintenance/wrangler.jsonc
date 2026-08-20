@@ -16,8 +16,11 @@
     {"binding": "GOVERNANCE_CENTER", "service": "governance-worker"},
     {"binding": "INTELLIGENCE_CENTER", "service": "intelligence-worker"},
     {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
-    {"binding": "EXPERT_CENTER", "service": "expert-worker"},
-    {"binding": "AI_GATEWAY_CONTROL", "service": "admin-worker", "entrypoint": "AIGatewayControl"}
+    {"binding": "EXPERT_CENTER", "service": "expert-worker"}
   ],
+  "vars": {
+    "CF_ACCOUNT_ID": "e3aec027af13c557bbcb831d29c1e7b4",
+    "AI_GATEWAY_ID": "test"
+  },
   "triggers": {"crons": ["*/15 * * * *"]}
 }
