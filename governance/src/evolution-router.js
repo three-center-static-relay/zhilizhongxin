@@ -42,6 +42,15 @@ async function authorized(request,env,operation){
   return operation();
 }
 
+async function compilePlanResponse(request,env){
+  try{
+    const task=await strictJson(request),collected=await collectCapabilityManifests(env),plan=await compileTaskPlan(task,collected.manifests);
+    audit("evolution.plan",{task_id:task.task_id||null,status:plan.status,path:plan.path||null,manifest_status:collected.status});
+    if(plan.status==="INVALID")return json({...plan,manifest_status:collected.status,manifest_errors:collected.errors},400);
+    return json({...plan,manifest_status:collected.status,manifest_errors:collected.errors},plan.ok?200:422);
+  }catch(error){return json({ok:false,error:String(error?.message||"PLAN_FAILED"),execution_started:false,production_mutation:false},error?.status||500)}
+}
+
 export function evolutionOpenApiPaths(){
   return{
     "/v1/evolution/kernel":{get:{operationId:"getEvolutionKernel",summary:"Read the immutable adaptive-system kernel and phase gates",responses:{"200":{description:"Read-only kernel snapshot; no production mutation."}}}},
@@ -55,6 +64,10 @@ export function evolutionOpenApiPaths(){
 export async function handleEvolutionRoute(request,env){
   const url=new URL(request.url);
   if(request.method==="GET"&&url.pathname==="/v1/evolution/kernel")return json(kernelSnapshot());
+  if(request.method==="POST"&&url.pathname==="/v1/evolution/internal-plan"){
+    if(url.hostname!=="governance.internal")return json({ok:false,error:"POLICY_DENIED",message:"internal planner is service-binding only"},403);
+    return compilePlanResponse(request,env);
+  }
   if(request.method==="GET"&&url.pathname==="/v1/evolution/self-model")return authorized(request,env,async()=>{
     const collected=await collectCapabilityManifests(env),model=buildSelfModel(collected.manifests);
     audit("evolution.self-model",{status:collected.status,capability_count:model.capability_count});
@@ -65,14 +78,7 @@ export async function handleEvolutionRoute(request,env){
     audit("evolution.entropy",{status:collected.status,signals:report.signals});
     return json({ok:collected.ok,status:collected.status,entropy:report,manifest_errors:collected.errors},collected.ok?200:207);
   });
-  if(request.method==="POST"&&url.pathname==="/v1/evolution/plan")return authorized(request,env,async()=>{
-    try{
-      const task=await strictJson(request),collected=await collectCapabilityManifests(env),plan=await compileTaskPlan(task,collected.manifests);
-      audit("evolution.plan",{task_id:task.task_id||null,status:plan.status,path:plan.path||null,manifest_status:collected.status});
-      if(plan.status==="INVALID")return json({...plan,manifest_status:collected.status,manifest_errors:collected.errors},400);
-      return json({...plan,manifest_status:collected.status,manifest_errors:collected.errors},plan.ok?200:422);
-    }catch(error){return json({ok:false,error:String(error?.message||"PLAN_FAILED"),execution_started:false,production_mutation:false},error?.status||500)}
-  });
+  if(request.method==="POST"&&url.pathname==="/v1/evolution/plan")return authorized(request,env,()=>compilePlanResponse(request,env));
   if(request.method==="POST"&&url.pathname==="/v1/evolution/candidates/validate")return authorized(request,env,async()=>{
     try{
       const candidate=await strictJson(request),validation=validateEvolutionContract(candidate);
