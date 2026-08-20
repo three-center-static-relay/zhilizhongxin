@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+import {spawnSync} from "node:child_process";
+import {resolve} from "node:path";
+import {pathToFileURL} from "node:url";
+function emit(row,stream=process.stdout){stream.write(`${JSON.stringify({...row,secrets_redacted:true})}\n`)}
+function main(){const env={...process.env,CI:"1",NO_COLOR:"1",WRANGLER_SEND_METRICS:"false"};delete env.WRANGLER_CI_OVERRIDE_NAME;const bin=resolve("node_modules/.bin/wrangler");emit({event:"L2_WRANGLER_AUTH_START",phase:"wrangler-whoami",direct_installed_wrangler:true,production_worker_mutated:false,production_worker_traffic_changed:false,dynamic_route_mutation:false});const r=spawnSync(bin,["whoami"],{cwd:process.cwd(),env,encoding:"utf8",timeout:30000,maxBuffer:1024*1024});if(r.error||r.status!==0){emit({event:"L2_WRANGLER_AUTH_FAIL",phase:"wrangler-whoami-failed",error_code:r.error?.code==="ETIMEDOUT"?"WRANGLER_WHOAMI_TIMEOUT":"WRANGLER_AUTH_UNAVAILABLE",exit_code:r.status??1,production_worker_mutated:false,production_worker_traffic_changed:false,dynamic_route_mutation:false},process.stderr);process.exitCode=1;return}emit({event:"L2_WRANGLER_AUTH_PASS",phase:"wrangler-whoami-pass",authenticated:true,direct_installed_wrangler:true,identity_redacted:true,production_worker_mutated:false,production_worker_traffic_changed:false,dynamic_route_mutation:false})}
+const invoked=process.argv[1]?pathToFileURL(resolve(process.argv[1])).href:"";if(import.meta.url===invoked)main();
