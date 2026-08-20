@@ -39,3 +39,4 @@ assert.match(entrySource, /service-binding internal only/);
 assert.match(entrySource, /MAX_LANGGRAPH_BODY_BYTES=65536/);
 
 console.log("langgraph-supervisor-contract: PASS");
+// Cloudflare preview retrigger after PR creation; no runtime effect.
