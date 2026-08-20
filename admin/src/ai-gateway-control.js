@@ -13,6 +13,11 @@ function cleanId(v,label){
   if(!ID.test(x))throw fail(`${label}_INVALID`,400);
   return x;
 }
+function credentials(env){
+  const accountId=String(env?.CF_ACCOUNT_ID||env?.CLOUDFLARE_ACCOUNT_ID||"").trim();
+  const token=String(env?.CF_API_TOKEN||env?.CLOUDFLARE_AI_GATEWAY_API_TOKEN||"").trim();
+  return{accountId,token};
+}
 function gatewayId(env,input){
   const configured=String(env.AI_GATEWAY_ID||DEFAULT_GATEWAY_ID).trim();
   const requested=String(input?.gateway_id||configured).trim();
@@ -57,11 +62,12 @@ export function operationRequest(env,input={}){
   return {gateway,method,path,body};
 }
 export async function aiGatewayControlRequest(env,input,fetchImpl=fetch){
-  if(!env?.CF_ACCOUNT_ID||!env?.CF_API_TOKEN)throw fail("CF_API_NOT_CONFIGURED",503);
+  const {accountId,token}=credentials(env);
+  if(!accountId||!token)throw fail("CF_API_NOT_CONFIGURED",503);
   const req=operationRequest(env,input);
-  const headers={authorization:`Bearer ${env.CF_API_TOKEN}`,accept:"application/json"};
+  const headers={authorization:`Bearer ${token}`,accept:"application/json"};
   if(req.body!==undefined)headers["content-type"]="application/json";
-  const response=await fetchImpl(`${CF_API}/accounts/${encodeURIComponent(env.CF_ACCOUNT_ID)}/ai-gateway/gateways/${encodeURIComponent(req.gateway)}${req.path}`,{
+  const response=await fetchImpl(`${CF_API}/accounts/${encodeURIComponent(accountId)}/ai-gateway/gateways/${encodeURIComponent(req.gateway)}${req.path}`,{
     method:req.method,headers,...(req.body===undefined?{}:{body:JSON.stringify(req.body)})
   });
   const payload=await response.json().catch(()=>null);
