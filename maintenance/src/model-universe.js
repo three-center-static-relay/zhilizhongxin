@@ -2,6 +2,7 @@ const OR_URL="https://openrouter.ai/api/v1/models";
 const HF_URL="https://huggingface.co/api/models";
 const DEEPSEEK_URL="https://api.deepseek.com/models";
 const CF_API="https://api.cloudflare.com/client/v4";
+const CF_GATEWAY="https://gateway.ai.cloudflare.com/v1";
 const MAX_HF_PAGES=8;
 const HF_PAGE_SIZE=100;
 const BANNED_COMPANIES=new Set(["openai","anthropic","claude","aion-labs"]);
@@ -11,6 +12,7 @@ function norm(v){return clean(v).toLowerCase().replace(/[_\s]+/g,"-")}
 function clamp(v){const n=Number(v);return Number.isFinite(n)?Math.max(0,Math.min(1,n)):0.5}
 function logScore(v,scale=100000){const n=Math.max(0,Number(v)||0);return clamp(Math.log10(1+n)/Math.log10(1+scale))}
 function safeJson(text){try{return JSON.parse(text)}catch{return null}}
+function safeCode(v){return clean(v).replace(/[^0-9A-Za-z_.:-]/g,"_").slice(0,120)||"UNKNOWN"}
 function companyAlias(v){
   let x=norm(v).replace(/^@cf\//,"");
   if(x.includes("/"))x=x.split("/")[0];
@@ -29,10 +31,23 @@ async function requestJson(fetchImpl,url,{headers={},timeoutMs=12000}={}){
   try{const response=await fetchImpl(url,{headers:{accept:"application/json",...headers},signal:controller.signal});const text=await response.text(),payload=safeJson(text);if(!response.ok)throw new Error(`HTTP_${response.status}`);if(payload===null)throw new Error("BAD_JSON");return{payload,response}}finally{clearTimeout(timer)}
 }
 
-export async function discoverOpenRouter(fetchImpl=fetch){
-  const{payload}=await requestJson(fetchImpl,OR_URL);const data=Array.isArray(payload?.data)?payload.data:[];const rows=[];
-  for(const m of data){const id=clean(m?.id),company=companyAlias(id);if(!id||!companyAllowed(company)||isSynthetic(id,m?.name)||!textOutput(m?.architecture?.output_modalities))continue;const params=Array.isArray(m?.supported_parameters)?m.supported_parameters.map(norm):[],context=Number(m?.context_length||m?.top_provider?.context_length||0),pricing=m?.pricing||{};rows.push(candidate({provider:"openrouter",model:id,company,source:"openrouter",free:id.toLowerCase().includes(":free")||freePricing(pricing),capabilities:["text",...(params.includes("reasoning")?["reasoning"]:[]),...(params.includes("tools")||params.includes("tool-choice")?["tools"]:[])],hints:{quality:params.includes("reasoning")?0.72:0.58,context:context?Math.min(1,Math.log2(Math.max(2048,context))/20):0.5,price:freePricing(pricing)?1:0.55,popularity:0.5,latency:0.5,throughput:0.5},verified:true,meta:{context_length:context||null,created:m?.created||null}}))}
-  if(!rows.length)throw new Error("OPENROUTER_MODEL_UNIVERSE_EMPTY");return rows;
+function openRouterRows(payload,transport){
+  const data=Array.isArray(payload?.data)?payload.data:[];const rows=[];
+  for(const m of data){const id=clean(m?.id),company=companyAlias(id);if(!id||!companyAllowed(company)||isSynthetic(id,m?.name)||!textOutput(m?.architecture?.output_modalities))continue;const params=Array.isArray(m?.supported_parameters)?m.supported_parameters.map(norm):[],context=Number(m?.context_length||m?.top_provider?.context_length||0),pricing=m?.pricing||{};rows.push(candidate({provider:"openrouter",model:id,company,source:"openrouter",free:id.toLowerCase().includes(":free")||freePricing(pricing),capabilities:["text",...(params.includes("reasoning")?["reasoning"]:[]),...(params.includes("tools")||params.includes("tool-choice")?["tools"]:[])],hints:{quality:params.includes("reasoning")?0.72:0.58,context:context?Math.min(1,Math.log2(Math.max(2048,context))/20):0.5,price:freePricing(pricing)?1:0.55,popularity:0.5,latency:0.5,throughput:0.5},verified:true,meta:{context_length:context||null,created:m?.created||null,catalog_transport:transport}}))}
+  return rows;
+}
+async function openRouterViaGateway(env,fetchImpl){
+  const accountId=clean(env?.CF_ACCOUNT_ID||env?.CLOUDFLARE_ACCOUNT_ID),gatewayId=clean(env?.AI_GATEWAY_ID||"test"),token=clean(env?.AI_GATEWAY_TOKEN||env?.CLOUDFLARE_AI_GATEWAY_API_TOKEN);
+  if(!accountId||!gatewayId||!token)throw new Error("OPENROUTER_GATEWAY_DISCOVERY_CREDENTIAL_MISSING");
+  const root=`${CF_GATEWAY}/${encodeURIComponent(accountId)}/${encodeURIComponent(gatewayId)}/openrouter`,headers={"cf-aig-authorization":`Bearer ${token}`,"cf-aig-collect-log-payload":"false"};let last="NOT_ATTEMPTED";
+  for(const suffix of ["models","v1/models"]){try{const{payload}=await requestJson(fetchImpl,`${root}/${suffix}`,{headers,timeoutMs:15000});const rows=openRouterRows(payload,"cloudflare-ai-gateway-byok");if(rows.length)return rows;last="EMPTY"}catch(error){last=safeCode(error?.message||error)}}
+  throw new Error(`OPENROUTER_GATEWAY_MODEL_UNIVERSE_${last}`);
+}
+export async function discoverOpenRouter(envOrFetch={},fetchMaybe=fetch){
+  const legacy=typeof envOrFetch==="function",env=legacy?{}:(envOrFetch||{}),fetchImpl=legacy?envOrFetch:fetchMaybe;let directError=null;
+  try{const{payload}=await requestJson(fetchImpl,OR_URL,{headers:{"user-agent":"three-center-model-universe/1.0"},timeoutMs:15000});const rows=openRouterRows(payload,"openrouter-direct");if(rows.length)return rows;directError=new Error("OPENROUTER_DIRECT_MODEL_UNIVERSE_EMPTY")}catch(error){directError=error}
+  if(!legacy){try{return await openRouterViaGateway(env,fetchImpl)}catch(error){throw new Error(`OPENROUTER_MODEL_UNIVERSE_UNAVAILABLE_DIRECT_${safeCode(directError?.message)}_GATEWAY_${safeCode(error?.message)}`)}}
+  throw new Error(`OPENROUTER_MODEL_UNIVERSE_UNAVAILABLE_DIRECT_${safeCode(directError?.message)}`);
 }
 
 function nextLink(header){if(!header)return null;for(const part of String(header).split(",")){const m=part.match(/<([^>]+)>;\s*rel="next"/i);if(m)return m[1]}return null}
@@ -63,7 +78,7 @@ export async function discoverDeepSeek(env,openRouterRows=[],fetchImpl=fetch){
 
 export async function buildModelUniverse(env={},fetchImpl=fetch){
   const source_status={};let openrouter=[],huggingface=[],workersAI=[],deepseek=[];
-  try{openrouter=await discoverOpenRouter(fetchImpl);source_status.openrouter={ok:true,count:openrouter.length}}catch(error){source_status.openrouter={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
+  try{openrouter=await discoverOpenRouter(env,fetchImpl);source_status.openrouter={ok:true,count:openrouter.length,transport:clean(openrouter[0]?.meta?.catalog_transport)||"unknown"}}catch(error){source_status.openrouter={ok:false,count:0,error:String(error?.message||error).slice(0,240)}}
   try{huggingface=await discoverHuggingFace(fetchImpl);source_status.huggingface={ok:true,count:huggingface.length}}catch(error){source_status.huggingface={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
   try{workersAI=await discoverWorkersAI(env,fetchImpl);source_status["workers-ai"]={ok:true,count:workersAI.length}}catch(error){source_status["workers-ai"]={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
   try{deepseek=await discoverDeepSeek(env,openrouter,fetchImpl);source_status.deepseek={ok:deepseek.length>0,count:deepseek.length,verified_count:deepseek.filter(x=>x.verified).length,inferred_count:deepseek.filter(x=>!x.verified).length}}catch(error){source_status.deepseek={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
