@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "governance-worker",
+  // Observable production refresh marker 2026-08-20 14:38 Asia/Shanghai: refresh current admin named-entrypoint binding; no runtime policy change.
   "main": "src/admin-entry.js",
   "compatibility_date": "2026-08-18",
   "compatibility_flags": ["nodejs_compat"],
