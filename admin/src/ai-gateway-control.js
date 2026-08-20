@@ -4,6 +4,14 @@ const MAX_ELEMENTS=64;
 const MAX_BODY_BYTES=220000;
 const ROUTE_NAME=/^expert-panel(?:-(?:plan|general|code|regulated|research|strategy|creative))?-v1$/;
 const ID=/^[0-9A-Za-z_-]{1,128}$/;
+const TENCENT_TOKENHUB_PROVIDER=Object.freeze({
+  name:"Tencent TokenHub",
+  slug:"tencent-tokenhub",
+  base_url:"https://tokenhub.tencentmaas.com",
+  description:"Tencent Cloud TokenHub Guangzhou / China mainland OpenAI-compatible provider",
+  link:"https://cloud.tencent.com/document/product/1823/130078",
+  enable:false
+});
 
 function fail(code,status=400,details=null){
   const e=new Error(code);e.status=status;if(details)e.details=details;return e;
@@ -39,7 +47,7 @@ function routeNameOf(input){
 export function operationRequest(env,input={}){
   const op=String(input?.operation||"").trim();
   const gateway=gatewayId(env,input);
-  let method="GET",path="",body;
+  let method="GET",path="",body,scope="gateway";
   if(op==="logs.list"){
     const page=Math.max(1,Math.min(4,Math.trunc(Number(input.page)||1)));
     const per=Math.max(1,Math.min(50,Math.trunc(Number(input.per_page)||50)));
@@ -56,10 +64,18 @@ export function operationRequest(env,input={}){
     path=`/routes/${encodeURIComponent(cleanId(input.route_id,"ROUTE_ID"))}/versions/${encodeURIComponent(cleanId(input.version_id,"VERSION_ID"))}`;
   }else if(op==="deployments.create"){
     method="POST";path=`/routes/${encodeURIComponent(cleanId(input.route_id,"ROUTE_ID"))}/deployments`;body={version_id:cleanId(input.version_id,"VERSION_ID")};
+  }else if(op==="custom-providers.tencent-tokenhub.list"){
+    scope="account";path="/custom-providers?search=tencent-tokenhub";
+  }else if(op==="custom-providers.tencent-tokenhub.create"){
+    scope="account";method="POST";path="/custom-providers";body={...TENCENT_TOKENHUB_PROVIDER};
+  }else if(op==="custom-providers.tencent-tokenhub.enable"){
+    scope="account";method="PATCH";path=`/custom-providers/${encodeURIComponent(cleanId(input.provider_id,"PROVIDER_ID"))}`;body={enable:true};
+  }else if(op==="custom-providers.tencent-tokenhub.disable"){
+    scope="account";method="PATCH";path=`/custom-providers/${encodeURIComponent(cleanId(input.provider_id,"PROVIDER_ID"))}`;body={enable:false};
   }else{
     throw fail("AI_GATEWAY_CONTROL_OPERATION_DENIED",403);
   }
-  return {gateway,method,path,body};
+  return {gateway,scope,method,path,body};
 }
 export async function aiGatewayControlRequest(env,input,fetchImpl=fetch){
   const {accountId,token}=credentials(env);
@@ -67,7 +83,10 @@ export async function aiGatewayControlRequest(env,input,fetchImpl=fetch){
   const req=operationRequest(env,input);
   const headers={authorization:`Bearer ${token}`,accept:"application/json"};
   if(req.body!==undefined)headers["content-type"]="application/json";
-  const response=await fetchImpl(`${CF_API}/accounts/${encodeURIComponent(accountId)}/ai-gateway/gateways/${encodeURIComponent(req.gateway)}${req.path}`,{
+  const base=req.scope==="account"
+    ?`${CF_API}/accounts/${encodeURIComponent(accountId)}/ai-gateway`
+    :`${CF_API}/accounts/${encodeURIComponent(accountId)}/ai-gateway/gateways/${encodeURIComponent(req.gateway)}`;
+  const response=await fetchImpl(`${base}${req.path}`,{
     method:req.method,headers,...(req.body===undefined?{}:{body:JSON.stringify(req.body)})
   });
   const payload=await response.json().catch(()=>null);
