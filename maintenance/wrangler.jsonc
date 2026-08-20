@@ -21,8 +21,9 @@
   "vars": {
     "AI_GATEWAY_ID": "test",
     "AI_GATEWAY_ROUTE_FAMILY": "expert-panel",
-    "EXPERT_PROVIDER_POLICY": "openrouter-plus-deepseek-only",
-    "EXPERT_PROVIDER_CANDIDATES_JSON": "[{\"provider\":\"deepseek\",\"model\":\"deepseek-v4-pro\",\"company\":\"deepseek\",\"enabled\":true,\"free\":false,\"capabilities\":[\"reasoning\",\"coding\",\"quantitative\",\"strategy\",\"research\"],\"quality\":0.94,\"latency\":0.55,\"throughput\":0.55,\"context\":1,\"price\":0.88,\"popularity\":0.9}]"
+    "EXPERT_PROVIDER_POLICY": "workers-ai-openrouter-deepseek-huggingface-only",
+    "EXPERT_WORKERS_AI_FREE_ONLY": "true",
+    "EXPERT_PROVIDER_CANDIDATES_JSON": "[{\"provider\":\"deepseek\",\"model\":\"deepseek-v4-pro\",\"company\":\"deepseek\",\"enabled\":true,\"free\":false,\"capabilities\":[\"reasoning\",\"coding\",\"quantitative\",\"strategy\",\"research\"],\"quality\":0.94,\"latency\":0.55,\"throughput\":0.55,\"context\":1,\"price\":0.88,\"popularity\":0.9},{\"provider\":\"huggingface\",\"model\":\"Qwen/Qwen3-235B-A22B-Instruct-2507\",\"company\":\"qwen\",\"enabled\":true,\"free\":false,\"capabilities\":[\"reasoning\",\"coding\",\"quantitative\",\"strategy\",\"research\"]},{\"provider\":\"workers-ai\",\"model\":\"@cf/nvidia/nemotron-3-120b-a12b\",\"company\":\"nvidia\",\"enabled\":true,\"free\":true,\"capabilities\":[\"reasoning\",\"coding\",\"quantitative\",\"strategy\",\"research\"]},{\"provider\":\"workers-ai\",\"model\":\"@cf/google/gemma-4-26b-a4b-it\",\"company\":\"google\",\"enabled\":true,\"free\":true,\"capabilities\":[\"reasoning\",\"research\",\"creative\"]}]"
   },
   "triggers": {"crons": ["*/15 * * * *"]}
 }

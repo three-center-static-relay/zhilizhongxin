@@ -27,13 +27,24 @@ assert.doesNotMatch(source,/metadata\.expert_slot/);
 assert.doesNotMatch(source,/routeName=String\(env\.AI_GATEWAY_ROUTE/);
 assert.doesNotMatch(source,/properties:\{provider:"openrouter",model/);
 
-// Current production candidate policy is deliberately narrow: OpenRouter is the broad
-// model supermarket; native DeepSeek is the only direct provider lane.
-assert.match(config,/"EXPERT_PROVIDER_POLICY"\s*:\s*"openrouter-plus-deepseek-only"/);
+// Production source policy: four source classes behind one Cloudflare AI Gateway.
+// OpenRouter remains the dynamic model supermarket. DeepSeek, Hugging Face and
+// Workers AI candidates use the existing provider registry; Workers AI candidates
+// are limited to the currently approved free-plan model set.
+assert.match(config,/"EXPERT_PROVIDER_POLICY"\s*:\s*"workers-ai-openrouter-deepseek-huggingface-only"/);
+assert.match(config,/"EXPERT_WORKERS_AI_FREE_ONLY"\s*:\s*"true"/);
 assert.match(config,/\\"provider\\":\\"deepseek\\"/);
 assert.match(config,/\\"model\\":\\"deepseek-v4-pro\\"/);
+assert.match(config,/\\"provider\\":\\"huggingface\\"/);
+assert.match(config,/Qwen\/Qwen3-235B-A22B-Instruct-2507/);
+assert.match(config,/\\"provider\\":\\"workers-ai\\"/);
+assert.match(config,/@cf\/nvidia\/nemotron-3-120b-a12b/);
+assert.match(config,/@cf\/google\/gemma-4-26b-a4b-it/);
 assert.match(config,/\\"company\\":\\"deepseek\\"/);
+assert.match(config,/\\"company\\":\\"qwen\\"/);
+assert.match(config,/\\"company\\":\\"nvidia\\"/);
+assert.match(config,/\\"company\\":\\"google\\"/);
 assert.doesNotMatch(config,/tencent|tokenhub/i);
-assert.doesNotMatch(config,/byte[dD]ance|moonshot|mistral|groq|cerebras/i);
+assert.doesNotMatch(config,/byte[dD]ance-direct|moonshot-direct|mistral-direct|groq-direct|cerebras-direct/i);
 
-console.log(JSON.stringify({ok:true,suite:"expert-route-v4.1-contract",registry_driven:true,provider_policy:"openrouter-plus-deepseek-only",openrouter_model_supermarket:true,native_deepseek_direct:true,deepseek_model:"deepseek-v4-pro",three_cost_modes:true,challenger_percentage:true,regulated_exploration_disabled:true,dynamic_lanes:true,legacy_route_removed:true}));
+console.log(JSON.stringify({ok:true,suite:"expert-route-v4.1-contract",registry_driven:true,provider_policy:"workers-ai-openrouter-deepseek-huggingface-only",allowed_sources:["workers-ai","openrouter","deepseek","huggingface"],workers_ai_free_only:true,openrouter_model_supermarket:true,native_deepseek_direct:true,huggingface_direct:true,workers_ai_free_candidates:2,deepseek_model:"deepseek-v4-pro",three_cost_modes:true,challenger_percentage:true,regulated_exploration_disabled:true,dynamic_lanes:true,legacy_route_removed:true}));
