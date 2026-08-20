@@ -1,0 +1,7 @@
+{
+  "$schema":"../node_modules/wrangler/config-schema.json",
+  "name":"admin-authority-probe-20260820",
+  "main":"temp-admin-authority-worker.mjs",
+  "compatibility_date":"2026-08-20",
+  "workers_dev":false
+}
