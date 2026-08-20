@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "maintenance-complex-e2e-20260821",
+  "name": "maintenance-worker",
   "main": "src/complex-stage-probe-index.js",
   "compatibility_date": "2026-08-14",
   "workers_dev": true,
