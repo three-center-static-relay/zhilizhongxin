@@ -24,6 +24,7 @@
     "EXPERT_MODEL_SOURCE_POLICY": "dynamic-all-available-within-approved-sources",
     "EXPERT_MODEL_SOURCE_CLASSES": "workers-ai,openrouter,deepseek,huggingface",
     "EXPERT_ROUTE_REFRESH_HOURS": "6",
+    "EXPERT_ROUTE_AUTOMATION_ENABLED": "false",
     "EXPERT_MODEL_ID_PINNING": "false",
     "EXPERT_FUTURE_MODELS_AUTO_DISCOVER": "true"
   },
