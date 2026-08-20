@@ -39,15 +39,16 @@ function aiGatewayServiceErrorCode(body,status,error){
 }
 async function aiGatewayControlRuntimeProbe(request,env){
   if(request.headers.get("x-three-center-selftest")!=="1")return json({ok:false,error:"NOT_FOUND"},404);
-  if(!env.ADMIN_CENTER?.fetch)return json({ok:false,selftest:"governance-ai-gateway-control-readonly-v2",binding:false,service_binding:false,transport:"service-binding-fetch",routes_readable:false,error_code:"ADMIN_CENTER_UNBOUND",secrets_redacted:true,dynamic_route_mutation:false,expert_called:false},503);
+  if(!env.ADMIN_CENTER?.fetch)return json({ok:false,selftest:"governance-ai-gateway-control-readonly-v2",binding:false,service_binding:false,transport:"service-binding-fetch",credential_broker:false,routes_readable:false,error_code:"ADMIN_CENTER_UNBOUND",secrets_redacted:true,dynamic_route_mutation:false,expert_called:false},503);
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
   try{
-    const response=await env.ADMIN_CENTER.fetch(new Request("https://admin.internal/_internal/ai-gateway-control-readonly-probe",{method:"GET",headers:{accept:"application/json","x-three-center-selftest":"1"},signal:controller.signal}));
+    const response=await env.ADMIN_CENTER.fetch(new Request("https://admin.internal/_internal/ai-gateway-credential-read-probe",{method:"GET",headers:{accept:"application/json","x-three-center-selftest":"1"},signal:controller.signal}));
     const body=await response.json().catch(()=>null);
-    const safe=response.status===200&&body?.ok===true&&body?.routes_readable===true&&body?.dynamic_route_mutation===false&&body?.expert_called===false&&body?.secrets_redacted===true;
-    return json({ok:safe,selftest:"governance-ai-gateway-control-readonly-v2",binding:true,service_binding:true,transport:"service-binding-fetch",admin_probe_reached:true,routes_readable:body?.routes_readable===true,error_code:safe?null:aiGatewayServiceErrorCode(body,response.status),secrets_redacted:true,dynamic_route_mutation:false,expert_called:false},safe?200:502);
+    const brokered=body?.credential_broker_bound===true&&body?.credential_source==="maintenance-worker";
+    const safe=response.status===200&&body?.ok===true&&brokered&&body?.routes_readable===true&&body?.dynamic_route_mutation===false&&body?.expert_called===false&&body?.secrets_redacted===true;
+    return json({ok:safe,selftest:"governance-ai-gateway-control-readonly-v2",binding:true,service_binding:true,transport:"service-binding-fetch",admin_probe_reached:true,credential_broker:brokered,credential_source:brokered?"maintenance-worker":String(body?.credential_source||""),routes_readable:body?.routes_readable===true,error_code:safe?null:aiGatewayServiceErrorCode(body,response.status),secrets_redacted:true,dynamic_route_mutation:false,expert_called:false},safe?200:502);
   }catch(error){
-    return json({ok:false,selftest:"governance-ai-gateway-control-readonly-v2",binding:true,service_binding:true,transport:"service-binding-fetch",admin_probe_reached:false,routes_readable:false,error_code:aiGatewayServiceErrorCode(null,0,error),secrets_redacted:true,dynamic_route_mutation:false,expert_called:false},502);
+    return json({ok:false,selftest:"governance-ai-gateway-control-readonly-v2",binding:true,service_binding:true,transport:"service-binding-fetch",admin_probe_reached:false,credential_broker:false,routes_readable:false,error_code:aiGatewayServiceErrorCode(null,0,error),secrets_redacted:true,dynamic_route_mutation:false,expert_called:false},502);
   }finally{clearTimeout(timer)}
 }
 
