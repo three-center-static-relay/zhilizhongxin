@@ -16,6 +16,14 @@ async function credentialReadProbe(request,env){
   }catch{return Response.json({ok:false,selftest:"admin-maintenance-ai-gateway-credential-read-v1",credential_broker_bound:true,credential_source:"maintenance-worker",routes_readable:false,error_code:"AI_GATEWAY_CREDENTIAL_READ_FAILED",dynamic_route_mutation:false,expert_called:false,secrets_redacted:true},{status:502,headers:{"cache-control":"no-store"}})}
 }
 
+async function versionIdentityProbe(request,env){
+  const url=new URL(request.url);
+  if(request.method!=="GET"||url.pathname!=="/_internal/version-identity-probe")return null;
+  if(request.headers.get("x-three-center-selftest")!=="1")return new Response(null,{status:404,headers:{"cache-control":"no-store"}});
+  const versionId=String(env.CF_VERSION_METADATA?.id||"");
+  return Response.json({ok:Boolean(versionId),selftest:"admin-version-identity-v1",version_id:versionId,production_worker_mutated:false,production_worker_traffic_changed:false,dynamic_route_mutation:false,expert_called:false,secrets_redacted:true},{status:versionId?200:503,headers:{"cache-control":"no-store"}});
+}
+
 export class AIGatewayControl extends WorkerEntrypoint {
   async request(input){
     operationRequest(this.env,input||{});
@@ -29,6 +37,8 @@ export class AIGatewayControl extends WorkerEntrypoint {
 
 export default{
   async fetch(request,env,ctx){
+    const identity=await versionIdentityProbe(request,env);
+    if(identity)return identity;
     const probe=await credentialReadProbe(request,env);
     if(probe)return probe;
     return handler.fetch(request,env,ctx);
