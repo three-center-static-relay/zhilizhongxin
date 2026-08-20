@@ -18,7 +18,8 @@
     {"binding": "INTELLIGENCE_CENTER", "service": "intelligence-worker"},
     {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
     {"binding": "EXPERT_CENTER", "service": "expert-worker"},
-    {"binding": "MAINTENANCE_CENTER", "service": "maintenance-worker"}
+    {"binding": "MAINTENANCE_CENTER", "service": "maintenance-worker"},
+    {"binding": "AI_GATEWAY_CREDENTIAL_READ", "service": "maintenance-worker", "entrypoint": "AIGatewayCredentialRead"}
   ],
   "vars": {
     "ENVIRONMENT": "production",
