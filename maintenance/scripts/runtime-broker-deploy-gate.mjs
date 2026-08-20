@@ -9,7 +9,6 @@ const SHA_PATTERN=/^[a-f0-9]{40,64}$/i;
 function emit(row,stream=process.stdout){stream.write(`${JSON.stringify({...row,secrets_redacted:true})}\n`)}
 function safeCode(v){return String(v||"UNKNOWN").replace(/[^0-9A-Za-z_.:-]/g,"_").slice(0,160)}
 function run(command,args,{cwd=process.cwd(),env=process.env,stdio,encoding="utf8",maxBuffer=4*1024*1024}={}){const r=spawnSync(command,args,{cwd,env,stdio,encoding,maxBuffer});if(r.error)throw r.error;if(r.status!==0){const e=new Error(`${command.toUpperCase()}_FAILED`);e.exitCode=r.status||1;e.stdout=r.stdout;e.stderr=r.stderr;throw e}return r}
-function sleep(ms){Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms)}
 function parseWorkersDevUrl(text){const m=String(text||"").match(/https:\/\/[a-z0-9.-]+\.workers\.dev\b/i);if(!m)throw new Error("WORKERS_DEV_URL_NOT_FOUND");const u=new URL(m[0]);if(u.protocol!=="https:"||!u.hostname.endsWith(".workers.dev"))throw new Error("INVALID_WORKERS_DEV_URL");return `${u.protocol}//${u.host}`}
 function packageWranglerVersion(){const p=JSON.parse(readFileSync(resolve(process.cwd(),"package.json"),"utf8")),v=String(p.devDependencies?.wrangler||"");if(!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(v))throw new Error("EXACT_WRANGLER_VERSION_REQUIRED");return v}
 function rollback(version,message){try{run("npx",["--yes",`wrangler@${version}`,"rollback","--message",message],{stdio:"inherit"});emit({ok:true,event:"MAINTENANCE_AUTOMATIC_ROLLBACK_COMPLETE"},process.stderr);return true}catch{emit({ok:false,event:"MAINTENANCE_AUTOMATIC_ROLLBACK_FAILED"},process.stderr);return false}}
@@ -27,8 +26,6 @@ function main(){
   const probe=randomBytes(32).toString("hex");
   let candidate;
   try{candidate=deploy(version,probe)}catch(error){rollback(version,"Automatic rollback: maintenance runtime candidate deploy failed");throw error}
-  emit({ok:true,event:"MAINTENANCE_SECRET_PRESENCE_OBSERVATION_WINDOW",commit_sha:sha,worker_host:new URL(candidate.url).host,window_ms:60000,dynamic_route_mutation:false});
-  sleep(60000);
   const checked=verify(repoRoot,candidate.url,probe);
   if(!checked.ok){rollback(version,"Automatic rollback: maintenance runtime AI Gateway control selftest failed");const e=new Error(`MAINTENANCE_RUNTIME_E2E_FAILED:${checked.code}`);e.exitCode=1;throw e}
   emit({ok:true,event:"MAINTENANCE_RUNTIME_E2E_CANDIDATE_PASS",commit_sha:sha,worker_host:new URL(candidate.url).host,selftest:"maintenance-ai-gateway-control-v1",probe_persisted:true,dynamic_route_mutation:false});
