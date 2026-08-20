@@ -1,3 +1,4 @@
+// Exact-head Cloudflare preview trigger for Expert route production acceptance.
 import base,{MaintenanceState,AIGatewayCredentialRead} from "./index.js";
 import {refreshExpertRoutes} from "./expert-route-manager.js";
 export {MaintenanceState,AIGatewayCredentialRead};
