@@ -1,4 +1,4 @@
-const TARGET_SHA="9e49b3d0554e84b42da1a27450ae1530e7ae35ff";
+const TARGET_SHA="e759194aad3b110e40bb55c15c05b3df4b5cea7f";
 const API="https://api.cloudflare.com/client/v4";
 const SCRIPT="compute-worker";
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
@@ -19,7 +19,7 @@ function walk(value,path="",out={strings:[],keys:[],codes:[]},depth=0){
 }
 function firstByPath(items,patterns){for(const re of patterns){const hit=items.find(x=>re.test(x.path));if(hit)return hit.value}return null}
 function summarize(build){
-  const w=walk(build),targetPresent=w.strings.some(x=>x.value.toLowerCase()===TARGET_SHA),sha=firstByPath(w.strings,[/(?:commit|revision).*sha$/i,/(?:commit|revision).*hash$/i,/(?:^|\.)sha$/i]),branch=firstByPath(w.strings,[/(?:^|\.)branch$/i,/branch_name$/i]),status=firstByPath(w.codes,[/(?:^|\.)(?:status|state|outcome)$/i,/build.*(?:status|state|outcome)$/i]);
+  const w=walk(build),targetPresent=w.strings.some(x=>String(x.value).toLowerCase()===TARGET_SHA),sha=firstByPath(w.strings,[/(?:commit|revision).*sha$/i,/(?:commit|revision).*hash$/i,/(?:^|\.)sha$/i]),branch=firstByPath(w.strings,[/(?:^|\.)branch$/i,/branch_name$/i]),status=firstByPath(w.codes,[/(?:^|\.)(?:status|state|outcome)$/i,/build.*(?:status|state|outcome)$/i]);
   const errorCode=w.codes.find(x=>/(?:error|fail).*code/i.test(x.path))?.value||null;
   return{target_commit_present:targetPresent,observed_commit_sha:/^[a-f0-9]{40,64}$/i.test(String(sha||""))?sha:null,branch:safeString(branch),status:safeString(status),error_code:safeString(errorCode),failure_indicator_present:w.keys.some(k=>/(?:error|failure|failed)/i.test(k)),schema_keys_sample:[...new Set(w.keys)].slice(0,40)};
 }
