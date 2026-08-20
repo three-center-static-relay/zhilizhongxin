@@ -48,17 +48,18 @@ async function waitReady(child){
 async function main(){
   const commit=String(process.env.WORKERS_CI_COMMIT_SHA||"").trim();
   const dir=resolve(".l2-broker-readonly-canary");
+  const wranglerBin=resolve("node_modules/.bin/wrangler");
   rmSync(dir,{recursive:true,force:true});
   mkdirSync(dir,{recursive:true});
   writeFileSync(resolve(dir,"driver.mjs"),`export default{async fetch(request,env){const u=new URL(request.url);if(request.method==="GET"&&u.pathname==="/ready")return Response.json({ok:true});if(request.method!=="POST"||u.pathname!=="/run")return Response.json({ok:false,error:"NOT_FOUND"},{status:404});try{const payload=await env.AI_GATEWAY_CONTROL.request({operation:"routes.list"});const ok=payload?.success!==false;const routeCount=Array.isArray(payload?.result)?payload.result.length:null;return Response.json({ok,broker_rpc:true,routes_readable:ok,route_count:routeCount,secrets_redacted:true},{status:ok?200:502})}catch(error){return Response.json({ok:false,error:String(error?.message||error),details:error?.details||null,secrets_redacted:true},{status:error?.status||502})}}};\n`);
   writeFileSync(resolve(dir,"wrangler.jsonc"),JSON.stringify({name:"l2-broker-readonly-canary",main:"driver.mjs",compatibility_date:"2026-08-20",compatibility_flags:["nodejs_compat"],services:[{binding:"AI_GATEWAY_CONTROL",service:"admin-worker",entrypoint:"AIGatewayControl",remote:true}]},null,2));
 
-  console.log(JSON.stringify({event:"L2_BROKER_READONLY_CANARY_START",commit_sha:commit||null,max_attempts:MAX_ATTEMPTS,single_driver_lifecycle:true,production_worker_traffic_changed:false,dynamic_route_mutation:false,secrets_redacted:true}));
+  console.log(JSON.stringify({event:"L2_BROKER_READONLY_CANARY_START",commit_sha:commit||null,max_attempts:MAX_ATTEMPTS,direct_wrangler_binary:true,single_driver_lifecycle:true,production_worker_traffic_changed:false,dynamic_route_mutation:false,secrets_redacted:true}));
 
   let child=null;
   let last={ok:false,error:"NOT_ATTEMPTED"};
   try{
-    child=spawn("npx",["--no-install","wrangler","dev","--config","wrangler.jsonc","--ip","127.0.0.1","--port",String(PORT)],{
+    child=spawn(wranglerBin,["dev","--config","wrangler.jsonc","--ip","127.0.0.1","--port",String(PORT)],{
       cwd:dir,
       env:{...process.env,CI:"1",NO_COLOR:"1"},
       detached:process.platform!=="win32",
