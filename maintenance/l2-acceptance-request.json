@@ -1,0 +1,6 @@
+{
+  "schema": "expert-l2-acceptance-v1",
+  "enabled": true,
+  "phase": "predeploy-control-plane",
+  "request_id": "expert-v4.1-clean-predeploy-20260820-1024"
+}
