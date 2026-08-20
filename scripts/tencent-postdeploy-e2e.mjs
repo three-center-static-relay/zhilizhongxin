@@ -3,7 +3,10 @@ import { request as httpsRequest } from "node:https";
 import {validateTencentRuntimeReceipt} from "./cloudflare-worker-gate.mjs";
 
 // Keep live runtime verification fail-closed across Node HTTP client transport anomalies.
+// Three attempts are sufficient for bounded transient recovery; more retries amplify
+// Agent/Sandbox pressure and are intentionally forbidden.
 const base=String(process.argv[2]||"").replace(/\/+$/,""),probe=process.env.TENCENT_E2E_PROBE_TOKEN||"";
+const MAX_ATTEMPTS=3;
 assert.match(base,/^https:\/\/[a-z0-9.-]+\.workers\.dev$/i,"VALID_WORKERS_DEV_URL_REQUIRED");
 assert.match(probe,/^[a-f0-9]{64}$/i,"VALID_DEPLOY_PROBE_REQUIRED");
 
@@ -66,7 +69,7 @@ async function requestJson(url){
 }
 
 let lastError="NO_ATTEMPT";
-for(let attempt=1;attempt<=8;attempt++){
+for(let attempt=1;attempt<=MAX_ATTEMPTS;attempt++){
   try{
     const result=await requestJson(`${base}/_internal/tencent-deploy-e2e`),body=result.body;
     if(result.ok){
@@ -75,6 +78,7 @@ for(let attempt=1;attempt<=8;attempt++){
         ok:true,
         suite:"tencent-cloudflare-runtime-e2e",
         attempt,
+        max_attempts:MAX_ATTEMPTS,
         http_status:result.status,
         transport:result.transport,
         validation:receipt.validation,
@@ -94,6 +98,7 @@ for(let attempt=1;attempt<=8;attempt++){
       ok:false,
       suite:"tencent-cloudflare-runtime-e2e",
       attempt,
+      max_attempts:MAX_ATTEMPTS,
       http_status:result.status,
       transport:result.transport,
       error:upstreamError,
@@ -105,7 +110,7 @@ for(let attempt=1;attempt<=8;attempt++){
   }catch(error){
     lastError=error?.name==="AbortError"?"E2E_REQUEST_TIMEOUT":safe(String(error?.message||error));
   }
-  if(attempt<8)await sleep(2000);
+  if(attempt<MAX_ATTEMPTS)await sleep(2000);
 }
 // Emit exactly one machine-readable failure marker. Avoid an uncaught Error stack,
 // because Node echoes the source template before the runtime message and can poison
