@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {aiGatewayControlRequest,operationRequest} from "../src/ai-gateway-control.js";
 
 const env={CF_ACCOUNT_ID:"acct",CF_API_TOKEN:"secret-token",AI_GATEWAY_ID:"test"};
@@ -15,4 +16,13 @@ assert.match(captured.url,/\/ai-gateway\/gateways\/test\/routes\/route_1\/deploy
 assert.equal(captured.init.method,"POST");
 assert.equal(captured.init.headers.authorization,"Bearer secret-token");
 assert.ok(!JSON.stringify(result).includes("secret-token"));
-console.log(JSON.stringify({ok:true,suite:"ai-gateway-control-broker",named_entrypoint_only:true,operation_whitelist:true,no_delete:true,no_token_return:true}));
+const production=fs.readFileSync(new URL("../src/production-entry.js",import.meta.url),"utf8");
+const config=JSON.parse(fs.readFileSync(new URL("../wrangler.jsonc",import.meta.url),"utf8"));
+const credentialBinding=(config.services||[]).find(x=>x.binding==="AI_GATEWAY_CREDENTIAL_READ");
+assert.deepEqual(credentialBinding,{binding:"AI_GATEWAY_CREDENTIAL_READ",service:"maintenance-worker",entrypoint:"AIGatewayCredentialRead"});
+assert.match(production,/operationRequest\(this\.env,input\|\|\{\}\)/);
+assert.match(production,/AI_GATEWAY_CREDENTIAL_READ\.request\(\{operation:"routes\.list"\}\)/);
+assert.match(production,/admin-maintenance-ai-gateway-credential-read-v1/);
+assert.match(production,/dynamic_route_mutation:false/);
+assert.match(production,/secrets_redacted:true/);
+console.log(JSON.stringify({ok:true,suite:"ai-gateway-control-broker",named_entrypoint_only:true,operation_whitelist:true,read_delegated_to_credential_custodian:true,credential_custodian:"maintenance-worker",control_plane_owner:"admin-worker",no_delete:true,no_token_return:true}));
