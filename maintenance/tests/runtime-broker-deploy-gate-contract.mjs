@@ -20,5 +20,6 @@ assert.match(e2e,/maintenance-ai-gateway-control-v1/);
 assert.match(e2e,/MAINTENANCE_E2E_BROKER_RPC_REQUIRED/);
 assert.match(e2e,/MAINTENANCE_E2E_ROUTES_READABLE_REQUIRED/);
 assert.match(e2e,/MAINTENANCE_E2E_READ_ONLY_REQUIRED/);
-assert.doesNotMatch(e2e,/console\.(?:log|error)\([^\n]*probe/);
+assert.doesNotMatch(e2e,/console\.(?:log|error)\([^)]*\bprobe\b/);
+assert.doesNotMatch(e2e,/\$\{probe\}/);
 console.log(JSON.stringify({ok:true,suite:"maintenance-runtime-deploy-gate-contract",same_project_ci_authority:true,ephemeral_probe:true,runtime_service_binding_e2e:true,automatic_rollback:true,clean_final_deploy:true,no_cloudflare_token_in_maintenance:true,secrets_redacted:true}));
