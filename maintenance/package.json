@@ -4,9 +4,9 @@
   "type": "module",
   "description": "Maintenance Worker participating in shared fail-closed Cloudflare gate validation",
   "scripts": {
-    "cf:build": "node --check src/index.js && node --check scripts/runtime-broker-deploy-gate.mjs && node --check scripts/runtime-broker-postdeploy-e2e.mjs && node tests/runtime-ai-gateway-control-contract.mjs && node tests/runtime-broker-deploy-gate-contract.mjs",
+    "cf:build": "node --check src/index.js && node --check scripts/runtime-broker-deploy-gate.mjs && node --check scripts/runtime-broker-postdeploy-e2e.mjs && node --check scripts/runtime-secret-presence-deploy.mjs && node tests/runtime-ai-gateway-control-contract.mjs && node tests/runtime-broker-deploy-gate-contract.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
-    "cf:ci:deploy": "node scripts/runtime-broker-deploy-gate.mjs",
+    "cf:ci:deploy": "node scripts/runtime-secret-presence-deploy.mjs",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
     "cf:deploy": "npm run cf:build && npx wrangler deploy"
   },
