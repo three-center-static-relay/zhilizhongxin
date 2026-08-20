@@ -18,5 +18,11 @@
     {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
     {"binding": "EXPERT_CENTER", "service": "expert-worker"}
   ],
+  "vars": {
+    "AI_GATEWAY_ID": "test",
+    "AI_GATEWAY_ROUTE_FAMILY": "expert-panel",
+    "EXPERT_PROVIDER_POLICY": "openrouter-plus-deepseek-only",
+    "EXPERT_PROVIDER_CANDIDATES_JSON": "[{\"provider\":\"deepseek\",\"model\":\"deepseek-v4-pro\",\"company\":\"deepseek\",\"enabled\":true,\"free\":false,\"capabilities\":[\"reasoning\",\"coding\",\"quantitative\",\"strategy\",\"research\"],\"quality\":0.94,\"latency\":0.55,\"throughput\":0.55,\"context\":1,\"price\":0.88,\"popularity\":0.9}]"
+  },
   "triggers": {"crons": ["*/15 * * * *"]}
 }
