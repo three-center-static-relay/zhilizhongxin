@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const manager=fs.readFileSync(new URL("../src/expert-route-manager.js",import.meta.url),"utf8");
+const phase2=fs.readFileSync(new URL("../src/phase2-index.js",import.meta.url),"utf8");
 const e2e=fs.readFileSync(new URL("../scripts/runtime-expert-route-refresh-e2e.mjs",import.meta.url),"utf8");
 
 for(const route of [
@@ -22,7 +23,11 @@ assert.match(manager,/ROUTE_SHARDS\.map\(shard=>buildRouteShard\(shard,lanes\)\)
 assert.match(manager,/metadata\.lane/);
 assert.match(manager,/lanes\.length>MAX_SHARD_LANES/);
 assert.match(manager,/elements\.length>MAX_SHARD_ELEMENTS/);
+assert.match(manager,/created:x\.created===true/);
 assert.doesNotMatch(manager,/expert-panel-(plan|general|code|regulated|research|strategy|creative)-v1/);
+assert.match(phase2,/created=item\?\.created===true/);
+assert.match(phase2,/else if\(created\)/);
+assert.match(phase2,/NO_SAFE_ROLLBACK_TARGET/);
 assert.match(e2e,/ROUTE_REFRESH_SHARD_POLICY_REQUIRED/);
 assert.match(e2e,/Number\(body\?\.max_lanes_per_route\)!==2/);
 assert.match(e2e,/Number\(body\?\.max_elements_per_route\)!==16/);
@@ -30,4 +35,4 @@ assert.match(e2e,/Math\.ceil\(Math\.min\(8,Number\(body\.company_count\)\)\/2\)/
 assert.match(e2e,/r\.lanes\.length>2/);
 assert.match(e2e,/Number\(r\?\.element_count\)>16/);
 
-console.log(JSON.stringify({ok:true,suite:"expert-route-lane-pair-shard-contract",max_global_lanes:8,max_lanes_per_route:2,max_elements_per_route:16,route_shards:4,semantic_graph_duplication_removed:true}));
+console.log(JSON.stringify({ok:true,suite:"expert-route-lane-pair-shard-contract",max_global_lanes:8,max_lanes_per_route:2,max_elements_per_route:16,route_shards:4,semantic_graph_duplication_removed:true,rollback_delete_requires_created:true}));
