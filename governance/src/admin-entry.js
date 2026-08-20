@@ -27,32 +27,28 @@ async function proxyAdminTencent(request,env){
   }catch(error){return json({ok:false,error:"ADMIN_CENTER_PROXY_FAILED",message:String(error?.message||error)},502)}
 }
 
-function aiGatewayRpcErrorCode(error){
-  const message=String(error?.message||error||"").toUpperCase();
-  if(message.includes("CF_API_NOT_CONFIGURED"))return"CF_API_NOT_CONFIGURED";
-  if(message.includes("AI_GATEWAY_CONTROL_GATEWAY_MISMATCH"))return"AI_GATEWAY_CONTROL_GATEWAY_MISMATCH";
-  if(message.includes("AI_GATEWAY_CONTROL_UPSTREAM_401")||message.includes("AI_GATEWAY_CONTROL_UPSTREAM_403")||message.includes("UNAUTHORIZED")||message.includes("FORBIDDEN"))return"AI_GATEWAY_CONTROL_PERMISSION";
-  if(message.includes("AI_GATEWAY_CONTROL_UPSTREAM_404"))return"AI_GATEWAY_CONTROL_UPSTREAM_NOT_FOUND";
-  if(message.includes("ENTRYPOINT")||message.includes("NOT FOUND"))return"AI_GATEWAY_CONTROL_ENTRYPOINT_UNAVAILABLE";
-  if(message.includes("TIMEOUT"))return"AI_GATEWAY_CONTROL_TIMEOUT";
-  return"AI_GATEWAY_CONTROL_RPC_FAILED";
-}
-function safeRpcErrorName(error){
-  const name=String(error?.name||"");
-  return ["Error","TypeError","DOMException"].includes(name)?name:"OtherError";
+function aiGatewayServiceErrorCode(body,status,error){
+  if(error?.name==="AbortError")return"ADMIN_AI_GATEWAY_SERVICE_TIMEOUT";
+  const upstream=String(body?.error_code||body?.error||error?.message||"").toUpperCase();
+  if(upstream.includes("CF_API_NOT_CONFIGURED"))return"CF_API_NOT_CONFIGURED";
+  if(upstream.includes("PERMISSION")||upstream.includes("UNAUTHORIZED")||upstream.includes("FORBIDDEN")||status===401||status===403)return"AI_GATEWAY_CONTROL_PERMISSION";
+  if(upstream.includes("NOT_FOUND")||status===404)return"ADMIN_AI_GATEWAY_PROBE_NOT_FOUND";
+  if(upstream.includes("TIMEOUT")||status===504)return"ADMIN_AI_GATEWAY_SERVICE_TIMEOUT";
+  if(status>=500)return"ADMIN_AI_GATEWAY_SERVICE_UPSTREAM_FAILED";
+  return"ADMIN_AI_GATEWAY_SERVICE_FAILED";
 }
 async function aiGatewayControlRuntimeProbe(request,env){
   if(request.headers.get("x-three-center-selftest")!=="1")return json({ok:false,error:"NOT_FOUND"},404);
-  if(!env.AI_GATEWAY_CONTROL?.request)return json({ok:false,selftest:"governance-ai-gateway-control-readonly-v1",binding:false,broker_rpc:false,routes_readable:false,error_code:"AI_GATEWAY_CONTROL_UNBOUND",secrets_redacted:true,dynamic_route_mutation:false,expert_called:false},503);
-  let timer;
+  if(!env.ADMIN_CENTER?.fetch)return json({ok:false,selftest:"governance-ai-gateway-control-readonly-v2",binding:false,service_binding:false,transport:"service-binding-fetch",routes_readable:false,error_code:"ADMIN_CENTER_UNBOUND",secrets_redacted:true,dynamic_route_mutation:false,expert_called:false},503);
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
   try{
-    const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error("AI_GATEWAY_CONTROL_TIMEOUT")),8000)});
-    const payload=await Promise.race([env.AI_GATEWAY_CONTROL.request({operation:"routes.list"}),timeout]);
-    const success=payload?.success!==false;
-    return json({ok:success,selftest:"governance-ai-gateway-control-readonly-v1",binding:true,broker_rpc:true,routes_readable:success,error_code:success?null:"AI_GATEWAY_CONTROL_READ_FAILED",secrets_redacted:true,dynamic_route_mutation:false,expert_called:false},success?200:502);
+    const response=await env.ADMIN_CENTER.fetch(new Request("https://admin.internal/_internal/ai-gateway-control-readonly-probe",{method:"GET",headers:{accept:"application/json","x-three-center-selftest":"1"},signal:controller.signal}));
+    const body=await response.json().catch(()=>null);
+    const safe=response.status===200&&body?.ok===true&&body?.routes_readable===true&&body?.dynamic_route_mutation===false&&body?.expert_called===false&&body?.secrets_redacted===true;
+    return json({ok:safe,selftest:"governance-ai-gateway-control-readonly-v2",binding:true,service_binding:true,transport:"service-binding-fetch",admin_probe_reached:true,routes_readable:body?.routes_readable===true,error_code:safe?null:aiGatewayServiceErrorCode(body,response.status),secrets_redacted:true,dynamic_route_mutation:false,expert_called:false},safe?200:502);
   }catch(error){
-    return json({ok:false,selftest:"governance-ai-gateway-control-readonly-v1",binding:true,broker_rpc:false,routes_readable:false,error_code:aiGatewayRpcErrorCode(error),error_name:safeRpcErrorName(error),secrets_redacted:true,dynamic_route_mutation:false,expert_called:false},502);
-  }finally{if(timer)clearTimeout(timer)}
+    return json({ok:false,selftest:"governance-ai-gateway-control-readonly-v2",binding:true,service_binding:true,transport:"service-binding-fetch",admin_probe_reached:false,routes_readable:false,error_code:aiGatewayServiceErrorCode(null,0,error),secrets_redacted:true,dynamic_route_mutation:false,expert_called:false},502);
+  }finally{clearTimeout(timer)}
 }
 
 export default{
