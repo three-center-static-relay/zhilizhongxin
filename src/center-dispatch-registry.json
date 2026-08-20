@@ -1,0 +1,20 @@
+{
+  "centers": {
+    "expert": {
+      "role": "reasoning_and_judgment",
+      "actions": ["analyze", "evaluate", "review"]
+    },
+    "evidence": {
+      "role": "information_and_data",
+      "actions": ["collect", "verify", "summarize"]
+    },
+    "compute": {
+      "role": "simulation_and_calculation",
+      "actions": ["simulate", "optimize", "calculate"]
+    }
+  },
+  "governance": {
+    "controls": ["dispatch", "validate", "rollback"],
+    "fail_closed": true
+  }
+}
