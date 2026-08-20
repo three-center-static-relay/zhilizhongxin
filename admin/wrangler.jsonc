@@ -1,10 +1,11 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "admin-worker",
-  // Observable production refresh marker 2026-08-20 14:38 Asia/Shanghai: refresh current broker binding through the existing Tencent fail-closed gate; no runtime policy change.
+  // Diagnostic-only U1b branch: add version metadata solely to prove 0% admin candidate Version Override identity; never merge.
   "main": "src/production-entry.js",
   "compatibility_date": "2026-08-14",
   "workers_dev": true,
+  "version_metadata": {"binding": "CF_VERSION_METADATA"},
   "durable_objects": {
     "bindings": [
       {"name": "ADMIN_COORDINATOR", "class_name": "AdminCoordinator"}
@@ -30,9 +31,6 @@
     "RATE_LIMIT_PER_MIN": "120",
     "AUTO_PROMOTE": "false",
     "TENCENT_MAKERS_PROJECT_NAME": "python-starter-agent",
-    // Resolve the current fixed PresetDomain / active CustomDomain from Tencent Makers at runtime.
-    // The old per-project-looking URL is intentionally no longer an authority.
-    // Production promotion still requires the existing 15-check runtime-v5 gate.
     "TENCENT_MAKERS_EXECUTOR_MODE": "auto-discovery"
   }
 }
