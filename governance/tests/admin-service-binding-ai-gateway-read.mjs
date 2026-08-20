@@ -2,12 +2,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import worker from "../src/admin-entry.js";
 
-const config=JSON.parse(fs.readFileSync(new URL("../wrangler.jsonc",import.meta.url),"utf8"));
-const adminBinding=(config.services||[]).find(x=>x.binding==="ADMIN_CENTER");
-const namedBinding=(config.services||[]).find(x=>x.binding==="AI_GATEWAY_CONTROL");
-assert.equal(adminBinding?.service,"admin-worker");
-assert.equal(adminBinding?.entrypoint,undefined);
-assert.equal(namedBinding,undefined);
+const configSource=fs.readFileSync(new URL("../wrangler.jsonc",import.meta.url),"utf8");
+assert.match(configSource,/"binding"\s*:\s*"ADMIN_CENTER"\s*,\s*"service"\s*:\s*"admin-worker"/);
+assert.doesNotMatch(configSource,/"binding"\s*:\s*"AI_GATEWAY_CONTROL"/);
+assert.doesNotMatch(configSource,/"entrypoint"\s*:\s*"AIGatewayControl"/);
 
 let calls=0;
 const env={
