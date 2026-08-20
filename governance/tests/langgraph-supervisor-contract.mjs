@@ -26,12 +26,19 @@ const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url
 
 assert.equal(pkg.dependencies?.["@langchain/langgraph"], "1.4.10");
 assert.equal(pkg.dependencies?.["@langchain/core"], "1.2.6");
-assert.match(runtimeSource, /from "@langchain\/langgraph"/);
+assert.match(runtimeSource, /import\("@langchain\/langgraph"\)/);
+assert.doesNotMatch(runtimeSource, /^import\s+.*from\s+"@langchain\/langgraph"/m);
+assert.match(runtimeSource, /let langGraphModulePromise/);
+assert.match(runtimeSource, /await loadLangGraph\(\)/);
 assert.match(runtimeSource, /new StateGraph\(/);
 assert.match(runtimeSource, /collectCapabilityManifests/);
 assert.match(runtimeSource, /compileTaskPlan/);
 assert.match(runtimeSource, /https:\/\/expert\.internal\/v1\/langgraph\/health/);
 assert.match(runtimeSource, /autonomous_production_mutation: false/);
+assert.match(entrySource, /import\("\.\/langgraph-supervisor\.js"\)/);
+assert.doesNotMatch(entrySource, /^import\s+.*from\s+"\.\/langgraph-supervisor\.js"/m);
+assert.match(entrySource, /let langGraphSupervisorModulePromise/);
+assert.match(entrySource, /await loadLangGraphSupervisor\(\)/);
 assert.match(entrySource, /\/v1\/langgraph\/health/);
 assert.match(entrySource, /\/v1\/langgraph\/run/);
 assert.match(entrySource, /service-binding internal only/);

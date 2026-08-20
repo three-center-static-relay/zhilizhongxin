@@ -2,11 +2,17 @@ import app from "./production-entry.js";
 import {AdminState} from "./admin-state.js";
 import {adminOpenApiPaths,createCandidateVersion,getAcceptanceResult,getAdminContext,getProductionVersions,getSystemHealth,validateCandidate} from "./admin-gateway.js";
 import {handleEvolutionRoute} from "./evolution-router.js";
-import {LANGGRAPH_SUPERVISOR_RUNTIME,probeLangGraphSupervisor,runLangGraphSupervisor} from "./langgraph-supervisor.js";
 export {AdminState};
 
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
 const MAX_LANGGRAPH_BODY_BYTES=65536;
+const LANGGRAPH_SUPERVISOR_RUNTIME="@langchain/langgraph@1.4.10";
+let langGraphSupervisorModulePromise;
+
+function loadLangGraphSupervisor(){
+  if(!langGraphSupervisorModulePromise)langGraphSupervisorModulePromise=import("./langgraph-supervisor.js");
+  return langGraphSupervisorModulePromise;
+}
 
 async function openApiWithAdmin(request,env,ctx){
   const response=await app.fetch(request,env,ctx);
@@ -67,12 +73,16 @@ async function readLangGraphTask(request){
   }catch(error){throw Object.assign(new Error("INVALID_JSON"),{status:400,cause:error})}
 }
 async function langGraphHealth(env){
-  const result=await probeLangGraphSupervisor(env).catch(error=>({ok:false,runtime:LANGGRAPH_SUPERVISOR_RUNTIME,error:String(error?.message||error),autonomous_production_mutation:false}));
-  return json(result,result.ok?200:503);
+  try{
+    const {probeLangGraphSupervisor}=await loadLangGraphSupervisor();
+    const result=await probeLangGraphSupervisor(env);
+    return json(result,result.ok?200:503);
+  }catch(error){return json({ok:false,runtime:LANGGRAPH_SUPERVISOR_RUNTIME,error:String(error?.message||error),autonomous_production_mutation:false},503)}
 }
 async function langGraphRun(request,env){
   try{
     const task=await readLangGraphTask(request);
+    const {runLangGraphSupervisor}=await loadLangGraphSupervisor();
     const result=await runLangGraphSupervisor(task,env);
     return json(result,result.ok?200:result.status==="blocked"||result.status==="rejected"?422:503);
   }catch(error){return json({ok:false,runtime:LANGGRAPH_SUPERVISOR_RUNTIME,error:String(error?.message||"LANGGRAPH_REQUEST_FAILED"),execution_started:false,side_effects_started:false,autonomous_production_mutation:false},error?.status||500)}

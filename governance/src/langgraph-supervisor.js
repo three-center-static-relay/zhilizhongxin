@@ -1,29 +1,20 @@
-import { Annotation, StateGraph, START, END } from "@langchain/langgraph";
 import { buildSelfModel, collectCapabilityManifests, compileTaskPlan } from "./evolution-kernel.js";
 
 export const LANGGRAPH_SUPERVISOR_RUNTIME = "@langchain/langgraph@1.4.10";
 
-const SupervisorState = Annotation.Root({
-  task: Annotation(),
-  discovery: Annotation(),
-  self_model: Annotation(),
-  plan: Annotation(),
-  validation: Annotation(),
-  status: Annotation(),
-  error: Annotation(),
-  trace: Annotation({
-    reducer: (left, right) => [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])],
-    default: () => []
-  })
-});
+let langGraphModulePromise;
 
-const ProbeState = Annotation.Root({
-  status: Annotation(),
-  trace: Annotation({
+function loadLangGraph() {
+  if (!langGraphModulePromise) langGraphModulePromise = import("@langchain/langgraph");
+  return langGraphModulePromise;
+}
+
+function traceAnnotation(Annotation) {
+  return Annotation({
     reducer: (left, right) => [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])],
     default: () => []
-  })
-});
+  });
+}
 
 function validateSupervisorPlan(plan) {
   const nodes = Array.isArray(plan?.graph?.nodes) ? plan.graph.nodes : [];
@@ -43,7 +34,19 @@ function validateSupervisorPlan(plan) {
   };
 }
 
-function buildSupervisorGraph(env) {
+async function buildSupervisorGraph(env) {
+  const { Annotation, StateGraph, START, END } = await loadLangGraph();
+  const SupervisorState = Annotation.Root({
+    task: Annotation(),
+    discovery: Annotation(),
+    self_model: Annotation(),
+    plan: Annotation(),
+    validation: Annotation(),
+    status: Annotation(),
+    error: Annotation(),
+    trace: traceAnnotation(Annotation)
+  });
+
   return new StateGraph(SupervisorState)
     .addNode("discover", async () => {
       const discovery = await collectCapabilityManifests(env);
@@ -101,7 +104,13 @@ function buildSupervisorGraph(env) {
     .compile();
 }
 
-function buildProbeGraph() {
+async function buildProbeGraph() {
+  const { Annotation, StateGraph, START, END } = await loadLangGraph();
+  const ProbeState = Annotation.Root({
+    status: Annotation(),
+    trace: traceAnnotation(Annotation)
+  });
+
   return new StateGraph(ProbeState)
     .addNode("probe", async () => ({ status: "ready", trace: ["probe"] }))
     .addEdge(START, "probe")
@@ -126,7 +135,7 @@ async function probeExpertChildRuntime(env) {
 }
 
 export async function probeLangGraphSupervisor(env) {
-  const graph = buildProbeGraph();
+  const graph = await buildProbeGraph();
   const result = await graph.invoke({ status: "starting", trace: [] });
   const expert = await probeExpertChildRuntime(env);
   return {
@@ -142,7 +151,7 @@ export async function probeLangGraphSupervisor(env) {
 }
 
 export async function runLangGraphSupervisor(task, env) {
-  const graph = buildSupervisorGraph(env);
+  const graph = await buildSupervisorGraph(env);
   const result = await graph.invoke({
     task,
     discovery: null,
