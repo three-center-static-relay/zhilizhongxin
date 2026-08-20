@@ -1,4 +1,4 @@
-import { Annotation, StateGraph, START, END } from "@langchain/langgraph";
+import { Annotation, StateGraph, START, END } from "@langchain/langgraph/web";
 import { buildSelfModel, collectCapabilityManifests, compileTaskPlan } from "./evolution-kernel.js";
 
 export const LANGGRAPH_SUPERVISOR_RUNTIME = "@langchain/langgraph@1.4.10";
