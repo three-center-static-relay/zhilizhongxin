@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "governance-worker",
-  // Observable production refresh marker 2026-08-20 14:53 Asia/Shanghai: retry only after live admin Stage2 routes.list was independently proven PASS; no runtime policy change.
+  // Expert V4.1 transport simplification: use the existing default ADMIN_CENTER Service Binding; no named WorkerEntrypoint dependency.
   "main": "src/admin-entry.js",
   "compatibility_date": "2026-08-18",
   "compatibility_flags": ["nodejs_compat"],
@@ -10,7 +10,6 @@
   "ai": {"binding": "AI"},
   "services": [
     {"binding": "ADMIN_CENTER", "service": "admin-worker"},
-    {"binding": "AI_GATEWAY_CONTROL", "service": "admin-worker", "entrypoint": "AIGatewayControl"},
     {"binding": "OPENROUTER_RELAY", "service": "expert-worker"},
     {"binding": "INTELLIGENCE_CENTER", "service": "intelligence-worker"},
     {"binding": "COMPUTE_CENTER", "service": "compute-worker"},

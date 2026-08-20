@@ -20,7 +20,7 @@ function main(){
   if(branch!=="main")throw new Error("PRODUCTION_BRANCH_REQUIRED");
   if(!SHA_PATTERN.test(sha))throw new Error("VALID_COMMIT_SHA_REQUIRED");
   const repoRoot=run("git",["rev-parse","--show-toplevel"],{encoding:"utf8"}).stdout.trim(),sharedGate=resolve(repoRoot,"scripts/cloudflare-worker-gate.mjs"),version=packageWranglerVersion();
-  emit({ok:true,event:"MAINTENANCE_RUNTIME_DEPLOY_GATE_START",commit_sha:sha,control_plane_owner:"admin-worker",credential_custodian:"maintenance-worker",cloudflare_credentials_local:true,dynamic_route_mutation:false});
+  emit({ok:true,event:"MAINTENANCE_RUNTIME_DEPLOY_GATE_START",commit_sha:sha,control_plane_owner:"admin-worker",credential_custodian:"maintenance-worker",cloudflare_credentials_local:true,dynamic_route_mutation:false,governance_transport:"service-binding-fetch"});
   const baseline=spawnSync(process.execPath,[sharedGate,"maintenance","deploy"],{cwd:process.cwd(),env:process.env,stdio:"inherit"});
   if(baseline.error||baseline.status!==0){const e=new Error("BASELINE_MAINTENANCE_DEPLOY_FAILED");e.exitCode=baseline.status||1;throw e}
   const probe=randomBytes(32).toString("hex");
@@ -28,8 +28,8 @@ function main(){
   try{candidate=deploy(version,probe)}catch(error){rollback(version,"Automatic rollback: maintenance runtime candidate deploy failed");throw error}
   const checked=verify(repoRoot,candidate.url,probe);
   if(!checked.ok){rollback(version,"Automatic rollback: maintenance runtime AI Gateway credential-read selftest failed");const e=new Error(`MAINTENANCE_RUNTIME_E2E_FAILED:${checked.code}`);e.exitCode=1;throw e}
-  emit({ok:true,event:"MAINTENANCE_RUNTIME_E2E_CANDIDATE_PASS",commit_sha:sha,worker_host:new URL(candidate.url).host,selftest:"maintenance-ai-gateway-credential-read-v1",probe_persisted:true,dynamic_route_mutation:false});
-  try{const finalDeploy=deploy(version,null);emit({ok:true,event:"MAINTENANCE_RUNTIME_E2E_DEPLOY_GATE_PASS",commit_sha:sha,worker_host:new URL(finalDeploy.url).host,probe_persisted:false,production_attestation:true,control_plane_owner:"admin-worker",credential_custodian:"maintenance-worker",cloudflare_credentials_local:true,dynamic_route_mutation:false});}
+  emit({ok:true,event:"MAINTENANCE_RUNTIME_E2E_CANDIDATE_PASS",commit_sha:sha,worker_host:new URL(candidate.url).host,selftest:"maintenance-ai-gateway-credential-read-v2",transport:"service-binding-fetch",probe_persisted:true,dynamic_route_mutation:false});
+  try{const finalDeploy=deploy(version,null);emit({ok:true,event:"MAINTENANCE_RUNTIME_E2E_DEPLOY_GATE_PASS",commit_sha:sha,worker_host:new URL(finalDeploy.url).host,probe_persisted:false,production_attestation:true,control_plane_owner:"admin-worker",credential_custodian:"maintenance-worker",cloudflare_credentials_local:true,governance_transport:"service-binding-fetch",dynamic_route_mutation:false});}
   catch(error){rollback(version,"Automatic rollback: clean maintenance attestation deploy failed");throw error}
 }
 const invoked=process.argv[1]?pathToFileURL(resolve(process.argv[1])).href:"";
