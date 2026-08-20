@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { Annotation, StateGraph, START, END } from "@langchain/langgraph/web";
+import { Annotation, StateGraph, START, END } from "@langchain/langgraph";
 
 const TestState = Annotation.Root({
   value: Annotation(),
@@ -26,8 +26,10 @@ const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url
 
 assert.equal(pkg.dependencies?.["@langchain/langgraph"], "1.4.10");
 assert.equal(pkg.dependencies?.["@langchain/core"], "1.2.6");
-assert.match(runtimeSource, /from "@langchain\/langgraph\/web"/);
-assert.doesNotMatch(runtimeSource, /from "@langchain\/langgraph"/);
+assert.match(runtimeSource, /import\("@langchain\/langgraph"\)/);
+assert.doesNotMatch(runtimeSource, /^import\s+.*from\s+"@langchain\/langgraph"/m);
+assert.match(runtimeSource, /let langGraphModulePromise/);
+assert.match(runtimeSource, /await loadLangGraph\(\)/);
 assert.match(runtimeSource, /new StateGraph\(/);
 assert.match(runtimeSource, /collectCapabilityManifests/);
 assert.match(runtimeSource, /compileTaskPlan/);
@@ -39,4 +41,3 @@ assert.match(entrySource, /service-binding internal only/);
 assert.match(entrySource, /MAX_LANGGRAPH_BODY_BYTES=65536/);
 
 console.log("langgraph-supervisor-contract: PASS");
-// Cloudflare preview retrigger after PR creation; no runtime effect.
