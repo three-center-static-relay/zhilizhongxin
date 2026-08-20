@@ -1,4 +1,4 @@
-// Exact-head Cloudflare preview trigger for shared Expert-hosted LangGraph supervisor.
+// Exact-main Cloudflare production receipt trigger for shared Expert-hosted LangGraph supervisor.
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
