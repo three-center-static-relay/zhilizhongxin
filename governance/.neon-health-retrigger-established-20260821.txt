@@ -1,2 +1,3 @@
 Established Cloudflare-linked branch retrigger for Governance-hosted Neon health diagnostic after NEON_DATABASE_URL secret update. NEVER MERGE.
 Triggered 2026-08-21T15:57:30Z.
+Transport-only bisection retrigger 2026-08-21T16:08:10Z.
