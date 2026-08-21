@@ -190,3 +190,17 @@ export async function readRecentNeonMemory(env, filters = {}) {
     return { ok: false, configured: true, records: [], error: String(error?.message || "NEON_READ_FAILED").slice(0, 160), secret_exposed: false };
   }
 }
+
+export async function deleteNeonMemory(env, memoryId) {
+  if (!configured(env)) return { ok: false, configured: false, deleted: false, error: "NEON_DATABASE_URL_NOT_CONFIGURED" };
+  const normalized = normalizeText(memoryId, 180);
+  if (!normalized) return { ok: false, configured: true, deleted: false, error: "INVALID_MEMORY_ID" };
+  try {
+    await ensureNeonMemorySchema(env);
+    const sql = sqlFor(env);
+    const rows = await timeout(sql`DELETE FROM think_tank_memory WHERE memory_id = ${normalized} RETURNING memory_id`, 10000, "NEON_DELETE_TIMEOUT");
+    return { ok: true, configured: true, deleted: rows?.[0]?.memory_id === normalized, memory_id: normalized, secret_exposed: false };
+  } catch (error) {
+    return { ok: false, configured: true, deleted: false, error: String(error?.message || "NEON_DELETE_FAILED").slice(0, 160), secret_exposed: false };
+  }
+}
