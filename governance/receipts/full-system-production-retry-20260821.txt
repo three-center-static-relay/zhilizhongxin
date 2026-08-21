@@ -1,0 +1,3 @@
+Operational receipt trigger for production redeploy after the canonical capability fail-closed repair.
+No runtime behavior is changed by this file.
+Target repair main: 600741c31fc91a41eb6b59703b8ba71e38f6245b
