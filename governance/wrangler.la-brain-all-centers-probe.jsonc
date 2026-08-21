@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "governance-la-brain-all-centers-probe",
+  "name": "governance-worker",
   "main": "src/la-brain-all-centers-probe-index.js",
   "compatibility_date": "2026-08-18",
   "compatibility_flags": ["nodejs_compat"],
