@@ -1,5 +1,4 @@
 import { buildSelfModel, collectCapabilityManifests, compileTaskPlan } from "./evolution-kernel.js";
-import { storeNeonMemory } from "./neon-memory.js";
 
 export const LANGGRAPH_SUPERVISOR_RUNTIME = "@langchain/langgraph@1.4.10";
 export const LANGGRAPH_RUNTIME_HOST = "expert-worker";
@@ -54,26 +53,6 @@ async function validatePlanWithLangGraph(plan, env) {
   }
 }
 
-async function persistSupervisorMemory(task, result, env) {
-  return storeNeonMemory(env, {
-    center: "governance",
-    kind: "langgraph-supervisor",
-    task_id: task?.task_id || null,
-    memory_id: task?.task_id ? `langgraph-supervisor:${task.task_id}` : undefined,
-    payload: {
-      task: {
-        task_id: task?.task_id || null,
-        goal: task?.goal || null,
-        required_capabilities: Array.isArray(task?.required_capabilities) ? task.required_capabilities : [],
-        success_criteria: Array.isArray(task?.success_criteria) ? task.success_criteria : [],
-        budget: task?.budget || null,
-        risk: task?.risk || null
-      },
-      result
-    }
-  });
-}
-
 export async function probeLangGraphSupervisor(env) {
   const expert = await probeExpertLangGraph(env);
   return {
@@ -95,7 +74,7 @@ export async function runLangGraphSupervisor(task, env) {
   const plan = await compileTaskPlan(task, discovery.manifests || []);
 
   if (plan?.ok !== true) {
-    const result = {
+    return {
       ok: false,
       runtime: LANGGRAPH_SUPERVISOR_RUNTIME,
       runtime_host: LANGGRAPH_RUNTIME_HOST,
@@ -124,13 +103,11 @@ export async function runLangGraphSupervisor(task, env) {
       side_effects_started: false,
       autonomous_production_mutation: false
     };
-    const shared_memory = await persistSupervisorMemory(task, result, env);
-    return { ...result, shared_memory };
   }
 
   const langgraph = await validatePlanWithLangGraph(plan, env);
   const ok = langgraph.ok === true;
-  const result = {
+  return {
     ok,
     runtime: LANGGRAPH_SUPERVISOR_RUNTIME,
     runtime_host: LANGGRAPH_RUNTIME_HOST,
@@ -165,6 +142,4 @@ export async function runLangGraphSupervisor(task, env) {
     side_effects_started: false,
     autonomous_production_mutation: false
   };
-  const shared_memory = await persistSupervisorMemory(task, result, env);
-  return { ...result, shared_memory };
 }
