@@ -18,7 +18,8 @@
     "EXPERT_ROUTE_REFRESH_HOURS": "6",
     "EXPERT_ROUTE_AUTOMATION_ENABLED": "false",
     "EXPERT_MODEL_ID_PINNING": "false",
-    "EXPERT_FUTURE_MODELS_AUTO_DISCOVER": "true"
+    "EXPERT_FUTURE_MODELS_AUTO_DISCOVER": "true",
+    "EXPERT_RUNTIME_EXPECTED_SHA": "f1fcb7a7c809486ca7d0ff5ff368e0436cbbdace"
   },
   "observability": {"enabled": true, "logs": {"enabled": true, "head_sampling_rate": 1}}
 }
