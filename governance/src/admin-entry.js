@@ -51,11 +51,17 @@ async function aiGatewayControlRuntimeProbe(request,env){
     return json({ok:false,selftest:"governance-ai-gateway-control-readonly-v2",binding:true,service_binding:true,transport:"service-binding-fetch",admin_probe_reached:false,credential_broker:false,routes_readable:false,error_code:aiGatewayServiceErrorCode(null,0,error),secrets_redacted:true,dynamic_route_mutation:false,expert_called:false},502);
   }finally{clearTimeout(timer)}
 }
+function versionIdentityProbe(request,env){
+  if(request.headers.get("x-three-center-selftest")!=="1")return json({ok:false,error:"NOT_FOUND"},404);
+  const versionId=String(env.CF_VERSION_METADATA?.id||"").trim();
+  return json({ok:Boolean(versionId),selftest:"governance-version-identity-v1",version_id:versionId||null,dynamic_route_mutation:false,expert_called:false,secrets_redacted:true},versionId?200:503);
+}
 
 export default{
   async fetch(request,env,ctx){
     const url=new URL(request.url);
     const evolution=await handleEvolutionRoute(request,env,ctx);if(evolution)return evolution;
+    if(request.method==="GET"&&url.pathname==="/_internal/version-identity-probe")return versionIdentityProbe(request,env);
     if(request.method==="GET"&&url.pathname==="/_internal/ai-gateway-control-readonly-probe")return aiGatewayControlRuntimeProbe(request,env);
     if(request.method==="GET"&&url.pathname==="/v1/admin/context")return getAdminContext(request,env,ctx,app);
     if(request.method==="GET"&&url.pathname==="/v1/admin/health")return getSystemHealth(request,env,ctx,app);
