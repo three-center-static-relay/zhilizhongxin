@@ -22,7 +22,7 @@
     "deploy:contract": "node tests/versioned-production-deploy-contract.mjs",
     "test": "node tests/evolution-kernel-contract.mjs && node tests/langgraph-supervisor-contract.mjs && node tests/domain-architecture-contract.mjs && node tests/openrouter-mcp-boundary.mjs && node tests/policy-regression.mjs && node tests/policy-hardening-second-layer.mjs && node tests/runtime-attestation.mjs && node tests/openapi-action-schema.mjs && node tests/literature-action-route.mjs && node tests/provider-fresh-e2e-route.mjs && node tests/final-output-validation.mjs && node tests/legacy-action-compat-selftests.mjs && node tests/assist-profile.mjs && node tests/stress.mjs && node tests/admin-gateway-readonly.mjs && node tests/admin-service-binding-ai-gateway-read.mjs && node tests/admin-candidate-acceptance.mjs && node tests/web-gpt-action-snapshot.mjs && node tests/versioned-production-deploy-contract.mjs",
     "cf:build": "npm test",
-    "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs governance preview",
+    "cf:ci:preview": "node tests/versioned-production-stage-c.mjs",
     "cf:ci:deploy": "node scripts/versioned-production-deploy.mjs",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
     "cf:deploy": "npm run cf:build && npx wrangler deploy"
