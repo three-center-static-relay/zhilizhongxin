@@ -1,0 +1,2 @@
+Operational receipt trigger only. No runtime behavior changes.
+Run the full Maintenance production acceptance gate after repaired main 600741c31fc91a41eb6b59703b8ba71e38f6245b.
