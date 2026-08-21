@@ -31,6 +31,11 @@ async function requestJson(fetchImpl,url,{headers={},timeoutMs=12000}={}){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{const response=await fetchImpl(url,{headers:{accept:"application/json",...headers},signal:controller.signal});const text=await response.text(),payload=safeJson(text);if(!response.ok)throw new Error(`HTTP_${response.status}`);if(payload===null)throw new Error("BAD_JSON");return{payload,response}}finally{clearTimeout(timer)}
 }
+function gatewayDiscovery(env,provider){
+  const accountId=clean(env?.CF_ACCOUNT_ID||env?.CLOUDFLARE_ACCOUNT_ID),gatewayId=clean(env?.AI_GATEWAY_ID||"test"),token=clean(env?.AI_GATEWAY_TOKEN||env?.CLOUDFLARE_AI_GATEWAY_API_TOKEN);
+  if(!accountId||!gatewayId||!token)throw new Error(`${String(provider||"PROVIDER").toUpperCase()}_GATEWAY_DISCOVERY_CREDENTIAL_MISSING`);
+  return{root:`${CF_GATEWAY}/${encodeURIComponent(accountId)}/${encodeURIComponent(gatewayId)}/${provider}`,headers:{"cf-aig-authorization":`Bearer ${token}`,"cf-aig-collect-log-payload":"false"}};
+}
 
 function openRouterRows(payload,transport){
   const data=Array.isArray(payload?.data)?payload.data:[];const rows=[];
@@ -38,16 +43,15 @@ function openRouterRows(payload,transport){
   return rows;
 }
 async function openRouterViaGateway(env,fetchImpl){
-  const accountId=clean(env?.CF_ACCOUNT_ID||env?.CLOUDFLARE_ACCOUNT_ID),gatewayId=clean(env?.AI_GATEWAY_ID||"test"),token=clean(env?.AI_GATEWAY_TOKEN||env?.CLOUDFLARE_AI_GATEWAY_API_TOKEN);
-  if(!accountId||!gatewayId||!token)throw new Error("OPENROUTER_GATEWAY_DISCOVERY_CREDENTIAL_MISSING");
-  const root=`${CF_GATEWAY}/${encodeURIComponent(accountId)}/${encodeURIComponent(gatewayId)}/openrouter`,headers={"cf-aig-authorization":`Bearer ${token}`,"cf-aig-collect-log-payload":"false"};let last="NOT_ATTEMPTED";
+  const{root,headers}=gatewayDiscovery(env,"openrouter");let last="NOT_ATTEMPTED";
   for(const suffix of ["models","v1/models"]){try{const{payload}=await requestJson(fetchImpl,`${root}/${suffix}`,{headers,timeoutMs:15000});const rows=openRouterRows(payload,"cloudflare-ai-gateway-byok");if(rows.length)return rows;last="EMPTY"}catch(error){last=safeCode(error?.message||error)}}
   throw new Error(`OPENROUTER_GATEWAY_MODEL_UNIVERSE_${last}`);
 }
 export async function discoverOpenRouter(envOrFetch={},fetchMaybe=fetch){
-  const legacy=typeof envOrFetch==="function",env=legacy?{}:(envOrFetch||{}),fetchImpl=legacy?envOrFetch:fetchMaybe;let directError=null;
-  try{const{payload}=await requestJson(fetchImpl,OR_URL,{headers:{"user-agent":"three-center-model-universe/1.0"},timeoutMs:15000});const rows=openRouterRows(payload,"openrouter-direct");if(rows.length)return rows;directError=new Error("OPENROUTER_DIRECT_MODEL_UNIVERSE_EMPTY")}catch(error){directError=error}
-  if(!legacy){try{return await openRouterViaGateway(env,fetchImpl)}catch(error){throw new Error(`OPENROUTER_MODEL_UNIVERSE_UNAVAILABLE_DIRECT_${safeCode(directError?.message)}_GATEWAY_${safeCode(error?.message)}`)}}
+  const legacy=typeof envOrFetch==="function",env=legacy?{}:(envOrFetch||{}),fetchImpl=legacy?envOrFetch:fetchMaybe;let gatewayError=null,directError=null;
+  if(!legacy){try{return await openRouterViaGateway(env,fetchImpl)}catch(error){gatewayError=error}}
+  try{const{payload}=await requestJson(fetchImpl,OR_URL,{headers:{"user-agent":"three-center-model-universe/1.0"},timeoutMs:15000});const rows=openRouterRows(payload,"openrouter-direct-fallback");if(rows.length)return rows;directError=new Error("OPENROUTER_DIRECT_MODEL_UNIVERSE_EMPTY")}catch(error){directError=error}
+  if(!legacy)throw new Error(`OPENROUTER_MODEL_UNIVERSE_UNAVAILABLE_GATEWAY_${safeCode(gatewayError?.message)}_DIRECT_${safeCode(directError?.message)}`);
   throw new Error(`OPENROUTER_MODEL_UNIVERSE_UNAVAILABLE_DIRECT_${safeCode(directError?.message)}`);
 }
 
@@ -56,7 +60,7 @@ export async function discoverHuggingFace(fetchImpl=fetch){
   const rows=[];let url=`${HF_URL}?inference_provider=all&limit=${HF_PAGE_SIZE}&expand=inferenceProviderMapping`;
   for(let page=0;page<MAX_HF_PAGES&&url;page++){
     const{payload,response}=await requestJson(fetchImpl,url,{timeoutMs:15000});const data=Array.isArray(payload)?payload:[];
-    for(const m of data){const id=clean(m?.id||m?.modelId),company=companyAlias(id),task=norm(m?.pipeline_tag||m?.pipelineTag||"");if(!id||!companyAllowed(company))continue;const mapping=m?.inferenceProviderMapping||m?.inference_provider_mapping||{};const live=Object.values(mapping||{}).filter(x=>norm(x?.status)==="live"),tasks=new Set([task,...live.map(x=>norm(x?.task))].filter(Boolean));if(tasks.size&&![...tasks].some(x=>["conversational","text-generation","text2text-generation","image-text-to-text"].includes(x)))continue;rows.push(candidate({provider:"huggingface",model:id,company,source:"huggingface",free:false,capabilities:["text",...([...tasks].includes("image-text-to-text")?["vision"]:[])],hints:{quality:0.56+0.18*logScore(m?.likes,10000),context:0.5,price:0.5,popularity:0.55*logScore(m?.downloads,10000000)+0.45*logScore(m?.likes,10000),latency:0.5,throughput:0.5},verified:live.length>0||norm(m?.inference)==="warm",meta:{pipeline_tag:task||null,live_provider_count:live.length,downloads:Number(m?.downloads)||0,likes:Number(m?.likes)||0}}))}
+    for(const m of data){const id=clean(m?.id||m?.modelId),company=companyAlias(id),task=norm(m?.pipeline_tag||m?.pipelineTag||"");if(!id||!companyAllowed(company))continue;const mapping=m?.inferenceProviderMapping||m?.inference_provider_mapping||{};const live=Object.values(mapping||{}).filter(x=>norm(x?.status)==="live"),tasks=new Set([task,...live.map(x=>norm(x?.task))].filter(Boolean));if(tasks.size&&![...tasks].some(x=>["conversational","text-generation","text2text-generation","image-text-to-text"].includes(x)))continue;rows.push(candidate({provider:"huggingface",model:id,company,source:"huggingface",free:false,capabilities:["text",...([...tasks].includes("image-text-to-text")?["vision"]:[])],hints:{quality:0.56+0.18*logScore(m?.likes,10000),context:0.5,price:0.5,popularity:0.55*logScore(m?.downloads,10000000)+0.45*logScore(m?.likes,10000),latency:0.5,throughput:0.5},verified:live.length>0||norm(m?.inference)==="warm",meta:{pipeline_tag:task||null,live_provider_count:live.length,downloads:Number(m?.downloads)||0,likes:Number(m?.likes)||0,catalog_transport:"huggingface-hub-direct-catalog-only"}}))}
     url=nextLink(response.headers.get("link"));
   }
   if(!rows.length)throw new Error("HUGGINGFACE_MODEL_UNIVERSE_EMPTY");return dedupe(rows);
@@ -66,24 +70,27 @@ export async function discoverWorkersAI(env,fetchImpl=fetch){
   const accountId=clean(env?.CF_ACCOUNT_ID||env?.CLOUDFLARE_ACCOUNT_ID),token=clean(env?.CLOUDFLARE_AI_GATEWAY_API_TOKEN||env?.CF_API_TOKEN);if(!accountId||!token)throw new Error("WORKERS_AI_DISCOVERY_CREDENTIAL_MISSING");
   const url=`${CF_API}/accounts/${encodeURIComponent(accountId)}/ai/models/search?per_page=1000`;
   const{payload}=await requestJson(fetchImpl,url,{headers:{authorization:`Bearer ${token}`}});const result=payload?.result??payload?.data??payload,models=Array.isArray(result)?result:Array.isArray(result?.models)?result.models:[];const rows=[];
-  for(const m of models){const id=clean(m?.name||m?.id||m?.model);if(!id)continue;const company=companyAlias(id),task=norm(m?.task?.name||m?.task||m?.pipeline_tag||"");if(!companyAllowed(company))continue;if(task&&!["text-generation","text-to-text","text2text-generation","conversational"].some(x=>task.includes(x)))continue;const props=m?.properties||m?.metadata||{};rows.push(candidate({provider:"workers-ai",model:id,company,source:"workers-ai",free:false,capabilities:["text"],hints:{quality:0.58,context:props?.context_window?Math.min(1,Math.log2(Math.max(2048,Number(props.context_window)))/20):0.5,price:0.6,popularity:0.5,latency:0.6,throughput:0.6},verified:true,meta:{task:task||null,chat_route_eligible:true}}))}
+  for(const m of models){const id=clean(m?.name||m?.id||m?.model);if(!id)continue;const company=companyAlias(id),task=norm(m?.task?.name||m?.task||m?.pipeline_tag||"");if(!companyAllowed(company))continue;if(task&&!["text-generation","text-to-text","text2text-generation","conversational"].some(x=>task.includes(x)))continue;const props=m?.properties||m?.metadata||{};rows.push(candidate({provider:"workers-ai",model:id,company,source:"workers-ai",free:false,capabilities:["text"],hints:{quality:0.58,context:props?.context_window?Math.min(1,Math.log2(Math.max(2048,Number(props.context_window)))/20):0.5,price:0.6,popularity:0.5,latency:0.6,throughput:0.6},verified:true,meta:{task:task||null,chat_route_eligible:true,catalog_transport:"cloudflare-workers-ai-control-api"}}))}
   if(!rows.length)throw new Error("WORKERS_AI_MODEL_UNIVERSE_EMPTY");return dedupe(rows);
 }
 
+function deepSeekRows(payload,transport){const rows=[];for(const m of Array.isArray(payload?.data)?payload.data:[]){const id=clean(m?.id),company=companyAlias(m?.owned_by||"deepseek");if(!id||!companyAllowed(company))continue;rows.push(candidate({provider:"deepseek",model:id,company,source:"deepseek",free:false,capabilities:["text","reasoning"],hints:{quality:0.68,context:0.7,price:0.7,popularity:0.7,latency:0.55,throughput:0.55},verified:true,meta:{discovery:transport,catalog_transport:transport}}))}return rows}
+async function deepSeekViaGateway(env,fetchImpl){const{root,headers}=gatewayDiscovery(env,"deepseek");let last="NOT_ATTEMPTED";for(const suffix of ["models","v1/models"]){try{const{payload}=await requestJson(fetchImpl,`${root}/${suffix}`,{headers,timeoutMs:15000});const rows=deepSeekRows(payload,"cloudflare-ai-gateway-byok");if(rows.length)return rows;last="EMPTY"}catch(error){last=safeCode(error?.message||error)}}throw new Error(`DEEPSEEK_GATEWAY_MODEL_UNIVERSE_${last}`)}
 export async function discoverDeepSeek(env,openRouterRows=[],fetchImpl=fetch){
-  const token=clean(env?.DEEPSEEK_API_KEY);const rows=[];
-  if(token){const{payload}=await requestJson(fetchImpl,DEEPSEEK_URL,{headers:{authorization:`Bearer ${token}`}});for(const m of Array.isArray(payload?.data)?payload.data:[]){const id=clean(m?.id),company=companyAlias(m?.owned_by||"deepseek");if(!id||!companyAllowed(company))continue;rows.push(candidate({provider:"deepseek",model:id,company,source:"deepseek",free:false,capabilities:["text","reasoning"],hints:{quality:0.68,context:0.7,price:0.7,popularity:0.7,latency:0.55,throughput:0.55},verified:true,meta:{discovery:"official-models-api"}}))}}
-  if(!rows.length){for(const or of openRouterRows){if(companyAlias(or.company)!=="deepseek")continue;const id=clean(or.model).replace(/^deepseek\//i,"");if(!id)continue;rows.push(candidate({provider:"deepseek",model:id,company:"deepseek",source:"deepseek",free:false,capabilities:or.capabilities||["text"],hints:{...(or.hints||{}),quality:Math.max(0.45,(or.hints?.quality||0.5)-0.08)},verified:false,meta:{discovery:"openrouter-owner-inference",direct_model_unverified:true}}))}}
+  const rows=[];let gatewayError=null,directError=null;
+  try{rows.push(...await deepSeekViaGateway(env,fetchImpl))}catch(error){gatewayError=error}
+  if(!rows.length){const token=clean(env?.DEEPSEEK_API_KEY);if(token){try{const{payload}=await requestJson(fetchImpl,DEEPSEEK_URL,{headers:{authorization:`Bearer ${token}`}});rows.push(...deepSeekRows(payload,"deepseek-direct-fallback"))}catch(error){directError=error}}}
+  if(!rows.length){for(const or of openRouterRows){if(companyAlias(or.company)!=="deepseek")continue;const id=clean(or.model).replace(/^deepseek\//i,"");if(!id)continue;rows.push(candidate({provider:"deepseek",model:id,company:"deepseek",source:"deepseek",free:false,capabilities:or.capabilities||["text"],hints:{...(or.hints||{}),quality:Math.max(0.45,(or.hints?.quality||0.5)-0.08)},verified:false,meta:{discovery:"openrouter-owner-inference",catalog_transport:"openrouter-owner-inference",direct_model_unverified:true,gateway_error:gatewayError?safeCode(gatewayError?.message):null,direct_error:directError?safeCode(directError?.message):null}}))}}
   return dedupe(rows);
 }
 
 export async function buildModelUniverse(env={},fetchImpl=fetch){
   const source_status={};let openrouter=[],huggingface=[],workersAI=[],deepseek=[];
   try{openrouter=await discoverOpenRouter(env,fetchImpl);source_status.openrouter={ok:true,count:openrouter.length,transport:clean(openrouter[0]?.meta?.catalog_transport)||"unknown"}}catch(error){source_status.openrouter={ok:false,count:0,error:String(error?.message||error).slice(0,240)}}
-  try{huggingface=await discoverHuggingFace(fetchImpl);source_status.huggingface={ok:true,count:huggingface.length}}catch(error){source_status.huggingface={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
-  try{workersAI=await discoverWorkersAI(env,fetchImpl);source_status["workers-ai"]={ok:true,count:workersAI.length}}catch(error){source_status["workers-ai"]={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
-  try{deepseek=await discoverDeepSeek(env,openrouter,fetchImpl);source_status.deepseek={ok:deepseek.length>0,count:deepseek.length,verified_count:deepseek.filter(x=>x.verified).length,inferred_count:deepseek.filter(x=>!x.verified).length}}catch(error){source_status.deepseek={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
+  try{huggingface=await discoverHuggingFace(fetchImpl);source_status.huggingface={ok:true,count:huggingface.length,transport:"huggingface-hub-direct-catalog-only"}}catch(error){source_status.huggingface={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
+  try{workersAI=await discoverWorkersAI(env,fetchImpl);source_status["workers-ai"]={ok:true,count:workersAI.length,transport:"cloudflare-workers-ai-control-api"}}catch(error){source_status["workers-ai"]={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
+  try{deepseek=await discoverDeepSeek(env,openrouter,fetchImpl);source_status.deepseek={ok:deepseek.length>0,count:deepseek.length,transport:clean(deepseek[0]?.meta?.catalog_transport)||"unknown",verified_count:deepseek.filter(x=>x.verified).length,inferred_count:deepseek.filter(x=>!x.verified).length}}catch(error){source_status.deepseek={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
   const excluded=excludedCompanies(env),candidates=dedupe([...openrouter,...huggingface,...workersAI,...deepseek]).filter(x=>x.model&&x.provider&&companyAllowed(x.company)&&!excluded.has(x.company));
   const companies=[...new Set(candidates.map(x=>x.company))];
-  return{schema:"expert-model-universe-v1",generated_at:new Date().toISOString(),model_id_pinning:false,future_models_auto_discover:true,source_status,candidate_count:candidates.length,company_count:companies.length,companies,excluded_companies:[...excluded],candidates};
+  return{schema:"expert-model-universe-v1",generated_at:new Date().toISOString(),discovery_policy:"cloudflare-ai-gateway-first-when-supported",direct_catalog_fallback:true,model_id_pinning:false,future_models_auto_discover:true,source_status,candidate_count:candidates.length,company_count:companies.length,companies,excluded_companies:[...excluded],candidates};
 }
