@@ -25,8 +25,8 @@ export async function handleRuntimeOneShotCanary(request,env){
     task_id:`runtime-fuzhou-choice-${crypto.randomUUID()}`,
     goal:`${prompt}\n\n${SOFT_POLICY}`,
     constraints:{allowed_centers:["governance","expert"],write_scope:"none",external_web:false,tools:false,production_mutation:false},
-    preferences:{cost:"price-performance",length:"adaptive-soft",token_cap:false},
     risk:{max_trust_level:"T2",uncertainty:"medium"},
+    budget:{cost_mode:"balanced",control:"soft-price-performance",hard_spend_cap:false,token_cap:false,length_control:"adaptive-soft"},
     required_capabilities:["governance.task-planner","expert.deliberation","expert.judgment"],
     deadline:new Date(Date.now()+10*60*1000).toISOString(),
     success_criteria:["LangGraph validates the plan","real expert deliberation completes","AI Gateway dynamic routing is used","no tools or web are used","no production mutation occurs"]
