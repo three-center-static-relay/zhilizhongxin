@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "maintenance-worker",
+  "main": "src/neon-health-probe-index.js",
+  "compatibility_date": "2026-08-14",
+  "workers_dev": true,
+  "preview_urls": false,
+  "durable_objects": {"bindings": [{"name": "MAINTENANCE_STATE", "class_name": "MaintenanceState"}]},
+  "exports": {"MaintenanceState": {"type": "durable-object", "storage": "sqlite"}},
+  "services": [
+    {"binding": "ADMIN_CENTER", "service": "admin-worker"},
+    {"binding": "GOVERNANCE_CENTER", "service": "governance-worker"},
+    {"binding": "INTELLIGENCE_CENTER", "service": "intelligence-worker"},
+    {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
+    {"binding": "EXPERT_CENTER", "service": "expert-worker"}
+  ],
+  "vars": {
+    "CF_ACCOUNT_ID": "e3aec027af13c557bbcb831d29c1e7b4",
+    "AI_GATEWAY_ID": "test",
+    "EXPERT_MODEL_SOURCE_POLICY": "dynamic-all-available-within-approved-sources",
+    "EXPERT_MODEL_SOURCE_CLASSES": "workers-ai,openrouter,deepseek,huggingface",
+    "EXPERT_ROUTE_REFRESH_HOURS": "6",
+    "EXPERT_ROUTE_AUTOMATION_ENABLED": "false",
+    "EXPERT_MODEL_ID_PINNING": "false",
+    "EXPERT_FUTURE_MODELS_AUTO_DISCOVER": "true"
+  },
+  "observability": {"enabled": true,"logs":{"enabled":true,"head_sampling_rate":1}}
+}
