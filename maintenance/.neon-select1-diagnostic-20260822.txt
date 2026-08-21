@@ -1,0 +1,2 @@
+Audit-only fresh-branch Neon SELECT 1 verification after NEON_DATABASE_URL was added to governance-worker. NEVER MERGE.
+Triggered 2026-08-21T16:12:00Z.
