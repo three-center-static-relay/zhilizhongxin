@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "governance-la-brain-probe",
+  "main": "src/la-brain-probe-index.js",
+  "compatibility_date": "2026-08-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "services": [
+    {"binding": "INTELLIGENCE_CENTER", "service": "intelligence-worker"},
+    {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
+    {"binding": "EXPERT_CENTER", "service": "expert-worker"}
+  ],
+  "observability": {"enabled": true,"logs":{"enabled":true,"head_sampling_rate":1}}
+}
