@@ -3,7 +3,6 @@ import {WorkerEntrypoint} from "cloudflare:workers";
 import {aiGatewayControlRequest,operationRequest} from "./ai-gateway-control.js";
 import {handleLangGraphControl} from "./langgraph-control.js";
 import {handleLangGraphTest} from "./langgraph-test.js";
-import {handleFuzhouWorkCanary} from "./langgraph-fuzhou-canary.js";
 
 export {AdminCoordinator};
 
@@ -36,8 +35,6 @@ export default{
     if(langgraph)return langgraph;
     const langgraphTest=await handleLangGraphTest(request,env);
     if(langgraphTest)return langgraphTest;
-    const fuzhouCanary=await handleFuzhouWorkCanary(request,env);
-    if(fuzhouCanary)return fuzhouCanary;
     const probe=await credentialReadProbe(request,env);
     if(probe)return probe;
     return handler.fetch(request,env,ctx);
