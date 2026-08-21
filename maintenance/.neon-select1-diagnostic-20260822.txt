@@ -1,3 +1,4 @@
 Audit-only fresh-branch Neon SELECT 1 verification after NEON_DATABASE_URL was added to governance-worker. NEVER MERGE.
 Triggered 2026-08-21T16:12:00Z.
 Post-PR Cloudflare Git Integration retrigger 2026-08-21T16:14:00Z.
+Final completion retrigger 2026-08-22T00:29:00+08:00 to obtain terminal Neon SELECT 1 receipt.
