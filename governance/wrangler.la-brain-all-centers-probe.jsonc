@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "governance-la-brain-all-centers-probe",
+  "main": "src/la-brain-all-centers-probe-index.js",
+  "compatibility_date": "2026-08-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "services": [
+    {"binding": "ADMIN_CENTER", "service": "admin-worker"},
+    {"binding": "INTELLIGENCE_CENTER", "service": "intelligence-worker"},
+    {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
+    {"binding": "EXPERT_CENTER", "service": "expert-worker"}
+  ],
+  "observability": {"enabled": true,"logs":{"enabled":true,"head_sampling_rate":1}}
+}
