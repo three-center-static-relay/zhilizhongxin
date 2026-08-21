@@ -1,5 +1,4 @@
 import {collectCapabilityManifests,compileTaskPlan,buildSelfModel,entropyReport,kernelSnapshot,validateEvolutionContract} from "./evolution-kernel.js";
-import {storeNeonMemory} from "./neon-memory.js";
 
 const MAX_BODY_BYTES=65536;
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
@@ -46,10 +45,9 @@ async function authorized(request,env,operation){
 async function compilePlanResponse(request,env){
   try{
     const task=await strictJson(request),collected=await collectCapabilityManifests(env),plan=await compileTaskPlan(task,collected.manifests);
-    const shared_memory=await storeNeonMemory(env,{center:"governance",kind:"evolution-plan",task_id:task.task_id||null,memory_id:task.task_id?`evolution-plan:${task.task_id}`:undefined,payload:{task,plan,manifest_status:collected.status,manifest_errors:collected.errors||[]}});
-    audit("evolution.plan",{task_id:task.task_id||null,status:plan.status,path:plan.path||null,manifest_status:collected.status,memory_stored:shared_memory.stored===true});
-    if(plan.status==="INVALID")return json({...plan,manifest_status:collected.status,manifest_errors:collected.errors,shared_memory},400);
-    return json({...plan,manifest_status:collected.status,manifest_errors:collected.errors,shared_memory},plan.ok?200:422);
+    audit("evolution.plan",{task_id:task.task_id||null,status:plan.status,path:plan.path||null,manifest_status:collected.status});
+    if(plan.status==="INVALID")return json({...plan,manifest_status:collected.status,manifest_errors:collected.errors},400);
+    return json({...plan,manifest_status:collected.status,manifest_errors:collected.errors},plan.ok?200:422);
   }catch(error){return json({ok:false,error:String(error?.message||"PLAN_FAILED"),execution_started:false,production_mutation:false},error?.status||500)}
 }
 
