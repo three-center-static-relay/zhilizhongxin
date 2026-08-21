@@ -1,4 +1,5 @@
 import {collectCapabilityManifests,compileTaskPlan,buildSelfModel,entropyReport,kernelSnapshot,validateEvolutionContract} from "./evolution-kernel.js";
+import {emitEvolutionMetric} from "./evolution-telemetry.js";
 
 const MAX_BODY_BYTES=65536;
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
@@ -46,6 +47,7 @@ async function compilePlanResponse(request,env){
   try{
     const task=await strictJson(request),collected=await collectCapabilityManifests(env),plan=await compileTaskPlan(task,collected.manifests);
     audit("evolution.plan",{task_id:task.task_id||null,status:plan.status,path:plan.path||null,manifest_status:collected.status});
+    emitEvolutionMetric(env,"evolution.plan",{ok:plan.ok,status:plan.status,task_id:task.task_id||null,path:plan.path||null,capability_count:plan.context_compiler?.input_capabilities||0,gap_count:plan.gap_model?.gap_count||0,evolution_pressure:plan.gap_model?.evolution_pressure||0});
     if(plan.status==="INVALID")return json({...plan,manifest_status:collected.status,manifest_errors:collected.errors},400);
     return json({...plan,manifest_status:collected.status,manifest_errors:collected.errors},plan.ok?200:422);
   }catch(error){return json({ok:false,error:String(error?.message||"PLAN_FAILED"),execution_started:false,production_mutation:false},error?.status||500)}
@@ -71,11 +73,13 @@ export async function handleEvolutionRoute(request,env){
   if(request.method==="GET"&&url.pathname==="/v1/evolution/self-model")return authorized(request,env,async()=>{
     const collected=await collectCapabilityManifests(env),model=buildSelfModel(collected.manifests);
     audit("evolution.self-model",{status:collected.status,capability_count:model.capability_count});
+    emitEvolutionMetric(env,"evolution.self-model",{ok:collected.ok,status:collected.status,capability_count:model.capability_count,healthy_count:model.healthy_count,unhealthy_count:model.unhealthy.length});
     return json({ok:collected.ok,status:collected.status,self_model:model,manifest_errors:collected.errors,production_mutation:false},collected.ok?200:207);
   });
   if(request.method==="GET"&&url.pathname==="/v1/evolution/entropy")return authorized(request,env,async()=>{
     const collected=await collectCapabilityManifests(env),report=entropyReport(collected.manifests);
     audit("evolution.entropy",{status:collected.status,signals:report.signals});
+    emitEvolutionMetric(env,"evolution.entropy",{ok:collected.ok,status:collected.status,staleness:report.signals.staleness,fragility:report.signals.fragility});
     return json({ok:collected.ok,status:collected.status,entropy:report,manifest_errors:collected.errors},collected.ok?200:207);
   });
   if(request.method==="POST"&&url.pathname==="/v1/evolution/plan")return authorized(request,env,()=>compilePlanResponse(request,env));
@@ -83,6 +87,7 @@ export async function handleEvolutionRoute(request,env){
     try{
       const candidate=await strictJson(request),validation=validateEvolutionContract(candidate);
       audit("evolution.candidate.validate",{candidate_id:candidate.candidate_id||null,valid:validation.ok});
+      emitEvolutionMetric(env,"evolution.candidate.validate",{ok:validation.ok,status:validation.next_stage||"repair",candidate_id:candidate.candidate_id||null,complexity_delta:candidate.complexity_delta,risk_delta:candidate.risk_delta});
       return json({...validation,candidate_id:candidate.candidate_id||null,autonomous_promotion:false},validation.ok?200:422);
     }catch(error){return json({ok:false,error:String(error?.message||"CANDIDATE_VALIDATION_FAILED"),promotion_eligible:false},error?.status||500)}
   });
