@@ -2,7 +2,7 @@
   "name": "governance-worker",
   "private": true,
   "type": "module",
-  "description": "Governance Worker with shared fail-closed production acceptance gates",
+  "description": "Governance Worker with shared fail-closed production acceptance gates; production receipt retry 2026-08-21",
   "scripts": {
     "policy": "node tests/policy-regression.mjs",
     "policy:hardening": "node tests/policy-hardening-second-layer.mjs",
