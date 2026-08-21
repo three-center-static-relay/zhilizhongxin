@@ -1,0 +1,2 @@
+Final live Neon health verification synchronize trigger for PR #239. NEVER MERGE.
+Triggered 2026-08-21T16:00:00Z after PR became ready.
