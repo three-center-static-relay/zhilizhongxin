@@ -1,0 +1,2 @@
+Audit-only Neon health recheck after user confirmed NEON_DATABASE_URL was added to Cloudflare governance-worker. NEVER MERGE.
+Fresh branch trigger 2026-08-21T15:40:00Z.
