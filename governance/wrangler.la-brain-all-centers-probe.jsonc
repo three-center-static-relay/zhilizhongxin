@@ -6,11 +6,5 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "preview_urls": false,
-  "services": [
-    {"binding": "ADMIN_CENTER", "service": "admin-worker"},
-    {"binding": "INTELLIGENCE_CENTER", "service": "intelligence-worker"},
-    {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
-    {"binding": "EXPERT_CENTER", "service": "expert-worker"}
-  ],
   "observability": {"enabled": true,"logs":{"enabled":true,"head_sampling_rate":1}}
 }
