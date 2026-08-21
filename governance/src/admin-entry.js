@@ -2,6 +2,7 @@ import app from "./production-entry.js";
 import {AdminState} from "./admin-state.js";
 import {adminOpenApiPaths,createCandidateVersion,getAcceptanceResult,getAdminContext,getProductionVersions,getSystemHealth,validateCandidate} from "./admin-gateway.js";
 import {handleEvolutionRoute} from "./evolution-router.js";
+import {handleNeonMemoryRoute} from "./neon-memory-router.js";
 export {AdminState};
 
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
@@ -55,6 +56,7 @@ async function aiGatewayControlRuntimeProbe(request,env){
 export default{
   async fetch(request,env,ctx){
     const url=new URL(request.url);
+    const memory=await handleNeonMemoryRoute(request,env,ctx);if(memory)return memory;
     const evolution=await handleEvolutionRoute(request,env,ctx);if(evolution)return evolution;
     if(request.method==="GET"&&url.pathname==="/_internal/ai-gateway-control-readonly-probe")return aiGatewayControlRuntimeProbe(request,env);
     if(request.method==="GET"&&url.pathname==="/v1/admin/context")return getAdminContext(request,env,ctx,app);
