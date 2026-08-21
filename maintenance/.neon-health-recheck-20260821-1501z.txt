@@ -1,1 +1,2 @@
 Audit-only secret/health recheck trigger for PR #230 against current live governance-worker. NEVER MERGE.
+Recheck requested 2026-08-21T15:03:30Z after user requested current Neon connectivity verification.
