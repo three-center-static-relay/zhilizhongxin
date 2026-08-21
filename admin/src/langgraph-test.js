@@ -75,8 +75,8 @@ function supervisorTask(input){
       tools:false,
       production_mutation:false
     },
-    preferences:{cost:"price-performance",length:"adaptive-soft",token_cap:false},
     risk:{max_trust_level:"T2",uncertainty:String(input.uncertainty||"medium").slice(0,32)},
+    budget:{cost_mode:"balanced",control:"soft-price-performance",hard_spend_cap:false,token_cap:false,length_control:"adaptive-soft"},
     required_capabilities:["governance.task-planner","expert.deliberation","expert.judgment"],
     deadline:new Date(Date.now()+10*60*1000).toISOString(),
     success_criteria:[
