@@ -1,0 +1,2 @@
+AI Gateway maximum safe model-plane autonomy validation trigger.
+No runtime behavior.
