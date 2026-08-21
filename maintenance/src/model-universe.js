@@ -5,7 +5,16 @@ const CF_API="https://api.cloudflare.com/client/v4";
 const CF_GATEWAY="https://gateway.ai.cloudflare.com/v1";
 const MAX_HF_PAGES=8;
 const HF_PAGE_SIZE=100;
-const WORKERS_AI_SCHEMA_CONCURRENCY=6;
+const WORKERS_AI_CHAT_ANCHORS=new Set([
+  "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+  "@cf/mistralai/mistral-small-3.1-24b-instruct",
+  "@cf/qwen/qwen3-30b-a3b-fp8",
+  "@cf/zai-org/glm-4.7-flash",
+  "@cf/google/gemma-4-26b-a4b-it",
+  "@cf/ibm-granite/granite-4.0-h-micro",
+  "@cf/nvidia/nemotron-3-120b-a12b"
+]);
 const BANNED_COMPANIES=new Set(["openai","anthropic","claude","aion-labs"]);
 
 function clean(v){return String(v??"").trim()}
@@ -63,33 +72,13 @@ export async function discoverHuggingFace(fetchImpl=fetch){
   if(!rows.length)throw new Error("HUGGINGFACE_MODEL_UNIVERSE_EMPTY");return dedupe(rows);
 }
 
-function schemaHasMessages(value,seen=new Set()){
-  if(!value||typeof value!=="object"||seen.has(value))return false;seen.add(value);
-  if(Object.prototype.hasOwnProperty.call(value,"messages"))return true;
-  if(Array.isArray(value.required)&&value.required.some(x=>clean(x)==="messages"))return true;
-  if(value.properties&&typeof value.properties==="object"&&Object.prototype.hasOwnProperty.call(value.properties,"messages"))return true;
-  for(const child of Object.values(value))if(schemaHasMessages(child,seen))return true;
-  return false;
-}
-async function workersAIChatCompatible(accountId,token,model,fetchImpl){
-  const url=`${CF_API}/accounts/${encodeURIComponent(accountId)}/ai/models/schema?model=${encodeURIComponent(model)}`;
-  const{payload}=await requestJson(fetchImpl,url,{headers:{authorization:`Bearer ${token}`},timeoutMs:12000});
-  const result=payload?.result??payload?.data??payload,input=result?.input??result?.input_schema??result?.inputSchema??null;
-  return schemaHasMessages(input);
-}
-async function filterWorkersAIChatCompatible(rows,accountId,token,fetchImpl){
-  const out=new Array(rows.length);let cursor=0;
-  async function worker(){for(;;){const i=cursor++;if(i>=rows.length)return;const row=rows[i];try{if(await workersAIChatCompatible(accountId,token,row.model,fetchImpl))out[i]={...row,meta:{...(row.meta||{}),chat_route_eligible:true,chat_route_validation:"workers-ai-model-schema-messages"}}}catch{out[i]=null}}}
-  await Promise.all(Array.from({length:Math.min(WORKERS_AI_SCHEMA_CONCURRENCY,Math.max(1,rows.length))},()=>worker()));
-  return out.filter(Boolean);
-}
 export async function discoverWorkersAI(env,fetchImpl=fetch){
   const accountId=clean(env?.CF_ACCOUNT_ID||env?.CLOUDFLARE_ACCOUNT_ID),token=clean(env?.CLOUDFLARE_AI_GATEWAY_API_TOKEN||env?.CF_API_TOKEN);if(!accountId||!token)throw new Error("WORKERS_AI_DISCOVERY_CREDENTIAL_MISSING");
   const url=`${CF_API}/accounts/${encodeURIComponent(accountId)}/ai/models/search?per_page=1000`;
   const{payload}=await requestJson(fetchImpl,url,{headers:{authorization:`Bearer ${token}`}});const result=payload?.result??payload?.data??payload,models=Array.isArray(result)?result:Array.isArray(result?.models)?result.models:[];const rows=[];
-  for(const m of models){const id=clean(m?.name||m?.id||m?.model);if(!id)continue;const company=companyAlias(id),task=norm(m?.task?.name||m?.task||m?.pipeline_tag||"");if(!companyAllowed(company))continue;if(task&&!["text-generation","text-to-text","text2text-generation","conversational"].some(x=>task.includes(x)))continue;const props=m?.properties||m?.metadata||{};rows.push(candidate({provider:"workers-ai",model:id,company,source:"workers-ai",free:false,capabilities:["text"],hints:{quality:0.58,context:props?.context_window?Math.min(1,Math.log2(Math.max(2048,Number(props.context_window)))/20):0.5,price:0.6,popularity:0.5,latency:0.6,throughput:0.6},verified:true,meta:{task:task||null,chat_route_eligible:false,chat_route_validation:"pending-workers-ai-model-schema"}}))}
-  const compatible=await filterWorkersAIChatCompatible(dedupe(rows),accountId,token,fetchImpl);
-  if(!compatible.length)throw new Error("WORKERS_AI_CHAT_MODEL_UNIVERSE_EMPTY");return compatible;
+  for(const m of models){const id=clean(m?.name||m?.id||m?.model);if(!id||!WORKERS_AI_CHAT_ANCHORS.has(id.toLowerCase()))continue;const company=companyAlias(id),task=norm(m?.task?.name||m?.task||m?.pipeline_tag||"");if(!companyAllowed(company))continue;const props=m?.properties||m?.metadata||{};rows.push(candidate({provider:"workers-ai",model:id,company,source:"workers-ai",free:false,capabilities:["text"],hints:{quality:0.9,context:props?.context_window?Math.min(1,Math.log2(Math.max(2048,Number(props.context_window)))/20):0.7,price:0.6,popularity:0.8,latency:0.7,throughput:0.7},verified:true,meta:{task:task||null,chat_route_eligible:true,chat_route_validation:"cloudflare-documented-openai-compatible-anchor"}}))}
+  const uniqueCompanies=new Set(rows.map(x=>x.company));
+  if(rows.length!==WORKERS_AI_CHAT_ANCHORS.size||uniqueCompanies.size!==WORKERS_AI_CHAT_ANCHORS.size)throw new Error(`WORKERS_AI_CHAT_ANCHOR_SET_INCOMPLETE_${rows.length}_${uniqueCompanies.size}`);return dedupe(rows);
 }
 
 export async function discoverDeepSeek(env,openRouterRows=[],fetchImpl=fetch){
@@ -103,9 +92,9 @@ export async function buildModelUniverse(env={},fetchImpl=fetch){
   const source_status={};let openrouter=[],huggingface=[],workersAI=[],deepseek=[];
   try{openrouter=await discoverOpenRouter(env,fetchImpl);source_status.openrouter={ok:true,count:openrouter.length,transport:clean(openrouter[0]?.meta?.catalog_transport)||"unknown"}}catch(error){source_status.openrouter={ok:false,count:0,error:String(error?.message||error).slice(0,240)}}
   try{huggingface=await discoverHuggingFace(fetchImpl);source_status.huggingface={ok:true,count:huggingface.length}}catch(error){source_status.huggingface={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
-  try{workersAI=await discoverWorkersAI(env,fetchImpl);source_status["workers-ai"]={ok:true,count:workersAI.length,chat_schema_validated:true}}catch(error){source_status["workers-ai"]={ok:false,count:0,error:String(error?.message||error).slice(0,120),chat_schema_validated:true}}
+  try{workersAI=await discoverWorkersAI(env,fetchImpl);source_status["workers-ai"]={ok:true,count:workersAI.length,chat_anchor_validated:true}}catch(error){source_status["workers-ai"]={ok:false,count:0,error:String(error?.message||error).slice(0,120),chat_anchor_validated:true}}
   try{deepseek=await discoverDeepSeek(env,openrouter,fetchImpl);source_status.deepseek={ok:deepseek.length>0,count:deepseek.length,verified_count:deepseek.filter(x=>x.verified).length,inferred_count:deepseek.filter(x=>!x.verified).length}}catch(error){source_status.deepseek={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
   const excluded=excludedCompanies(env),candidates=dedupe([...openrouter,...huggingface,...workersAI,...deepseek]).filter(x=>x.model&&x.provider&&companyAllowed(x.company)&&!excluded.has(x.company));
   const companies=[...new Set(candidates.map(x=>x.company))];
-  return{schema:"expert-model-universe-v1-chat-schema-diagnostic",generated_at:new Date().toISOString(),model_id_pinning:false,future_models_auto_discover:true,source_status,candidate_count:candidates.length,company_count:companies.length,companies,excluded_companies:[...excluded],candidates};
+  return{schema:"expert-model-universe-v1-workers-ai-chat-anchors-diagnostic",generated_at:new Date().toISOString(),model_id_pinning:false,future_models_auto_discover:true,source_status,candidate_count:candidates.length,company_count:companies.length,companies,excluded_companies:[...excluded],candidates};
 }
