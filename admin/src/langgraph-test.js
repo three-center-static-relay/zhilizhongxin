@@ -3,6 +3,7 @@ import {handleLangGraphControl} from "./langgraph-control.js";
 const MAX_BODY_BYTES=65536;
 const MAX_PROMPT_CHARS=12000;
 const MAX_EXPERT_RESPONSE_BYTES=2*1024*1024;
+const SOFT_POLICY=`Execution policy:\n- Prioritize price-performance: prefer sufficient reliability and capability at lower total cost/latency; escalate to stronger or more expensive models only when it materially improves correctness, robustness, or decision quality. No hard spending cap.\n- Control response length softly according to task complexity and information density. Avoid unnecessary repetition, but do not truncate material reasoning, caveats, or conclusions merely to save tokens or cost. Do not use token limits as a quality or cost-control mechanism.\n- Tools are forbidden: no tools, functions, browser, web search, external retrieval, code execution, or external actions.\n- Preserve material uncertainty, counterarguments, and assumptions.`;
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
 const safe=v=>String(v||"UNKNOWN").replace(/[^0-9A-Za-z_.:/-]/g,"_").slice(0,180);
 const int=(v,d)=>{const n=Number(v);return Number.isFinite(n)?Math.trunc(n):d};
@@ -61,10 +62,12 @@ async function readJsonBounded(response){
   try{return text?JSON.parse(text):null}catch{throw Object.assign(new Error("EXPERT_BAD_JSON"),{status:502})}
 }
 
+function softGoal(prompt){return `${prompt}\n\n${SOFT_POLICY}`}
+
 function supervisorTask(input){
   return {
     task_id:`langgraph-user-test-${crypto.randomUUID()}`,
-    goal:input.prompt,
+    goal:softGoal(input.prompt),
     constraints:{
       allowed_centers:["governance","expert"],
       write_scope:"none",
@@ -72,14 +75,16 @@ function supervisorTask(input){
       tools:false,
       production_mutation:false
     },
+    preferences:{cost:"price-performance",length:"adaptive-soft",token_cap:false},
     risk:{max_trust_level:"T2",uncertainty:String(input.uncertainty||"medium").slice(0,32)},
-    budget:{cost_mode:String(input.cost_mode||"free-first"),max_paid_usd:0},
     required_capabilities:["governance.task-planner","expert.deliberation","expert.judgment"],
     deadline:new Date(Date.now()+10*60*1000).toISOString(),
     success_criteria:[
       "LangGraph validates the plan",
       "expert center is reachable through a service binding",
       "a real multi-expert analysis completes",
+      "price-performance is preferred without a hard spending cap",
+      "answer length is controlled softly without a token cap",
       "no tools or web are used",
       "no production mutation occurs"
     ]
@@ -87,20 +92,22 @@ function supervisorTask(input){
 }
 
 function expertRequest(input,taskId){
-  return {
+  const out={
     task_id:`${taskId}-expert`,
     prompt:input.prompt,
-    task_domain:String(input.task_domain||"business").slice(0,64),
-    task_type:String(input.task_type||"analysis").slice(0,64),
-    complexity:String(input.complexity||"high").slice(0,32),
-    reasoning_depth:String(input.reasoning_depth||"deep").slice(0,32),
-    cost_priority:String(input.cost_priority||"economy").slice(0,32),
-    model_count:clamp(input.model_count,2,8,4),
-    rounds:clamp(input.rounds,1,3,1),
-    max_tokens:clamp(input.max_tokens,64,2048,512),
+    cost_priority:String(input.cost_priority||"balanced").slice(0,32),
+    cost_mode:String(input.cost_mode||"balanced").slice(0,32),
     timeout_seconds:clamp(input.timeout_seconds,60,600,300),
-    cost_mode:String(input.cost_mode||"free-first").slice(0,32)
+    tools:false,
+    web:false
   };
+  if(input.task_domain!=null)out.task_domain=String(input.task_domain).slice(0,64);
+  if(input.task_type!=null)out.task_type=String(input.task_type).slice(0,64);
+  if(input.complexity!=null)out.complexity=String(input.complexity).slice(0,32);
+  if(input.reasoning_depth!=null)out.reasoning_depth=String(input.reasoning_depth).slice(0,32);
+  if(input.model_count!=null)out.model_count=clamp(input.model_count,2,8,4);
+  if(input.rounds!=null)out.rounds=clamp(input.rounds,1,3,1);
+  return out;
 }
 
 async function validateWithLangGraph(input,env){
@@ -167,6 +174,7 @@ export async function handleLangGraphTest(request,env){
         brain_can_command:la.body?.brain_can_command===true,
         execution_mode:la.body?.execution_mode||null
       },
+      policy:{cost_control:"soft-price-performance",length_control:"soft-adaptive",token_cap:false,tools:false,web:false},
       expert_http_status:expert.http_status,
       expert:expert.body,
       expert_executed:true,
