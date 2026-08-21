@@ -20,6 +20,7 @@ function companyAlias(v){
   return aliases[x]||x.replace(/-(?:ai|org|research)$/," ").trim().replace(/\s+/g,"-");
 }
 function companyAllowed(company){const c=companyAlias(company);return Boolean(c)&&![...BANNED_COMPANIES].some(x=>c===x||c.includes(x))}
+function excludedCompanies(env){return new Set(clean(env?.EXPERT_ROUTE_EXCLUDE_COMPANIES).split(",").map(companyAlias).filter(Boolean))}
 function textOutput(modalities){return !Array.isArray(modalities)||modalities.length===0||modalities.includes("text")}
 function isSynthetic(id,name=""){const s=`${id} ${name}`.toLowerCase();return /\b(auto[- ]?router|multi[- ]model|ensemble|fusion)\b/.test(s)||norm(id)==="openrouter/free"}
 function freePricing(pricing={}){const vals=[pricing.prompt,pricing.completion,pricing.request].map(v=>Number(v));return vals.every(v=>!Number.isFinite(v)||v===0)}
@@ -65,7 +66,7 @@ export async function discoverWorkersAI(env,fetchImpl=fetch){
   const accountId=clean(env?.CF_ACCOUNT_ID||env?.CLOUDFLARE_ACCOUNT_ID),token=clean(env?.CLOUDFLARE_AI_GATEWAY_API_TOKEN||env?.CF_API_TOKEN);if(!accountId||!token)throw new Error("WORKERS_AI_DISCOVERY_CREDENTIAL_MISSING");
   const url=`${CF_API}/accounts/${encodeURIComponent(accountId)}/ai/models/search?per_page=1000`;
   const{payload}=await requestJson(fetchImpl,url,{headers:{authorization:`Bearer ${token}`}});const result=payload?.result??payload?.data??payload,models=Array.isArray(result)?result:Array.isArray(result?.models)?result.models:[];const rows=[];
-  for(const m of models){const id=clean(m?.name||m?.id||m?.model);if(!id)continue;const company=companyAlias(id),task=norm(m?.task?.name||m?.task||m?.pipeline_tag||"");if(!companyAllowed(company))continue;if(task&&!["text-generation","text-to-text","text2text-generation","conversational","image-to-text","image-text-to-text"].some(x=>task.includes(x)))continue;const props=m?.properties||m?.metadata||{};rows.push(candidate({provider:"workers-ai",model:id,company,source:"workers-ai",free:false,capabilities:["text",...(task.includes("image")?["vision"]:[])],hints:{quality:0.58,context:props?.context_window?Math.min(1,Math.log2(Math.max(2048,Number(props.context_window)))/20):0.5,price:0.6,popularity:0.5,latency:0.6,throughput:0.6},verified:true,meta:{task:task||null}}))}
+  for(const m of models){const id=clean(m?.name||m?.id||m?.model);if(!id)continue;const company=companyAlias(id),task=norm(m?.task?.name||m?.task||m?.pipeline_tag||"");if(!companyAllowed(company))continue;if(task&&!["text-generation","text-to-text","text2text-generation","conversational"].some(x=>task.includes(x)))continue;const props=m?.properties||m?.metadata||{};rows.push(candidate({provider:"workers-ai",model:id,company,source:"workers-ai",free:false,capabilities:["text"],hints:{quality:0.58,context:props?.context_window?Math.min(1,Math.log2(Math.max(2048,Number(props.context_window)))/20):0.5,price:0.6,popularity:0.5,latency:0.6,throughput:0.6},verified:true,meta:{task:task||null,chat_route_eligible:true}}))}
   if(!rows.length)throw new Error("WORKERS_AI_MODEL_UNIVERSE_EMPTY");return dedupe(rows);
 }
 
@@ -82,7 +83,7 @@ export async function buildModelUniverse(env={},fetchImpl=fetch){
   try{huggingface=await discoverHuggingFace(fetchImpl);source_status.huggingface={ok:true,count:huggingface.length}}catch(error){source_status.huggingface={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
   try{workersAI=await discoverWorkersAI(env,fetchImpl);source_status["workers-ai"]={ok:true,count:workersAI.length}}catch(error){source_status["workers-ai"]={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
   try{deepseek=await discoverDeepSeek(env,openrouter,fetchImpl);source_status.deepseek={ok:deepseek.length>0,count:deepseek.length,verified_count:deepseek.filter(x=>x.verified).length,inferred_count:deepseek.filter(x=>!x.verified).length}}catch(error){source_status.deepseek={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
-  const candidates=dedupe([...openrouter,...huggingface,...workersAI,...deepseek]).filter(x=>x.model&&x.provider&&companyAllowed(x.company));
+  const excluded=excludedCompanies(env),candidates=dedupe([...openrouter,...huggingface,...workersAI,...deepseek]).filter(x=>x.model&&x.provider&&companyAllowed(x.company)&&!excluded.has(x.company));
   const companies=[...new Set(candidates.map(x=>x.company))];
-  return{schema:"expert-model-universe-v1",generated_at:new Date().toISOString(),model_id_pinning:false,future_models_auto_discover:true,source_status,candidate_count:candidates.length,company_count:companies.length,companies,candidates};
+  return{schema:"expert-model-universe-v1",generated_at:new Date().toISOString(),model_id_pinning:false,future_models_auto_discover:true,source_status,candidate_count:candidates.length,company_count:companies.length,companies,excluded_companies:[...excluded],candidates};
 }
