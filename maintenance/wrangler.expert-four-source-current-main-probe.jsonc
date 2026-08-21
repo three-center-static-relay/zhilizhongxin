@@ -8,10 +8,6 @@
   "durable_objects": {"bindings": [{"name": "MAINTENANCE_STATE", "class_name": "MaintenanceState"}]},
   "exports": {"MaintenanceState": {"type": "durable-object", "storage": "sqlite"}},
   "services": [
-    {"binding": "ADMIN_CENTER", "service": "admin-worker"},
-    {"binding": "GOVERNANCE_CENTER", "service": "governance-worker"},
-    {"binding": "INTELLIGENCE_CENTER", "service": "intelligence-worker"},
-    {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
     {"binding": "EXPERT_CENTER", "service": "expert-worker"}
   ],
   "vars": {
