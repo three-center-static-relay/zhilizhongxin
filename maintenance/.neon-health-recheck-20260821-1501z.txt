@@ -1,3 +1,4 @@
 Audit-only secret/health recheck trigger for PR #230 against current live governance-worker. NEVER MERGE.
 Recheck requested 2026-08-21T15:03:30Z after user requested current Neon connectivity verification.
 Recheck requested 2026-08-21T15:36:00Z after user confirmed NEON_DATABASE_URL was added to Cloudflare governance-worker.
+Open-PR retrigger 2026-08-21T15:38:00Z to force Cloudflare Git Integration health probe after secret update.
