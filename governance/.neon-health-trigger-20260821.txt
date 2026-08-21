@@ -1,2 +1,3 @@
 Audit-only Governance-hosted Neon health verification trigger after PR ready. NEVER MERGE.
 Triggered 2026-08-21T15:54:00Z.
+Retriggered 2026-08-21T15:55:30Z after closing competing diagnostic PRs.
