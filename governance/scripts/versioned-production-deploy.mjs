@@ -11,11 +11,20 @@ const EXACT_VERSION=/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 const safe=v=>String(v??"UNKNOWN").replace(/[^0-9A-Za-z_.:,=-]/g,"_").slice(0,240);
 const emit=(body,stream=process.stdout)=>stream.write(`${JSON.stringify({...body,secrets_redacted:true})}\n`);
 
-function run(command,args,{env=process.env,stdio,encoding="utf8",maxBuffer=8*1024*1024}={}){
-  const r=spawnSync(command,args,{cwd:process.cwd(),env,stdio,encoding,maxBuffer});
+function run(command,args,{cwd=process.cwd(),env=process.env,stdio,encoding="utf8",maxBuffer=8*1024*1024}={}){
+  const r=spawnSync(command,args,{cwd,env,stdio,encoding,maxBuffer});
   if(r.error)throw r.error;
   if(r.status!==0){const e=new Error(`${command.toUpperCase()}_FAILED`);e.exitCode=r.status||1;e.stdout=r.stdout;e.stderr=r.stderr;throw e}
   return r;
+}
+function repositoryRoot(){return run("git",["rev-parse","--show-toplevel"]).stdout.trim()}
+function gitObjectExists(root,object){const r=spawnSync("git",["cat-file","-e",object],{cwd:root,env:process.env,stdio:"ignore"});return !r.error&&r.status===0}
+function fetchParentHistory(root,sha,branch,parent){
+  for(const refspec of [`refs/heads/${branch}`,sha]){
+    const r=spawnSync("git",["fetch","--no-tags","--depth=2","origin",refspec],{cwd:root,env:process.env,encoding:"utf8",maxBuffer:4*1024*1024});
+    if(!r.error&&r.status===0&&gitObjectExists(root,`${parent}^{commit}`))return true;
+  }
+  return false;
 }
 function wranglerVersion(){
   const pkg=JSON.parse(readFileSync(resolve(process.cwd(),"package.json"),"utf8"));
@@ -48,14 +57,19 @@ function singleActive(v){
   if(rows.length!==1||rows[0].pct!==100)throw new Error("ACTIVE_DEPLOYMENT_MUST_BE_SINGLE_100");
   return rows[0].id;
 }
-function unchangedLifecycleConfig(sha){
-  const head=run("git",["rev-parse","HEAD"]).stdout.trim();
+function unchangedLifecycleConfig(sha,branch){
+  const root=repositoryRoot();
+  const head=run("git",["rev-parse","HEAD"],{cwd:root}).stdout.trim();
   if(head!==sha)throw new Error("HEAD_COMMIT_MISMATCH");
-  const raw=run("git",["cat-file","-p",sha]).stdout;
+  const raw=run("git",["cat-file","-p",sha],{cwd:root}).stdout;
   const parent=raw.match(/^parent ([a-f0-9]{40,64})$/im)?.[1];
   if(!SHA.test(parent||""))throw new Error("PARENT_COMMIT_REQUIRED");
-  const diff=run("git",["diff","--name-only",parent,sha,"--","wrangler.jsonc"]).stdout.trim();
+  let historyDeepened=false;
+  if(!gitObjectExists(root,`${parent}^{commit}`))historyDeepened=fetchParentHistory(root,sha,branch,parent);
+  if(!gitObjectExists(root,`${parent}^{commit}`))throw new Error("PARENT_COMMIT_UNAVAILABLE");
+  const diff=run("git",["diff","--name-only",parent,sha,"--","governance/wrangler.jsonc"],{cwd:root}).stdout.trim();
   if(diff)throw new Error("WRANGLER_LIFECYCLE_CHANGE_REQUIRES_ATOMIC_DEPLOY");
+  return {historyDeepened,parentAvailable:true};
 }
 function uploadCandidate(v,sha){
   const dir=mkdtempSync(join(tmpdir(),"governance-prod-upload-"));
@@ -86,9 +100,9 @@ function main(){
   assert.equal(process.env.WORKERS_CI,"1","WORKERS_CI_REQUIRED");
   assert.equal(branch,"main","PRODUCTION_BRANCH_REQUIRED");
   assert.match(sha,SHA,"VALID_COMMIT_SHA_REQUIRED");
-  unchangedLifecycleConfig(sha);
+  const lifecycle=unchangedLifecycleConfig(sha,branch);
   const v=wranglerVersion();
-  emit({ok:true,event:"GOVERNANCE_VERSIONED_PRODUCTION_START",commit_sha:sha});
+  emit({ok:true,event:"GOVERNANCE_VERSIONED_PRODUCTION_START",commit_sha:sha,history_deepened:lifecycle.historyDeepened,parent_available:lifecycle.parentAvailable});
   run("npm",["run","cf:build"],{stdio:"inherit"});
   const previous=singleActive(v);
   const candidate=uploadCandidate(v,sha);
