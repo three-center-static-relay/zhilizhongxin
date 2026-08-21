@@ -1,11 +1,17 @@
 #!/usr/bin/env node
+import {randomBytes} from "node:crypto";
+import {readFileSync} from "node:fs";
 import {spawnSync} from "node:child_process";
-const branch=String(process.env.WORKERS_CI_BRANCH||"");
-const sha=String(process.env.WORKERS_CI_COMMIT_SHA||"");
-function fail(code){console.error(JSON.stringify({ok:false,event:code,secrets_redacted:true}));process.exitCode=1}
-if(process.env.WORKERS_CI!=="1"||!branch||branch==="main"||!/^[a-f0-9]{40,64}$/i.test(sha))fail("PREVIEW_BUILD_BASELINE_ENV_FAIL");
-else{
-  const r=spawnSync("npm",["run","cf:build"],{cwd:process.cwd(),env:process.env,encoding:"utf8",stdio:"inherit",maxBuffer:12*1024*1024});
-  if(r.error||r.status!==0)fail("PREVIEW_BUILD_BASELINE_CF_BUILD_FAIL");
-  else console.log(JSON.stringify({ok:true,event:"PREVIEW_BUILD_BASELINE_PASS",commit_sha:sha,secrets_redacted:true}));
-}
+import {resolve} from "node:path";
+import {pathToFileURL} from "node:url";
+const SHA=/^[a-f0-9]{40,64}$/i;
+const safe=v=>String(v??"UNKNOWN").replace(/[^0-9A-Za-z_.:/=-]/g,"_").slice(0,240);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function emit(x,stream=process.stdout){stream.write(`${JSON.stringify({...x,secrets_redacted:true})}\n`)}
+function run(command,args,{cwd=process.cwd(),env=process.env,encoding="utf8",stdio,maxBuffer=12*1024*1024}={}){const r=spawnSync(command,args,{cwd,env,encoding,stdio,maxBuffer});if(r.error)throw r.error;if(r.status!==0){const e=new Error(`${command.toUpperCase()}_FAILED`);e.exitCode=r.status||1;e.stdout=r.stdout;e.stderr=r.stderr;throw e}return r}
+function version(){const p=JSON.parse(readFileSync(resolve(process.cwd(),"package.json"),"utf8")),v=String(p.devDependencies?.wrangler||"");if(!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(v))throw new Error("EXACT_WRANGLER_VERSION_REQUIRED");return v}
+function parseUrl(text){const m=String(text||"").match(/https:\/\/[a-z0-9.-]+\.workers\.dev\b/i);if(!m)throw new Error("WORKERS_DEV_URL_NOT_FOUND");return m[0].replace(/\/$/,"")}
+function restore(v){const r=spawnSync("npx",["--yes",`wrangler@${v}`,"deploy","--config","wrangler.jsonc","--keep-vars"],{cwd:process.cwd(),env:process.env,encoding:"utf8",stdio:"inherit",maxBuffer:8*1024*1024});if(r.error||r.status!==0){const e=new Error("CLEAN_MAINTENANCE_RESTORE_FAILED");e.exitCode=r.status||1;throw e}}
+async function probeUntilReady(url,probe){let lastStatus=0,lastBody=null,lastError=null;for(let attempt=1;attempt<=8;attempt++){if(attempt>1)await sleep(Math.min(4000,750*attempt));const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),45000);try{const response=await fetch(url,{headers:{accept:"application/json","x-maintenance-e2e-probe":probe},signal:controller.signal});const body=await response.json().catch(()=>null);lastStatus=response.status;lastBody=body;if(response.status===200&&body?.ok===true)return{response,body,attempt};lastError=safe(body?.error||body?.error_code||`HTTP_${response.status}`)}catch(error){lastError=safe(error?.name==="AbortError"?"TIMEOUT":error?.message||error)}finally{clearTimeout(timer)}}const e=new Error(`EXPERT_SOURCE_ROUTE_SUITE_FAILED:${safe(lastBody?.stage||"not-ready")}:${safe(lastError||`HTTP_${lastStatus}`)}`);e.exitCode=1;throw e}
+async function main(){const branch=String(process.env.WORKERS_CI_BRANCH||""),sha=String(process.env.WORKERS_CI_COMMIT_SHA||"");if(process.env.WORKERS_CI!=="1")throw new Error("WORKERS_CI_REQUIRED");if(!branch||branch==="main")throw new Error("PREVIEW_BRANCH_REQUIRED");if(!SHA.test(sha))throw new Error("VALID_COMMIT_SHA_REQUIRED");const v=version(),probe=randomBytes(32).toString("hex");emit({ok:true,event:"EXPERT_SOURCE_ROUTE_SUITE_START",commit_sha:sha});run("npm",["run","cf:build"],{stdio:"inherit"});let primary=null;try{const d=run("npx",["--yes",`wrangler@${v}`,"deploy","--config","wrangler.expert-source-route-probe.jsonc","--keep-vars","--var",`MAINTENANCE_RUNTIME_E2E_PROBE:${probe}`],{encoding:"utf8"});if(d.stdout)process.stdout.write(d.stdout);if(d.stderr)process.stderr.write(d.stderr);const url=parseUrl(`${d.stdout||""}\n${d.stderr||""}`);await sleep(1250);const {response,body,attempt}=await probeUntilReady(url,probe);emit({ok:true,http_status:response.status,event:"EXPERT_SOURCE_ROUTE_SUITE_RECEIPT",attempt,stage:String(body?.stage||"unknown"),sources:body?.sources||null,routes:body?.routes||null,expert:body?.expert||null})}catch(e){primary=e}let restoreError=null;try{restore(v)}catch(e){restoreError=e}if(primary)throw primary;if(restoreError)throw restoreError;emit({ok:true,event:"EXPERT_SOURCE_ROUTE_SUITE_PASS",commit_sha:sha,maintenance_restored:true})}
+const invoked=process.argv[1]?pathToFileURL(resolve(process.argv[1])).href:"";if(import.meta.url===invoked)main().catch(error=>{emit({ok:false,event:"EXPERT_SOURCE_ROUTE_SUITE_FAIL",code:safe(error?.message||error)},process.stderr);process.exitCode=Number.isInteger(error?.exitCode)?error.exitCode:1});
