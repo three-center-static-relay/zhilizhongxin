@@ -8,7 +8,7 @@
   "durable_objects": {"bindings": [{"name": "MAINTENANCE_STATE", "class_name": "MaintenanceState"}]},
   "exports": {"MaintenanceState": {"type": "durable-object", "storage": "sqlite"}},
   "services": [
-    {"binding": "EXPERT_CENTER", "service": "expert-worker"}
+    {"binding": "ADMIN_CENTER", "service": "admin-worker"}
   ],
   "vars": {
     "CF_ACCOUNT_ID": "e3aec027af13c557bbcb831d29c1e7b4",
