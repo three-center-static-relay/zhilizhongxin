@@ -2,17 +2,10 @@ import app from "./production-entry.js";
 import {AdminState} from "./admin-state.js";
 import {adminOpenApiPaths,createCandidateVersion,getAcceptanceResult,getAdminContext,getProductionVersions,getSystemHealth,validateCandidate} from "./admin-gateway.js";
 import {handleEvolutionRoute} from "./evolution-router.js";
+import {handleNeonMemoryRoute} from "./neon-memory-router.js";
 export {AdminState};
 
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
-const MAX_LANGGRAPH_BODY_BYTES=65536;
-const LANGGRAPH_SUPERVISOR_RUNTIME="@langchain/langgraph@1.4.10";
-let langGraphSupervisorModulePromise;
-
-function loadLangGraphSupervisor(){
-  if(!langGraphSupervisorModulePromise)langGraphSupervisorModulePromise=import("./langgraph-supervisor.js");
-  return langGraphSupervisorModulePromise;
-}
 
 async function openApiWithAdmin(request,env,ctx){
   const response=await app.fetch(request,env,ctx);
@@ -60,45 +53,10 @@ async function aiGatewayControlRuntimeProbe(request,env){
   }finally{clearTimeout(timer)}
 }
 
-function langGraphInternalOnly(url){return url.hostname==="governance.internal"}
-async function readLangGraphTask(request){
-  const declared=Number(request.headers.get("content-length")||0);
-  if(declared>MAX_LANGGRAPH_BODY_BYTES)throw Object.assign(new Error("BODY_TOO_LARGE"),{status:413});
-  const raw=await request.text();
-  if(new TextEncoder().encode(raw).length>MAX_LANGGRAPH_BODY_BYTES)throw Object.assign(new Error("BODY_TOO_LARGE"),{status:413});
-  try{
-    const body=JSON.parse(raw||"{}");
-    if(!body||typeof body!=="object"||Array.isArray(body))throw new Error("INVALID_JSON");
-    return body?.task&&typeof body.task==="object"&&!Array.isArray(body.task)?body.task:body;
-  }catch(error){throw Object.assign(new Error("INVALID_JSON"),{status:400,cause:error})}
-}
-async function langGraphHealth(env){
-  try{
-    const {probeLangGraphSupervisor}=await loadLangGraphSupervisor();
-    const result=await probeLangGraphSupervisor(env);
-    return json(result,result.ok?200:503);
-  }catch(error){return json({ok:false,runtime:LANGGRAPH_SUPERVISOR_RUNTIME,error:String(error?.message||error),autonomous_production_mutation:false},503)}
-}
-async function langGraphRun(request,env){
-  try{
-    const task=await readLangGraphTask(request);
-    const {runLangGraphSupervisor}=await loadLangGraphSupervisor();
-    const result=await runLangGraphSupervisor(task,env);
-    return json(result,result.ok?200:result.status==="blocked"||result.status==="rejected"?422:503);
-  }catch(error){return json({ok:false,runtime:LANGGRAPH_SUPERVISOR_RUNTIME,error:String(error?.message||"LANGGRAPH_REQUEST_FAILED"),execution_started:false,side_effects_started:false,autonomous_production_mutation:false},error?.status||500)}
-}
-
 export default{
   async fetch(request,env,ctx){
     const url=new URL(request.url);
-    if(request.method==="GET"&&url.pathname==="/v1/langgraph/health"){
-      if(!langGraphInternalOnly(url))return json({ok:false,error:"POLICY_DENIED",message:"LangGraph supervisor is service-binding internal only"},403);
-      return langGraphHealth(env);
-    }
-    if(request.method==="POST"&&url.pathname==="/v1/langgraph/run"){
-      if(!langGraphInternalOnly(url))return json({ok:false,error:"POLICY_DENIED",message:"LangGraph supervisor is service-binding internal only"},403);
-      return langGraphRun(request,env);
-    }
+    const memory=await handleNeonMemoryRoute(request,env,ctx);if(memory)return memory;
     const evolution=await handleEvolutionRoute(request,env,ctx);if(evolution)return evolution;
     if(request.method==="GET"&&url.pathname==="/_internal/ai-gateway-control-readonly-probe")return aiGatewayControlRuntimeProbe(request,env);
     if(request.method==="GET"&&url.pathname==="/v1/admin/context")return getAdminContext(request,env,ctx,app);
