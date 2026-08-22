@@ -20,9 +20,6 @@
   "workflows": [
     {"binding":"AUTONOMIC_MAINTENANCE","name":"three-center-autonomic-maintenance","class_name":"AutonomicMaintenanceWorkflow"}
   ],
-  "analytics_engine_datasets": [
-    {"binding":"EVOLUTION_ANALYTICS","dataset":"three_center_evolution"}
-  ],
   "vars": {
     "MODEL_SOURCE_POLICY":"strict-three-source-free-first",
     "MODEL_SOURCE_CLASSES":"workers-ai,openrouter,huggingface",
