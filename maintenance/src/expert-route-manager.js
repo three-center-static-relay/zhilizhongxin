@@ -76,9 +76,10 @@ async function runtimeTelemetry(env,fetchImpl=fetch){
   for(const[provider,s]of providerStats){
     const rate=s.n?s.ok/s.n:1,distinctModels=s.models.size;
     const crossModelEvidence=distinctModels>=PROVIDER_MIN_DISTINCT_MODELS;
-    const timeoutFault=crossModelEvidence&&s.timeout>=PROVIDER_MIN_TIMEOUTS;
-    const failureFault=crossModelEvidence&&s.n>=PROVIDER_MIN_FAILURES&&s.fail>=PROVIDER_MIN_FAILURES&&rate<PROVIDER_MAX_SUCCESS_RATE;
-    const terminalFault=crossModelEvidence&&s.terminal>=PROVIDER_MIN_FAILURES;
+    const degraded=rate<PROVIDER_MAX_SUCCESS_RATE;
+    const timeoutFault=crossModelEvidence&&degraded&&s.timeout>=PROVIDER_MIN_TIMEOUTS;
+    const failureFault=crossModelEvidence&&degraded&&s.n>=PROVIDER_MIN_FAILURES&&s.fail>=PROVIDER_MIN_FAILURES;
+    const terminalFault=crossModelEvidence&&degraded&&s.terminal>=PROVIDER_MIN_FAILURES;
     if(timeoutFault||failureFault||terminalFault){
       providerQuarantine.add(provider);
       providerQuarantineDetails.push({provider,sample_count:s.n,success_count:s.ok,failure_count:s.fail,timeout_count:s.timeout,terminal_count:s.terminal,distinct_model_count:distinctModels,success_rate:+rate.toFixed(4),reason:timeoutFault?"CROSS_MODEL_TIMEOUT_FAULT_DOMAIN":terminalFault?"CROSS_MODEL_TERMINAL_FAULT_DOMAIN":"CROSS_MODEL_FAILURE_FAULT_DOMAIN"});
@@ -108,11 +109,12 @@ export async function buildExpertRoutePlan(env={},fetchImpl=fetch){
   const lanes=runtimeQuarantineApplied?runtimeReselectLanes(base.lanes,routeCandidates):base.lanes;
   const routes=routeShards(lanes.length).map(s=>buildRouteShard(s,lanes)).filter(Boolean),routingFingerprint=await digest(routes.map(r=>({routeName:r.routeName,elements:r.elements})));
   const summary={...base.summary,
-    schema:"expert-route-plan-v15-provider-fault-domain-quarantine",
+    schema:"expert-route-plan-v16-provider-fault-density-quarantine",
     provider_execution_policy:"ai-gateway-provider-config-plus-live-health-plus-metadata-log-model-and-provider-failure-quarantine",
     model_runtime_quarantine:true,
     provider_runtime_quarantine:true,
     provider_fault_domain_isolation:true,
+    provider_fault_requires_low_success_rate:true,
     chat_completion_compat_quarantine:"privacy-safe-failure-evidence",
     runtime_lane_reselection:true,
     runtime_reselection_applied:runtimeQuarantineApplied,
@@ -125,7 +127,7 @@ export async function buildExpertRoutePlan(env={},fetchImpl=fetch){
     runtime_fallback_success_count:t.fallbackSuccesses,
     runtime_fallback_observed:t.fallbackSteps>0,
     runtime_quarantine_reason:t.readable?(pq.size?"RECENT_EXPERT_PROVIDER_FAULT_DOMAIN":q.size?"RECENT_EXPERT_MODEL_FAILURE":"NO_REPEATED_EXPERT_MODEL_OR_PROVIDER_FAILURE"):"TELEMETRY_UNAVAILABLE",
-    runtime_quarantine_policy:"model: terminal-client>=1 OR timeout>=2 OR expert-failures>=2-and-success-rate<0.34; provider: >=2 distinct models AND (timeouts>=2 OR terminal>=3 OR failures>=3-and-success-rate<0.34)",
+    runtime_quarantine_policy:"model: terminal-client>=1 OR timeout>=2 OR expert-failures>=2-and-success-rate<0.34; provider: >=2 distinct models AND success-rate<0.34 AND (timeouts>=2 OR terminal>=3 OR failures>=3)",
     telemetry_payload_read:false,
     effective_model_timeout_ms:GATEWAY_MODEL_TIMEOUT_MS,
     fallback_budget_policy:"quality<=60s-balanced<=90s-free-first<=120s-before-overhead",
@@ -142,11 +144,12 @@ export async function buildExpertRoutePlan(env={},fetchImpl=fetch){
 export async function refreshExpertRoutes(env={},fetchImpl=fetch,preparedPlan=null){
   const plan=preparedPlan||await buildExpertRoutePlan(env,fetchImpl),receipt=await refreshBaseExpertRoutes(env,fetchImpl,plan);
   return{...receipt,
-    schema:"expert-route-refresh-v15-provider-fault-domain-quarantine",
+    schema:"expert-route-refresh-v16-provider-fault-density-quarantine",
     provider_execution_policy:plan.summary?.provider_execution_policy||receipt.provider_execution_policy,
     model_runtime_quarantine:true,
     provider_runtime_quarantine:true,
     provider_fault_domain_isolation:true,
+    provider_fault_requires_low_success_rate:true,
     chat_completion_compat_quarantine:"privacy-safe-failure-evidence",
     runtime_lane_reselection:true,
     runtime_reselection_applied:plan.summary?.runtime_reselection_applied===true,
