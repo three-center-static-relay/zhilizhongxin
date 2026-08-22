@@ -1,0 +1,7 @@
+import assert from "node:assert/strict";
+import {readSanitizedGatewaySettings} from "../src/gateway-settings-sanitized.js";
+let auth="";
+const fetchImpl=async(url,init={})=>{auth=String(init?.headers?.authorization||"");assert.match(String(url),/\/ai-gateway\/gateways\/test$/);return Response.json({success:true,result:{id:"test",collect_logs:true,zdr:true,rate_limiting_limit:25,rate_limiting_interval:60,rate_limiting_technique:"sliding",retry_max_attempts:3,retry_delay:500,retry_backoff:"exponential",spend_limits:{enabled:true,rules:[{limit:1,limit_type:"usd"}]},secret_preview:"MUST_NOT_LEAK",logpush_public_key:"MUST_NOT_LEAK"}})};
+const out=await readSanitizedGatewaySettings({CF_ACCOUNT_ID:"acct",CLOUDFLARE_AI_GATEWAY_API_TOKEN:"top-secret",AI_GATEWAY_ID:"test"},fetchImpl);
+assert.equal(auth,"Bearer top-secret");assert.equal(out.ok,true);assert.equal(out.global_rate_limit_enabled,true);assert.equal(out.rate_limiting_limit,25);assert.equal(out.rate_limiting_interval,60);assert.equal(out.rate_limiting_technique,"sliding");assert.equal(out.retry_max_attempts,3);assert.equal(out.spend_limits_enabled,true);assert.equal(out.spend_rule_count,1);assert.equal(out.has_active_spend_limit,true);assert.equal(out.secrets_redacted,true);assert.equal(out.payloads_read,false);assert.equal("secret_preview" in out,false);assert.equal("logpush_public_key" in out,false);assert.doesNotMatch(JSON.stringify(out),/top-secret|MUST_NOT_LEAK/);
+console.log("gateway-settings-sanitized-contract: PASS");
