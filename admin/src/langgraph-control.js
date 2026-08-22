@@ -104,12 +104,31 @@ async function dispatchPlanProbes(plan,env){
   return receipts;
 }
 
+async function runIntelligenceExecutionSelftest(env){
+  const result=await bindingJson(env.INTELLIGENCE_CENTER,new Request("https://intelligence.internal/v1/selftest/providers",{
+    method:"POST",headers:{accept:"application/json","content-type":"application/json"},body:"{}"
+  }),180000);
+  const body=result.body||{},checks=Array.isArray(body?.checks)?body.checks:[],receipt=String(body?.receipt_digest||"");
+  const ok=result.ok&&body?.ok===true&&body?.ai_called===false&&checks.length>0&&/^[a-f0-9]{64}$/i.test(receipt);
+  return{center:"intelligence",operation:"provider-fresh-e2e",ok,http_status:result.http_status,error:result.error||body?.error||null,providers_checked:Number(body?.providers_checked||checks.length),receipt_digest:receipt||null,ai_called:body?.ai_called===true,bigquery_bytes_billed:Number(body?.bigquery_bytes_billed||0),secrets_redacted:true};
+}
+
+async function runComputeExecutionSelftest(env){
+  const result=await bindingJson(env.COMPUTE_CENTER,new Request("https://compute.internal/v1/admin/modelscope/studio-lite/compute",{
+    method:"POST",headers:{accept:"application/json","content-type":"application/json"},body:JSON.stringify({op:"sum",values:[2,3,5]})
+  }),90000);
+  const body=result.body||{},ok=result.ok&&body?.ok!==false;
+  return{center:"compute",operation:"modelscope-free-cpu-sum",ok,http_status:result.http_status,error:result.error||body?.error||null,status:String(body?.status||""),provider:String(body?.provider||body?.executor||"modelscope"),task_id:String(body?.task_id||""),result_digest:String(body?.result_digest||body?.output_digest||""),paid_execution:false,secrets_redacted:true};
+}
+
 async function runExpertRouteSelftest(env){
   const result=await bindingJson(env.EXPERT_CENTER,new Request("https://expert.internal/v1/selftest",{
     method:"POST",headers:{accept:"application/json","content-type":"application/json"},body:"{}"
   }),180000);
   const body=result.body||{};
   return{
+    center:"expert",
+    operation:"real-panel-selftest",
     ok:result.ok&&body?.ok===true&&body?.business_e2e===true&&body?.model_policy_pass===true&&body?.company_diverse===true&&body?.expert_nonempty===true&&body?.judge_nonempty===true,
     http_status:result.http_status,
     error:result.error||body?.error||null,
@@ -119,40 +138,52 @@ async function runExpertRouteSelftest(env){
     expert_nonempty:body?.expert_nonempty===true,
     judge_nonempty:body?.judge_nonempty===true,
     output_digest:String(body?.output_digest||""),
-    content_scrubbed:body?.content_scrubbed===true
+    content_scrubbed:body?.content_scrubbed===true,
+    secrets_redacted:true
   };
+}
+
+async function runFourCenterExecutionCanary(planning,plan,env){
+  const plannedCenters=new Set(Array.isArray(plan?.graph?.nodes)?plan.graph.nodes.map(x=>String(x?.center||"")):[]);
+  const governance={center:"governance",operation:"compile-internal-plan",ok:planning.ok&&plan?.ok===true&&plannedCenters.has("governance"),http_status:planning.http_status,error:planning.error||plan?.error||null,plan_digest:String(plan?.plan_digest||""),secrets_redacted:true};
+  const intelligence=await runIntelligenceExecutionSelftest(env);
+  const compute=await runComputeExecutionSelftest(env);
+  const expert=await runExpertRouteSelftest(env);
+  const receipts=[governance,intelligence,compute,expert],allCentersPlanned=["governance","intelligence","compute","expert"].every(x=>plannedCenters.has(x));
+  return{ok:allCentersPlanned&&receipts.every(x=>x.ok===true),all_centers_planned:allCentersPlanned,all_centers_executed:receipts.every(x=>x.ok===true),execution_receipts:receipts,service_binding_dispatch:true,production_mutation:false,secrets_redacted:true};
 }
 
 function systemCanaryTask(){
   return{
     task_id:`langgraph-system-canary-${crypto.randomUUID()}`,
-    goal:"Verify that the shared LangGraph brain can validate and command the governance, intelligence, compute and expert centers through Cloudflare Service Bindings.",
+    goal:"Verify that the shared LangGraph brain can plan and actually execute bounded checks across governance, intelligence, compute and expert centers through Cloudflare Service Bindings.",
     constraints:{allowed_centers:["governance","intelligence","compute","expert"],write_scope:"none"},
     risk:{max_trust_level:"T2",uncertainty:"low"},
     budget:{cost_mode:"free-first",max_paid_usd:0},
     required_capabilities:["governance.task-planner","intelligence.provider-query","compute.cpu","expert.deliberation"],
-    deadline:new Date(Date.now()+5*60*1000).toISOString(),
-    success_criteria:["all four centers are reachable","LangGraph validates the cross-center graph","Expert AI Gateway executes a real two-participant selftest"]
+    deadline:new Date(Date.now()+8*60*1000).toISOString(),
+    success_criteria:["all four centers are planned","all four centers return real execution receipts","LangGraph validates the cross-center graph","no paid compute, tools, web, or production mutation occurs"]
   };
 }
 
-async function orchestrate(task,env,{expertRouteSelftest=false}={}){
+async function orchestrate(task,env,{fourCenterExecutionCanary=false}={}){
   const brain=await runBrainAdvisory(task,env);
   const effectiveTask=boundedBrainAdvisory(task,brain);
   const planning=await compileGovernancePlan(effectiveTask,env);
   const plan=planning.body;
-  if(!planning.ok||plan?.ok!==true)return{ok:false,status:"planning-failed",error:planning.error||plan?.error||"GOVERNANCE_PLAN_FAILED",brain,planning_http_status:planning.http_status,plan:null,langgraph:null,dispatch_receipts:[],expert_route_selftest:null};
+  if(!planning.ok||plan?.ok!==true)return{ok:false,status:"planning-failed",error:planning.error||plan?.error||"GOVERNANCE_PLAN_FAILED",brain,planning_http_status:planning.http_status,plan:null,langgraph:null,dispatch_receipts:[],center_execution_canary:null,expert_route_selftest:null};
 
   const validation=await validateWithLangGraph(plan,env),langgraph=validation.body;
   const validated=validation.ok&&langgraph?.ok===true&&langgraph?.mode==="supervisor-validate"&&langgraph?.validation?.ok===true&&langgraph?.model_invoked===false&&langgraph?.tools_used===false&&langgraph?.web_used===false;
-  if(!validated)return{ok:false,status:"langgraph-rejected",error:validation.error||langgraph?.error||"LANGGRAPH_VALIDATION_FAILED",brain,planning_http_status:planning.http_status,plan,langgraph,dispatch_receipts:[],expert_route_selftest:null};
+  if(!validated)return{ok:false,status:"langgraph-rejected",error:validation.error||langgraph?.error||"LANGGRAPH_VALIDATION_FAILED",brain,planning_http_status:planning.http_status,plan,langgraph,dispatch_receipts:[],center_execution_canary:null,expert_route_selftest:null};
 
   const dispatchReceipts=await dispatchPlanProbes(plan,env),dispatchOk=dispatchReceipts.length===plan.graph.nodes.length&&dispatchReceipts.every(x=>x.ok);
-  if(!dispatchOk)return{ok:false,status:"dispatch-failed",error:dispatchReceipts.find(x=>!x.ok)?.error||"CENTER_DISPATCH_FAILED",brain,planning_http_status:planning.http_status,plan,langgraph,dispatch_receipts:dispatchReceipts,expert_route_selftest:null};
+  if(!dispatchOk)return{ok:false,status:"dispatch-failed",error:dispatchReceipts.find(x=>!x.ok)?.error||"CENTER_DISPATCH_FAILED",brain,planning_http_status:planning.http_status,plan,langgraph,dispatch_receipts:dispatchReceipts,center_execution_canary:null,expert_route_selftest:null};
 
-  const routeTest=expertRouteSelftest?await runExpertRouteSelftest(env):null;
-  const ok=dispatchOk&&(!expertRouteSelftest||routeTest?.ok===true);
-  return{ok,status:ok?"completed":"expert-route-failed",error:ok?null:(routeTest?.error||"EXPERT_ROUTE_SELFTEST_FAILED"),brain,planning_http_status:planning.http_status,plan,langgraph,dispatch_receipts:dispatchReceipts,expert_route_selftest:routeTest};
+  const centerCanary=fourCenterExecutionCanary?await runFourCenterExecutionCanary(planning,plan,env):null;
+  const routeTest=centerCanary?.execution_receipts?.find(x=>x.center==="expert")||null;
+  const ok=dispatchOk&&(!fourCenterExecutionCanary||centerCanary?.ok===true);
+  return{ok,status:ok?"completed":"center-execution-failed",error:ok?null:(centerCanary?.execution_receipts?.find(x=>!x.ok)?.error||"FOUR_CENTER_EXECUTION_FAILED"),brain,planning_http_status:planning.http_status,plan,langgraph,dispatch_receipts:dispatchReceipts,center_execution_canary:centerCanary,expert_route_selftest:routeTest};
 }
 
 export async function handleLangGraphControl(request,env){
@@ -161,11 +192,11 @@ export async function handleLangGraphControl(request,env){
   const probeAuthorized=isCanary&&constantTimeEqual(request.headers.get("x-langgraph-e2e-probe"),env.LANGGRAPH_SYSTEM_E2E_PROBE);
   if(!internalOnly(url)&&!probeAuthorized)return json({ok:false,error:"POLICY_DENIED",message:"LangGraph system control is service-binding internal only"},403);
   try{
-    const task=isCanary?systemCanaryTask():await strictJson(request),result=await orchestrate(task,env,{expertRouteSelftest:isCanary});
-    const plan=result.plan||{},brain=result.brain||{};
+    const task=isCanary?systemCanaryTask():await strictJson(request),result=await orchestrate(task,env,{fourCenterExecutionCanary:isCanary});
+    const plan=result.plan||{},brain=result.brain||{},centerCanary=result.center_execution_canary||{};
     const payload={
       ok:result.ok,
-      selftest:isCanary?"langgraph-system-command-v1":null,
+      selftest:isCanary?"langgraph-four-center-execution-v2":null,
       status:result.status,
       error:result.error,
       runtime:"@langchain/langgraph@1.4.10",
@@ -193,12 +224,15 @@ export async function handleLangGraphControl(request,env){
       langgraph_tools_used:result.langgraph?.tools_used===true,
       langgraph_web_used:result.langgraph?.web_used===true,
       dispatch_receipts:result.dispatch_receipts,
+      center_execution_receipts:Array.isArray(centerCanary?.execution_receipts)?centerCanary.execution_receipts:[],
+      all_centers_planned:centerCanary?.all_centers_planned===true,
+      all_centers_executed:centerCanary?.all_centers_executed===true,
       expert_route_selftest:result.expert_route_selftest,
       brain_can_command:result.ok===true,
-      execution_mode:"model-advisory-governance-validated-bounded-service-binding-dispatch",
+      execution_mode:"model-advisory-governance-validated-real-four-center-service-binding-dispatch",
       production_mutation:false,
       secrets_redacted:true
     };
     return json(payload,result.ok?200:502);
-  }catch(error){return json({ok:false,selftest:isCanary?"langgraph-system-command-v1":null,status:"failed",error:safe(error?.message||error),brain_can_command:false,production_mutation:false,secrets_redacted:true},error?.status||500)}
+  }catch(error){return json({ok:false,selftest:isCanary?"langgraph-four-center-execution-v2":null,status:"failed",error:safe(error?.message||error),brain_can_command:false,all_centers_executed:false,production_mutation:false,secrets_redacted:true},error?.status||500)}
 }
