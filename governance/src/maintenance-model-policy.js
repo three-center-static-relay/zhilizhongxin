@@ -1,5 +1,4 @@
-const CF_ROUTINE_MODEL="@cf/zai-org/glm-4.7-flash";
-const CF_DEEP_MODEL="@cf/nvidia/nemotron-3-120b-a12b";
+const CF_PRIMARY_MODEL="@cf/nvidia/nemotron-3-120b-a12b";
 const CF_REVIEW_MODEL="@cf/google/gemma-4-26b-a4b-it";
 const APPROVED_SOURCES=Object.freeze(["workers-ai","openrouter","huggingface"]);
 
@@ -9,11 +8,12 @@ const clean=v=>String(v??"").trim();
 const norm=v=>clean(v).toLowerCase().replace(/[_\s]+/g,"-");
 
 export const MAINTENANCE_MODEL_POLICY=Object.freeze({
-  strategy:"three-source-free-first-dynamic-health-routing",
+  strategy:"nemotron-primary-three-source-free-first-fallback",
   approved_sources:APPROVED_SOURCES,
   discovery_authority:"leaderboards-discovery-only-not-runtime-authority",
-  routine_model:CF_ROUTINE_MODEL,
-  deep_model:CF_DEEP_MODEL,
+  routine_model:CF_PRIMARY_MODEL,
+  deep_model:CF_PRIMARY_MODEL,
+  primary_model:CF_PRIMARY_MODEL,
   review_model:CF_REVIEW_MODEL,
   openrouter_role:"secondary-dynamic-pool",
   huggingface_role:"secondary-open-model-pool",
@@ -41,7 +41,7 @@ export function chooseMaintenanceBrain(input={}){
   const repeated=Number(input.failure_count||0)>=2;
   const crossCenter=Number(input.affected_centers||0)>=2;
   const deep=complexity==="deep"||repeated||crossCenter||COMPLEX_CLASSES.has(errorClass);
-  return {role:deep?"deep":"routine",provider:"workers-ai",model:deep?CF_DEEP_MODEL:CF_ROUTINE_MODEL,free_first:true};
+  return {role:deep?"deep":"routine",provider:"workers-ai",model:CF_PRIMARY_MODEL,free_first:true,primary:true};
 }
 
 export function chooseReviewer(){
@@ -60,7 +60,8 @@ export function repairExecutionPolicy(input={}){
     huggingface_allowed:input.huggingface_free_candidate===true,
     paid_fallback_allowed:paidBudget>0,
     max_paid_usd:Number.isFinite(paidBudget)&&paidBudget>0?paidBudget:0,
-    fixed_model_pin:false,
+    fixed_model_pin:true,
+    primary_model:CF_PRIMARY_MODEL,
     approved_sources:APPROVED_SOURCES
   };
 }
