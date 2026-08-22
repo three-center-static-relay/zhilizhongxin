@@ -5,7 +5,7 @@ export {MaintenanceState} from "./index.js";
 const CF_API="https://api.cloudflare.com/client/v4";
 const ENDPOINT="/__runtime-canary/force-route-refresh-v18/V9mQ4xR7vK2sP8cT5hW1yF6dB0uGzA3eC7nL4jN8";
 const EXPIRES_AT=Date.parse("2026-08-22T07:45:00.000Z");
-const DEPLOY_MARKER="post284-gateway-diagnostics-v18";
+const DEPLOY_MARKER="post284-gateway-diagnostics-v18-force";
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
 const scalar=v=>["string","number","boolean"].includes(typeof v)?String(v).slice(0,180):null;
 const uniq=xs=>[...new Set(xs.filter(Boolean))];
