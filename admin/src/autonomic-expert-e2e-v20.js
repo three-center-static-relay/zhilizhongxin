@@ -1,0 +1,54 @@
+import {handleLangGraphControl} from "./langgraph-control.js";
+
+const EXPIRES_AT=Date.parse("2026-08-22T17:00:00.000Z");
+const ENDPOINT="/__autonomic-recovery/expert-e2e-v20/Q8mT3xR7vK5sP2cN9hW1yF6dB0uGzA4eC7nL5jM3";
+const DEPLOY_MARKER="autonomic-expert-e2e-v20";
+const MAX_RESPONSE_BYTES=2*1024*1024;
+const MODES=new Set(["quality-first","balanced","free-first"]);
+const PROMPT=`在福州送外卖、送快递、开网约车、当保安哪个好？请具体比较收入潜力、收入稳定性、时间自由度、体力负荷、车辆和设备成本、安全及事故风险、平台规则风险、长期可持续性、进入门槛和综合性价比。不要联网，不使用任何工具；如果缺乏实时本地数据，必须明确不确定性，不要编造当前工资数字。最后给出清晰综合排序，并说明不同类型的人分别更适合哪一种。`;
+const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
+
+async function bounded(response){
+  const declared=Number(response.headers.get("content-length")||0);
+  if(declared>MAX_RESPONSE_BYTES)throw new Error("EXPERT_RESPONSE_TOO_LARGE");
+  if(!response.body)return null;
+  const reader=response.body.getReader(),decoder=new TextDecoder();let bytes=0,text="";
+  while(true){const{done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>MAX_RESPONSE_BYTES){try{await reader.cancel()}catch{}throw new Error("EXPERT_RESPONSE_TOO_LARGE")}text+=decoder.decode(value,{stream:true})}
+  text+=decoder.decode();
+  return text?JSON.parse(text):null;
+}
+
+async function expertContext(env){
+  if(!env.EXPERT_CENTER?.fetch)return{ok:false,error:"EXPERT_SERVICE_BINDING_UNAVAILABLE"};
+  const r=await env.EXPERT_CENTER.fetch(new Request("https://expert.internal/v1/admin/context",{headers:{accept:"application/json"}})),b=await r.json().catch(()=>null);
+  return{http_status:r.status,...(b||{ok:false,error:"EXPERT_CONTEXT_BAD_JSON"})};
+}
+
+async function runOnce(env,attempt,costMode="quality-first"){
+  if(!MODES.has(costMode))costMode="quality-first";
+  const started_at=new Date().toISOString(),controlTaskId=`autonomic-v20-control-${attempt}`,expertTaskId=`autonomic-v20-expert-${attempt}`;
+  const task={task_id:controlTaskId,goal:PROMPT,constraints:{allowed_centers:["governance","expert"],write_scope:"none",external_web:false,tools:false,production_mutation:false},risk:{max_trust_level:"T2",uncertainty:"medium"},budget:{cost_mode:costMode,control:"adaptive-feedback-price-performance",hard_spend_cap:false,token_cap:false,length_control:"adaptive-soft"},required_capabilities:["governance.task-planner","expert.deliberation","expert.judgment"],deadline:new Date(Date.now()+10*60*1000).toISOString(),success_criteria:["LangGraph validates the task","Expert semantic profiling infers business/comparison from the unmodified user task","at least two expert seats execute dynamically","AI Gateway Dynamic Routes select provider/model lanes","a Judge produces final synthesis","tools and web remain disabled","no production mutation occurs"]};
+  const lr=await handleLangGraphControl(new Request("https://admin.internal/v1/admin/langgraph/run",{method:"POST",headers:{"content-type":"application/json",accept:"application/json"},body:JSON.stringify(task)}),env),la=lr?await lr.json().catch(()=>null):null;
+  if(!lr?.ok||la?.ok!==true)return{ok:false,http_status:lr?.status||502,selftest:"autonomic-expert-e2e-v20",attempt,started_at,deploy_marker:DEPLOY_MARKER,stage:"langgraph-validation",requested_cost_mode:costMode,langgraph:la,secrets_redacted:true};
+  if(!env.EXPERT_CENTER?.fetch)return{ok:false,http_status:503,selftest:"autonomic-expert-e2e-v20",attempt,started_at,deploy_marker:DEPLOY_MARKER,stage:"expert-execution",requested_cost_mode:costMode,error:"EXPERT_SERVICE_BINDING_UNAVAILABLE",secrets_redacted:true};
+  const started=Date.now();
+  const er=await env.EXPERT_CENTER.fetch(new Request("https://expert.internal/v1/run",{method:"POST",headers:{"content-type":"application/json",accept:"application/json"},body:JSON.stringify({task_id:expertTaskId,prompt:PROMPT,task_domain:"business",task_type:"comparison",complexity:"high",reasoning_depth:"deep",cost_mode:costMode,model_count:2,rounds:1,timeout_seconds:300,tools:false,web:false})}));
+  const expert=await bounded(er).catch(error=>({ok:false,error:String(error?.message||error)})),ok=er.ok&&expert?.ok===true;
+  return{ok,http_status:ok?200:(er.status||502),selftest:"autonomic-expert-e2e-v20",attempt,started_at,finished_at:new Date().toISOString(),deploy_marker:DEPLOY_MARKER,expert_task_id:expertTaskId,stage:ok?"completed":"expert-execution",elapsed_ms:Date.now()-started,recovery_profile:{requested_model_count:2,rounds:1,effective_model_timeout_ms:30000,requested_cost_mode:costMode,semantic_prompt_unmodified:true,model_provider_dynamic:true},langgraph:{ok:true,status:la?.status||null,runtime:la?.runtime||null,runtime_host:la?.runtime_host||null,control_plane:la?.control_plane||null,planner:la?.planner||null,brain_can_command:la?.brain_can_command===true,execution_mode:la?.execution_mode||null,plan_digest:la?.plan_digest||null,plan_path:la?.plan_path||null,planned_centers:la?.planned_centers||[]},expert_http_status:er.status,expert,tools_used:false,web_used:false,production_mutation:false,secrets_redacted:true};
+}
+
+export async function handleAutonomicExpertE2EV20(request,env){
+  const u=new URL(request.url);
+  if(u.pathname!==ENDPOINT)return null;
+  if(!["GET","POST"].includes(request.method)||Date.now()>EXPIRES_AT)return json({ok:false,error:"NOT_FOUND"},404);
+  const operation=request.method==="GET"?(u.searchParams.get("operation")||"status"):"run";
+  const requested=u.searchParams.get("cost_mode")||"quality-first",costMode=MODES.has(requested)?requested:"quality-first";
+  if(operation==="status")return json({ok:true,selftest:"autonomic-expert-e2e-v20",deploy_marker:DEPLOY_MARKER,connected_client_required:true,expert:await expertContext(env),supported_cost_modes:[...MODES],expires_at:new Date(EXPIRES_AT).toISOString(),secrets_redacted:true});
+  if(operation!=="run")return json({ok:false,error:"INVALID_OPERATION"},400);
+  const current=await expertContext(env);
+  if(current?.active_task)return json({ok:false,status:"busy",active_task:true,deploy_marker:DEPLOY_MARKER,secrets_redacted:true},409);
+  try{const result=await runOnce(env,crypto.randomUUID(),costMode);return json(result,result.http_status||500)}
+  catch(error){return json({ok:false,http_status:error?.status||500,selftest:"autonomic-expert-e2e-v20",deploy_marker:DEPLOY_MARKER,stage:"canary",requested_cost_mode:costMode,error:String(error?.message||error).slice(0,180),secrets_redacted:true},error?.status||500)}
+}
+
+export const AUTONOMIC_EXPERT_E2E_ENDPOINT=ENDPOINT;

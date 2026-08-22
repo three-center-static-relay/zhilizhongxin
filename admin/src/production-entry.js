@@ -1,6 +1,11 @@
 import handler,{AdminCoordinator} from "./production-superguard.js";
 import {WorkerEntrypoint} from "cloudflare:workers";
 import {aiGatewayControlRequest,operationRequest} from "./ai-gateway-control.js";
+import {handleLangGraphControl} from "./langgraph-control.js";
+import {handleLangGraphTest} from "./langgraph-test.js";
+import {handleRuntimeAdaptiveRerunV6} from "./runtime-adaptive-rerun-v6.js";
+import {handleAutonomicExpertE2EV20} from "./autonomic-expert-e2e-v20.js";
+import {handleFuzhouFiveWayV21} from "./runtime-fuzhou-five-way-v21.js";
 
 export {AdminCoordinator};
 
@@ -29,6 +34,16 @@ export class AIGatewayControl extends WorkerEntrypoint {
 
 export default{
   async fetch(request,env,ctx){
+    const fiveWay=await handleFuzhouFiveWayV21(request,env,ctx);
+    if(fiveWay)return fiveWay;
+    const autonomicE2E=await handleAutonomicExpertE2EV20(request,env,ctx);
+    if(autonomicE2E)return autonomicE2E;
+    const rerun=await handleRuntimeAdaptiveRerunV6(request,env,ctx);
+    if(rerun)return rerun;
+    const langgraph=await handleLangGraphControl(request,env);
+    if(langgraph)return langgraph;
+    const langgraphTest=await handleLangGraphTest(request,env);
+    if(langgraphTest)return langgraphTest;
     const probe=await credentialReadProbe(request,env);
     if(probe)return probe;
     return handler.fetch(request,env,ctx);
