@@ -1,7 +1,7 @@
 import {handleLangGraphControl} from "./langgraph-control.js";
 
-const TOKEN_SHA256="42b6d885ae008fc044256891469026a443d9ef85f9e577ffd48cb0015c6333b1";
-const EXPIRES_AT=Date.parse("2026-08-22T03:05:00.000Z");
+const TOKEN_SHA256="6413d7f07222993a7166cbcd3885c94b14bdcfc5247f994aefa2ee0724bd7810";
+const EXPIRES_AT=Date.parse("2026-08-22T03:25:00.000Z");
 const ENDPOINT="/__runtime-canary/adaptive-rerun-v6";
 const CANARY_TASK_ID="runtime-canary-adaptive-rerun-v8";
 const PRIMARY_EXPERT_TASK_ID="runtime-adaptive-rerun-v8-expert-primary";
