@@ -20,21 +20,18 @@
   "workflows": [
     {"binding":"AUTONOMIC_MAINTENANCE","name":"three-center-autonomic-maintenance","class_name":"AutonomicMaintenanceWorkflow"}
   ],
-  "queues": {
-    "producers": [{"binding":"MAINTENANCE_QUEUE","queue":"three-center-maintenance"}],
-    "consumers": [{"queue":"three-center-maintenance","max_batch_size":5,"max_batch_timeout":10,"max_retries":3,"retry_delay":30,"dead_letter_queue":"three-center-maintenance-dlq","max_concurrency":1}]
-  },
   "analytics_engine_datasets": [
     {"binding":"EVOLUTION_ANALYTICS","dataset":"three_center_evolution"}
   ],
   "vars": {
     "MODEL_SOURCE_POLICY":"strict-three-source-free-first",
     "MODEL_SOURCE_CLASSES":"workers-ai,openrouter,huggingface",
+    "MAINTENANCE_PRIMARY_MODEL":"@cf/nvidia/nemotron-3-120b-a12b",
     "MAINTENANCE_COST_MODE":"free-first",
     "MAINTENANCE_AUTO_PAID_BUDGET_USD":"0",
     "MAINTENANCE_AUTO_PURCHASE_CREDITS":"false",
     "MAINTENANCE_CODEX_DEFAULT_ENABLED":"false",
-    "MAINTENANCE_MODEL_STRATEGY":"three-source-free-first-dynamic-health-routing"
+    "MAINTENANCE_MODEL_STRATEGY":"nemotron-primary-three-source-free-first-fallback"
   },
   "build": {"command": "node tests/model-source-policy-contract.mjs && node tests/evolution-kernel-contract.mjs && node tests/autonomic-maintenance-contract.mjs && node tests/langgraph-supervisor-contract.mjs && node tests/domain-architecture-contract.mjs && node tests/openrouter-mcp-boundary.mjs && node tests/policy-regression.mjs && node tests/policy-hardening-second-layer.mjs && node tests/runtime-attestation.mjs && node tests/openapi-action-schema.mjs && node tests/literature-action-route.mjs && node tests/provider-fresh-e2e-route.mjs && node tests/commercial-spatial-action.mjs && node tests/final-output-validation.mjs && node tests/legacy-action-compat-selftests.mjs && node tests/stress.mjs && node tests/admin-gateway-readonly.mjs && node tests/admin-operation-lock.mjs && node tests/admin-candidate-acceptance.mjs && node tests/admin-candidate-compensation.mjs && node tests/cloudflare-preview-build-guard.mjs && node tests/web-gpt-action-snapshot.mjs"},
   "observability": {"enabled": true,"logs":{"enabled":true,"head_sampling_rate":1},"traces":{"enabled":true,"head_sampling_rate":0.05}}

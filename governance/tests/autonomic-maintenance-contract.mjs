@@ -3,11 +3,12 @@ import {MAINTENANCE_MODEL_POLICY,isApprovedModelSource,assertApprovedModelSource
 import {classifyIncident,healthScore,planAutonomicRepair,validateReleaseGate} from "../src/autonomic-maintenance.js";
 
 assert.deepEqual(MAINTENANCE_MODEL_POLICY.approved_sources,["workers-ai","openrouter","huggingface"]);
-assert.equal(MAINTENANCE_MODEL_POLICY.strategy,"three-source-free-first-dynamic-health-routing");
+assert.equal(MAINTENANCE_MODEL_POLICY.strategy,"nemotron-primary-three-source-free-first-fallback");
 assert.equal(MAINTENANCE_MODEL_POLICY.discovery_authority,"leaderboards-discovery-only-not-runtime-authority");
 assert.equal(MAINTENANCE_MODEL_POLICY.automatic_paid_fallback,false);
 assert.equal(MAINTENANCE_MODEL_POLICY.paid_budget_default_usd,0);
-assert.equal(MAINTENANCE_MODEL_POLICY.routine_model,"@cf/zai-org/glm-4.7-flash");
+assert.equal(MAINTENANCE_MODEL_POLICY.primary_model,"@cf/nvidia/nemotron-3-120b-a12b");
+assert.equal(MAINTENANCE_MODEL_POLICY.routine_model,"@cf/nvidia/nemotron-3-120b-a12b");
 assert.equal(MAINTENANCE_MODEL_POLICY.deep_model,"@cf/nvidia/nemotron-3-120b-a12b");
 assert.equal(MAINTENANCE_MODEL_POLICY.review_model,"@cf/google/gemma-4-26b-a4b-it");
 assert.equal(isApprovedModelSource("workers-ai"),true);
@@ -15,11 +16,14 @@ assert.equal(isApprovedModelSource("openrouter"),true);
 assert.equal(isApprovedModelSource("huggingface"),true);
 assert.equal(isApprovedModelSource("deepseek"),false);
 assert.throws(()=>assertApprovedModelSource("deepseek"),/MODEL_SOURCE_NOT_APPROVED/);
+assert.equal(chooseMaintenanceBrain({error_class:"RATE_LIMIT"}).model,"@cf/nvidia/nemotron-3-120b-a12b");
+assert.equal(chooseMaintenanceBrain({error_class:"CODE_DEFECT"}).model,"@cf/nvidia/nemotron-3-120b-a12b");
 assert.notEqual(chooseMaintenanceBrain({error_class:"RATE_LIMIT"}).model,chooseReviewer().model);
 assert.equal(chooseMaintenanceBrain({error_class:"CODE_DEFECT"}).role,"deep");
 assert.equal(repairExecutionPolicy({error_class:"CODE_DEFECT",simple_patch_failed:false,max_paid_usd:0}).codex_allowed,false);
 assert.equal(repairExecutionPolicy({error_class:"CODE_DEFECT",simple_patch_failed:true,max_paid_usd:0}).codex_allowed,true);
 assert.equal(repairExecutionPolicy({error_class:"RATE_LIMIT",max_paid_usd:0}).paid_fallback_allowed,false);
+assert.equal(repairExecutionPolicy({error_class:"RATE_LIMIT",max_paid_usd:0}).primary_model,"@cf/nvidia/nemotron-3-120b-a12b");
 assert.equal(leaderboardCandidatePolicy({source:"deepseek",model:"candidate",health_pass:true,contract_pass:true,free_or_budget_ok:true}).eligible,false);
 assert.equal(leaderboardCandidatePolicy({source:"openrouter",model:"candidate",health_pass:true,contract_pass:true,free_or_budget_ok:true}).direct_production_selection,false);
 

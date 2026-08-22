@@ -11,20 +11,15 @@ export default{
     const url=new URL(request.url);
     if(request.method==="POST"&&url.pathname==="/_internal/autonomic-maintenance/enqueue"){
       if(url.hostname!=="governance.internal")return json({ok:false,error:"POLICY_DENIED"},403);
-      if(!env.MAINTENANCE_QUEUE?.send)return json({ok:false,error:"MAINTENANCE_QUEUE_UNBOUND"},503);
-      try{const body=await readBoundedJson(request);const incident_id=safeId(body.incident_id);await env.MAINTENANCE_QUEUE.send({incident_id,receipt:body.receipt||{},source:"governance",paid_budget_usd:0});return json({ok:true,incident_id,queued:true,paid_budget_usd:0,production_mutation:false},202)}catch(error){return json({ok:false,error:String(error?.message||"ENQUEUE_FAILED")},error?.status||400)}
+      if(!env.AUTONOMIC_MAINTENANCE?.create)return json({ok:false,error:"MAINTENANCE_WORKFLOW_UNBOUND"},503);
+      try{
+        const body=await readBoundedJson(request);
+        const incident_id=safeId(body.incident_id);
+        const workflow_id=`incident-${incident_id}`;
+        await env.AUTONOMIC_MAINTENANCE.create({id:workflow_id,params:{receipt:body.receipt||{}}});
+        return json({ok:true,incident_id,workflow_id,workflow_started:true,transport:"direct-workflow-binding",paid_budget_usd:0,production_mutation:false},202);
+      }catch(error){return json({ok:false,error:String(error?.message||"WORKFLOW_START_FAILED")},error?.status||400)}
     }
     return app.fetch(request,env,ctx);
-  },
-  async queue(batch,env){
-    for(const message of batch.messages){
-      try{
-        const body=message.body&&typeof message.body==="object"?message.body:{};
-        const incident_id=safeId(body.incident_id||message.id);
-        if(!env.AUTONOMIC_MAINTENANCE?.create)throw new Error("MAINTENANCE_WORKFLOW_UNBOUND");
-        await env.AUTONOMIC_MAINTENANCE.create({id:`incident-${incident_id}`,params:{receipt:body.receipt||{}}});
-        message.ack();
-      }catch(error){console.log(JSON.stringify({event:"autonomic-maintenance.queue-error",error:String(error?.message||error).slice(0,160),secrets_redacted:true}));message.retry({delaySeconds:30})}
-    }
   }
 };
