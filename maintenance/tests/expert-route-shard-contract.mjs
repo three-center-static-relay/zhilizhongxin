@@ -13,6 +13,7 @@ assert.match(manager,/const MAX_SHARD_ELEMENTS=16/);
 assert.match(manager,/const GATEWAY_MODEL_RETRIES=0/);
 assert.match(manager,/const GATEWAY_MODEL_TIMEOUT_MS=45000/);
 assert.match(manager,/timeout:GATEWAY_MODEL_TIMEOUT_MS/);
+assert.doesNotMatch(manager,/timeout:60000/);
 assert.match(manager,/function routeShards\(laneCount\)/);
 assert.match(manager,/expert-panel-\$\{key\}-v1/);
 assert.match(manager,/provider_configs\?per_page=100/);
@@ -69,4 +70,4 @@ assert.match(e2e,/Number\(body\?\.max_elements_per_route\)!==16/);
 assert.match(e2e,/r\.lanes\.length>2/);
 assert.match(e2e,/Number\(r\?\.element_count\)>16/);
 
-console.log(JSON.stringify({ok:true,suite:"expert-route-resilient-dynamic-contract",max_global_lanes:8,max_lanes_per_route:2,max_elements_per_route:16,dynamic_shards:true,provider_readiness:"ai-gateway-provider-config-plus-live-health-plus-model-terminal-quarantine",terminal_model_4xx_quarantine:true,provider_diverse_fallback:true,lane_provider_diversity_bonus:true,automatic_refresh:true,content_addressed_refresh:true,gateway_model_retries:0,gateway_model_timeout_ms:45000,gateway_runtime_authority:"stage-depth-capability-cost-preference-conditions-plus-retries-plus-fallbacks"}));
+console.log(JSON.stringify({ok:true,suite:"expert-route-resilient-dynamic-contract-v2",max_global_lanes:8,max_lanes_per_route:2,max_elements_per_route:16,dynamic_shards:true,provider_readiness:"ai-gateway-provider-config-plus-live-health-plus-model-terminal-quarantine",terminal_model_4xx_quarantine:true,provider_diverse_fallback:true,lane_provider_diversity_bonus:true,automatic_refresh:true,content_addressed_refresh:true,gateway_model_retries:0,gateway_model_timeout_ms:45000,fallback_headroom_required:true,gateway_runtime_authority:"stage-depth-capability-cost-preference-conditions-plus-retries-plus-fallbacks"}));
