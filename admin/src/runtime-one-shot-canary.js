@@ -1,7 +1,7 @@
 import {handleLangGraphControl} from "./langgraph-control.js";
 
 const TOKEN_SHA256="3ad785dd08110289b4c0fa6414e49989449f8ddcbf06ed9152c5d6d530f47f51";
-const EXPIRES_AT=Date.parse("2026-08-22T00:37:36.898Z");
+const EXPIRES_AT=Date.parse("2026-08-22T00:50:00.000Z");
 const MAX_PROMPT_CHARS=12000;
 const MAX_RESPONSE_BYTES=2*1024*1024;
 const SOFT_POLICY=`Execution policy:\n- Prioritize price-performance dynamically according to task complexity; no hard spending cap.\n- Control response length softly according to task complexity and information density. Do not use token limits.\n- Tools and web are forbidden.\n- Preserve material uncertainty, counterarguments, assumptions, and a clear final recommendation.`;
