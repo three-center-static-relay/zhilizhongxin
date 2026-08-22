@@ -34,9 +34,11 @@ assert.equal(healthScore({success_rate:1,timeout_rate:0,rate_429:0,rate_5xx:0,fa
 assert.equal(planAutonomicRepair({status_code:429,max_paid_usd:0}).action,"FALLBACK_AND_QUARANTINE");
 assert.equal(planAutonomicRepair({code_defect:true,simple_patch_failed:true,max_paid_usd:0}).action,"CODE_REPAIR_AGENT");
 
-assert.equal(validateReleaseGate({contract_tests_pass:true,canary_pass:true,security_pass:true,receipts_valid:true,rollback_ready:true,paid_spend_usd:0,max_paid_usd:0}).ok,true);
-assert.equal(validateReleaseGate({contract_tests_pass:true,canary_pass:true,security_pass:true,receipts_valid:true,rollback_ready:false,paid_spend_usd:0,max_paid_usd:0}).ok,false);
-assert.equal(validateReleaseGate({contract_tests_pass:true,canary_pass:true,security_pass:true,receipts_valid:true,rollback_ready:true,paid_spend_usd:0.01,max_paid_usd:0}).ok,false);
-assert.equal(validateReleaseGate({contract_tests_pass:true,canary_pass:true,security_pass:true,receipts_valid:true,rollback_ready:true}).model_may_self_approve,false);
+const constitution={change_type:"maintenance-update",mission_preserved:true,safety_boundary_preserved:true,governance_rules_preserved:true,auditability_preserved:true,separation_of_duties_preserved:true,deterministic_validation_passed:true,rollback_ready:true,self_approval:false,independent_acceptance_required:true};
+assert.equal(validateReleaseGate({contract_tests_pass:true,canary_pass:true,security_pass:true,receipts_valid:true,rollback_ready:true,paid_spend_usd:0,max_paid_usd:0,constitution}).ok,true);
+assert.equal(validateReleaseGate({contract_tests_pass:true,canary_pass:true,security_pass:true,receipts_valid:true,rollback_ready:false,paid_spend_usd:0,max_paid_usd:0,constitution:{...constitution,rollback_ready:false}}).ok,false);
+assert.equal(validateReleaseGate({contract_tests_pass:true,canary_pass:true,security_pass:true,receipts_valid:true,rollback_ready:true,paid_spend_usd:0.01,max_paid_usd:0,constitution}).ok,false);
+assert.equal(validateReleaseGate({contract_tests_pass:true,canary_pass:true,security_pass:true,receipts_valid:true,rollback_ready:true,constitution}).model_may_self_approve,false);
+assert.equal(validateReleaseGate({contract_tests_pass:true,canary_pass:true,security_pass:true,receipts_valid:true,rollback_ready:true}).ok,false);
 
 console.log("autonomic-maintenance-contract: PASS");
