@@ -1,0 +1,6 @@
+#!/usr/bin/env node
+import {readFileSync} from "node:fs";import {resolve} from "node:path";
+const PATH="/__runtime-canary/post273-e2e-v19/X8nQ2xR9vK4sP7cT5hW1yF6dB0uGzA3eC9nL5jM2";
+function fail(c,d={}){const e=new Error(c);e.details=d;throw e}function ok(x,c,d={}){if(!x)fail(c,d)}function base(){const s=JSON.parse(readFileSync(resolve(process.cwd(),"openapi.json"),"utf8")),u=new URL(String(s?.servers?.[0]?.url||""));ok(u.hostname.startsWith("admin-worker."),"ADMIN_URL_REQUIRED");return`${u.protocol}//${u.host}`}
+async function main(){const c=new AbortController(),t=setTimeout(()=>c.abort(),420000);try{const r=await fetch(`${base()}${PATH}?operation=run`,{headers:{accept:"application/json","cache-control":"no-store"},signal:c.signal}),b=await r.json().catch(()=>null);ok(b?.stage==="expert-execution","EXPERT_FAILURE_REQUIRED",{status:r.status,stage:b?.stage});const hs=Number(b?.expert_http_status||0);ok(hs===504,"EXPERT_NOT_HTTP_504",{expert_http_status:hs,error_code:String(b?.expert?.error||b?.error||"UNKNOWN").slice(0,120)});console.log(JSON.stringify({ok:true,code:"POST273_EXPERT_HTTP_504_CLASS",expert_http_status:504,secrets_redacted:true}))}finally{clearTimeout(t)}}
+main().catch(e=>{console.error(JSON.stringify({ok:false,code:String(e?.message||e),details:e?.details||null,secrets_redacted:true}));process.exitCode=1});
