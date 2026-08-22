@@ -5,7 +5,7 @@
   "description": "Admin Worker with fail-closed Tencent runtime E2E gate and deterministic redacted failure marker",
   "scripts": {
     "cf:build": "node --check src/guard.js && node --check src/index.js && node --check src/production-superguard.js && node --check src/production-entry.js && node --check src/langgraph-control.js && node --check src/langgraph-test.js && node --check src/ai-gateway-control.js && node --check src/protection.js && node --check src/superguard.js && node --check src/tencent-executor.js && node --check src/china-compute-fabric.js && node --check src/runtime-adaptive-rerun-v6.js && node --check ../scripts/post273-expert-e2e-v19.mjs && node --check ../scripts/tencent-postdeploy-e2e.mjs && node --check ../scripts/tencent-production-attestation-verify.mjs && node tests/ai-gateway-control-contract.mjs && node tests/tencent-executor-contract.mjs && node tests/tencent-cloudflare-secret-presence.mjs && node tests/china-compute-fabric-contract.mjs && node tests/langgraph-control-contract.mjs && node ../scripts/tencent-production-attestation-verify.mjs preview-marker && node -e \"JSON.parse(require('node:fs').readFileSync('openapi.json','utf8'))\"",
-    "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs admin preview",
+    "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs admin preview && node ../scripts/post273-expert-e2e-v19.mjs",
     "cf:ci:deploy": "node ../scripts/cloudflare-worker-gate.mjs admin deploy && node ../scripts/post273-expert-e2e-v19.mjs",
     "cf:preview": "npm run cf:build && npx wrangler deploy --dry-run",
     "cf:deploy": "npm run cf:build && npx wrangler deploy"
