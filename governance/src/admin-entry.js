@@ -55,10 +55,11 @@ async function aiGatewayControlRuntimeProbe(request,env){
 }
 
 async function strategicAnalysisPolicyRoute(request){
-  const url=new URL(request.url);if(url.hostname!=="governance.internal")return json({ok:false,error:"POLICY_DENIED",message:"strategic analysis governance is service-binding internal only"},403);
-  if(request.method==="GET"&&url.pathname==="/v1/admin/strategic-analysis-policy")return json({ok:true,...strategicAnalysisGovernanceMeta()});
-  if(request.method==="POST"&&url.pathname==="/v1/admin/strategic-analysis-plan"){const body=await request.json().catch(()=>null);if(!body)return json({ok:false,error:"INVALID_JSON"},400);return json(buildStrategicAnalysisPlan(body))}
-  return null
+  const url=new URL(request.url),isMeta=request.method==="GET"&&url.pathname==="/v1/admin/strategic-analysis-policy",isPlan=request.method==="POST"&&url.pathname==="/v1/admin/strategic-analysis-plan";
+  if(!isMeta&&!isPlan)return null;
+  if(url.hostname!=="governance.internal")return json({ok:false,error:"POLICY_DENIED",message:"strategic analysis governance is service-binding internal only"},403);
+  if(isMeta)return json({ok:true,...strategicAnalysisGovernanceMeta()});
+  const body=await request.json().catch(()=>null);if(!body)return json({ok:false,error:"INVALID_JSON"},400);return json(buildStrategicAnalysisPlan(body))
 }
 
 export default{
