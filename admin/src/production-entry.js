@@ -3,6 +3,7 @@ import {WorkerEntrypoint} from "cloudflare:workers";
 import {aiGatewayControlRequest,operationRequest} from "./ai-gateway-control.js";
 import {handleLangGraphControl} from "./langgraph-control.js";
 import {handleLangGraphTest} from "./langgraph-test.js";
+import {handleRuntimeAdaptiveRerunV6} from "./runtime-adaptive-rerun-v6.js";
 
 export {AdminCoordinator};
 
@@ -31,6 +32,8 @@ export class AIGatewayControl extends WorkerEntrypoint {
 
 export default{
   async fetch(request,env,ctx){
+    const rerun=await handleRuntimeAdaptiveRerunV6(request,env);
+    if(rerun)return rerun;
     const langgraph=await handleLangGraphControl(request,env);
     if(langgraph)return langgraph;
     const langgraphTest=await handleLangGraphTest(request,env);
