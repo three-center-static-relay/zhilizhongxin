@@ -3,9 +3,14 @@ import {handleLangGraphControl} from "./langgraph-control.js";
 const EXPIRES_AT=Date.parse("2026-08-22T16:30:00.000Z");
 const ENDPOINT="/__runtime-test/fuzhou-five-way-v21/R8mK3xT7vQ5sP2cN9hW1yF6dB0uGzA4eC7nL5jM3";
 const DEPLOY_MARKER="fuzhou-five-way-expert-v21";
+const CANARY_TASK_ID="fuzhou-five-way-v21-persisted";
 const MAX_RESPONSE_BYTES=3*1024*1024;
 const PROMPT=`在福州，开网约车、当保安、送快递、送外卖、送朴朴这五种工作，综合来看哪个更好？请从收入潜力、净收入与隐性成本、收入稳定性、工作时长、时间自由度、体力负荷、车辆/设备投入、安全与事故风险、平台规则和罚款风险、淡旺季波动、进入门槛、长期可持续性、职业发展空间、适合人群等维度进行系统比较。不要联网，不使用任何工具；如果缺少实时福州本地工资和单量数据，必须明确不确定性，不要编造当前实时数字。请区分“短期赚钱能力”和“长期综合性价比”，最后给出清晰综合排序，并说明不同类型的人分别适合哪一种。`;
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
+const clip=(value,n=12000)=>String(value??"").slice(0,n);
+
+function state(env){return env.ADMIN_COORDINATOR.get(env.ADMIN_COORDINATOR.idFromName("global"))}
+async function stateCall(env,path,method="GET",data){const init={method,headers:{"content-type":"application/json"}};if(data!==undefined)init.body=JSON.stringify(data);const r=await state(env).fetch(new Request(`https://state.internal${path}`,init));const body=await r.json().catch(()=>({ok:false,error:"STATE_BAD_RESPONSE"}));if(!r.ok)throw Object.assign(new Error(body.error||"STATE_ERROR"),{status:r.status,details:body});return body}
 
 async function bounded(response){
   const declared=Number(response.headers.get("content-length")||0);
@@ -21,6 +26,12 @@ async function expertContext(env){
   if(!env.EXPERT_CENTER?.fetch)return{ok:false,error:"EXPERT_SERVICE_BINDING_UNAVAILABLE"};
   const r=await env.EXPERT_CENTER.fetch(new Request("https://expert.internal/v1/admin/context",{headers:{accept:"application/json"}})),b=await r.json().catch(()=>null);
   return{http_status:r.status,...(b||{ok:false,error:"EXPERT_CONTEXT_BAD_JSON"})};
+}
+
+function compact(result){
+  const e=result?.expert||{};
+  const rows=[...(Array.isArray(e.experts)?e.experts:[]),...(Array.isArray(e.judges)?e.judges:[])].map(x=>({role:x?.role||null,model:x?.model||null,provider:x?.provider||null,company:x?.company||null,lane:Number(x?.meta?.lane||0),content:clip(x?.content,6000)}));
+  return{ok:result?.ok===true,http_status:Number(result?.http_status||0),selftest:result?.selftest||null,deploy_marker:result?.deploy_marker||null,stage:result?.stage||null,elapsed_ms:Number(result?.elapsed_ms||0),started_at:result?.started_at||null,finished_at:result?.finished_at||null,langgraph:result?.langgraph||null,request_profile:result?.request_profile||null,expert:{ok:e?.ok===true,status:e?.status||null,task_profile:e?.task_profile||null,expert_count:Number(e?.expert_count||0),judge_count:Number(e?.judge_count||0),company_diverse:e?.company_diverse===true,panel_plan:e?.panel_plan||null,rows,judge_content:clip(e?.judge?.content,16000),final_answer:clip(e?.final_answer,24000),output_digest:e?.output_digest||null,error:e?.error||e?.error_code||null},tools_used:false,web_used:false,production_mutation:false,secrets_redacted:true};
 }
 
 async function runOnce(env,attempt){
@@ -40,10 +51,25 @@ export async function handleFuzhouFiveWayV21(request,env){
   if(u.pathname!==ENDPOINT)return null;
   if(!["GET","POST"].includes(request.method)||Date.now()>EXPIRES_AT)return json({ok:false,error:"NOT_FOUND"},404);
   const operation=request.method==="GET"?(u.searchParams.get("operation")||"status"):"run";
-  if(operation==="status")return json({ok:true,selftest:"fuzhou-five-way-expert-v21",deploy_marker:DEPLOY_MARKER,expert:await expertContext(env),expires_at:new Date(EXPIRES_AT).toISOString(),secrets_redacted:true});
+  if(operation==="status"||operation==="result"){
+    const stored=await stateCall(env,`/task/${encodeURIComponent(CANARY_TASK_ID)}`).catch(()=>({task:null}));
+    return json({ok:true,selftest:"fuzhou-five-way-expert-v21",deploy_marker:DEPLOY_MARKER,persisted_task:stored.task||null,expert:operation==="status"?await expertContext(env):undefined,expires_at:new Date(EXPIRES_AT).toISOString(),secrets_redacted:true});
+  }
   if(operation!=="run")return json({ok:false,error:"INVALID_OPERATION"},400);
+  const stored=await stateCall(env,`/task/${encodeURIComponent(CANARY_TASK_ID)}`).catch(()=>({task:null}));
+  if(stored.task?.status==="running")return json({ok:true,status:"running",attempt:stored.task?.attempt||null,deploy_marker:DEPLOY_MARKER,secrets_redacted:true},202);
+  if(stored.task?.status==="completed"&&stored.task?.result)return json({ok:true,status:"completed",persisted:true,result:stored.task.result,deploy_marker:DEPLOY_MARKER,secrets_redacted:true},200);
   const current=await expertContext(env);
   if(current?.active_task)return json({ok:false,status:"busy",active_task:true,deploy_marker:DEPLOY_MARKER,secrets_redacted:true},409);
-  try{const result=await runOnce(env,crypto.randomUUID());return json(result,result.http_status||500)}
-  catch(error){return json({ok:false,http_status:error?.status||500,selftest:"fuzhou-five-way-expert-v21",deploy_marker:DEPLOY_MARKER,stage:"canary",error:String(error?.message||error).slice(0,180),secrets_redacted:true},error?.status||500)}
+  const attempt=crypto.randomUUID();
+  await stateCall(env,`/task/${encodeURIComponent(CANARY_TASK_ID)}`,"POST",{id:CANARY_TASK_ID,status:"running",attempt,started_at:new Date().toISOString(),result:null});
+  try{
+    const raw=await runOnce(env,attempt),result=compact(raw);
+    await stateCall(env,`/task/${encodeURIComponent(CANARY_TASK_ID)}`,"POST",{id:CANARY_TASK_ID,status:"completed",attempt,started_at:result.started_at,finished_at:new Date().toISOString(),result});
+    return json({ok:result.ok,status:"completed",persisted:true,result,deploy_marker:DEPLOY_MARKER,secrets_redacted:true},result.ok?200:(result.http_status||502));
+  }catch(error){
+    const result={ok:false,http_status:error?.status||500,selftest:"fuzhou-five-way-expert-v21",deploy_marker:DEPLOY_MARKER,stage:"canary",error:String(error?.message||error).slice(0,180),secrets_redacted:true};
+    await stateCall(env,`/task/${encodeURIComponent(CANARY_TASK_ID)}`,"POST",{id:CANARY_TASK_ID,status:"completed",attempt,finished_at:new Date().toISOString(),result}).catch(()=>{});
+    return json({ok:false,status:"completed",persisted:true,result,deploy_marker:DEPLOY_MARKER,secrets_redacted:true},result.http_status);
+  }
 }
