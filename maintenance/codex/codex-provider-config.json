@@ -1,0 +1,23 @@
+{
+  "component": "codex-sdk",
+  "role": "maintenance-center-infrastructure",
+  "provider_strategy": [
+    {
+      "provider": "cloudflare-workers-ai",
+      "priority": 1,
+      "selection": "best-available-free-model"
+    },
+    {
+      "provider": "open-model-marketplace",
+      "priority": 2,
+      "selection": "reasoning-ranking-cost-performance"
+    },
+    {
+      "provider": "open-model-marketplace-fallback",
+      "priority": 3,
+      "selection": "next-best-available"
+    }
+  ],
+  "requires_constitution_gate": true,
+  "requires_receipt": true
+}

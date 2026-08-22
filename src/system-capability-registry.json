@@ -1,0 +1,17 @@
+{
+  "service": "governance-supervisor",
+  "role": "system-orchestrator",
+  "capabilities": [
+    "plan",
+    "dispatch",
+    "validate",
+    "repair-loop",
+    "promotion-gate"
+  ],
+  "managed_centers": [
+    "qingbao",
+    "jisuan",
+    "zhuanjiatuan"
+  ],
+  "fail_closed": true
+}

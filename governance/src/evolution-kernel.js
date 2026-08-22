@@ -25,6 +25,7 @@ const MAX_MANIFEST_BYTES=262144;
 const plain=value=>Boolean(value)&&typeof value==="object"&&!Array.isArray(value);
 const words=value=>new Set(String(value||"").toLowerCase().split(/[^a-z0-9]+/).filter(x=>x.length>1));
 const overlap=(left,right)=>{let n=0;for(const item of left)if(right.has(item))n++;return n};
+const canonicalCapabilityId=value=>/^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9._:-]*$/.test(String(value||""));
 const trustRank=level=>Math.max(0,TRUST_LEVELS.indexOf(level));
 
 export function kernelSnapshot(){
@@ -110,6 +111,7 @@ function scoreCandidate(required,capability){
   if(capability.operations.includes(required))return 95;
   if(capability.substitutes.includes(required))return 90;
   if(capability.compatible_with.includes(required))return 70;
+  if(canonicalCapabilityId(required))return 0;
   const requiredWords=words(required),candidateWords=words([capability.id,capability.type,capability.domain,...capability.operations].join(" "));
   return overlap(requiredWords,candidateWords)*10;
 }

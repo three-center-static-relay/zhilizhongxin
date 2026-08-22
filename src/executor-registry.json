@@ -1,0 +1,20 @@
+{
+  "executors": {
+    "expert-center": {
+      "repository": "three-center-static-relay/zhuanjiatuan",
+      "role": "reasoning"
+    },
+    "evidence-center": {
+      "repository": "three-center-static-relay/qingbaozhongxin",
+      "role": "evidence"
+    },
+    "compute-center": {
+      "repository": "three-center-static-relay/jisuanzhongxin",
+      "role": "simulation"
+    }
+  },
+  "governance": {
+    "fail_closed": true,
+    "require_validation": true
+  }
+}
