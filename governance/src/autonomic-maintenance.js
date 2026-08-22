@@ -1,4 +1,5 @@
 import {chooseMaintenanceBrain,chooseReviewer,repairExecutionPolicy} from "./maintenance-model-policy.js";
+import {validateConstitutionalChange} from "./constitution-validator.js";
 
 const clean=v=>String(v??"").trim();
 const upper=v=>clean(v).toUpperCase();
@@ -49,5 +50,14 @@ export function validateReleaseGate(input={}){
   const allowedBudget=Number(input.max_paid_usd||0);
   const budgetOk=budget<=Math.max(0,allowedBudget);
   const rollbackReady=input.rollback_ready===true;
-  return {ok:deterministic&&budgetOk&&rollbackReady,deterministic_tests:deterministic,budget_ok:budgetOk,rollback_ready:rollbackReady,model_may_self_approve:false};
+  const constitution=validateConstitutionalChange(input.constitution||{});
+  return {
+    ok:deterministic&&budgetOk&&rollbackReady&&constitution.ok,
+    deterministic_tests:deterministic,
+    budget_ok:budgetOk,
+    rollback_ready:rollbackReady,
+    constitution,
+    constitution_gate_pass:constitution.ok,
+    model_may_self_approve:false
+  };
 }
