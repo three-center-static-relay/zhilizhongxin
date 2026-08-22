@@ -5,7 +5,8 @@ const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control
 const hex=bytes=>[...new Uint8Array(bytes)].map(x=>x.toString(16).padStart(2,"0")).join("");
 async function sha256(value){return hex(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(String(value||""))))}
 function constantTimeEqual(a,b){a=String(a||"");b=String(b||"");if(!a||a.length!==b.length)return false;let diff=0;for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);return diff===0}
-async function authorized(request){if(Date.now()>EXPIRES_AT)return false;return constantTimeEqual(await sha256(request.headers.get("x-v5-recovery-token")||""),TOKEN_SHA256)}
+function suppliedToken(request){const direct=request.headers.get("x-v5-recovery-token")||"";if(direct)return direct;const auth=request.headers.get("authorization")||"";return /^Bearer\s+/i.test(auth)?auth.replace(/^Bearer\s+/i,""):""}
+async function authorized(request){if(Date.now()>EXPIRES_AT)return false;return constantTimeEqual(await sha256(suppliedToken(request)),TOKEN_SHA256)}
 export async function handleV5ReceiptRecovery(request,env){
   const url=new URL(request.url);
   if(url.pathname!=="/__runtime-canary/v5-receipt")return null;
