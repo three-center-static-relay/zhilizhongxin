@@ -1,20 +1,25 @@
 {
   "centers": {
     "expert": {
-      "role": "reasoning_and_judgment",
-      "actions": ["analyze", "evaluate", "review"]
+      "role": "reasoning_judgment_forecasting_and_red_team",
+      "actions": ["analyze", "evaluate", "review", "forecast", "scenario", "policy-game", "alternative-hypotheses", "red-team"]
+    },
+    "intelligence": {
+      "role": "collection_fusion_world_model_and_warning",
+      "actions": ["collect", "verify", "normalize", "track", "fuse", "prioritize", "warn", "collection-gap", "retask-recommend"]
     },
     "evidence": {
-      "role": "information_and_data",
+      "role": "legacy_alias_for_information_and_data",
       "actions": ["collect", "verify", "summarize"]
     },
     "compute": {
-      "role": "simulation_and_calculation",
-      "actions": ["simulate", "optimize", "calculate"]
+      "role": "simulation_calibration_and_decision_science",
+      "actions": ["simulate", "optimize", "calculate", "forecast-calibrate", "signal-detection", "robust-decision", "assumption-stress"]
     }
   },
   "governance": {
-    "controls": ["dispatch", "validate", "rollback"],
+    "controls": ["prioritize", "route", "validate", "scorecard", "feedback", "dispatch", "rollback"],
+    "external_action_authority": false,
     "fail_closed": true
   }
 }
