@@ -1,8 +1,8 @@
 import {handleLangGraphControl} from "./langgraph-control.js";
 
-const EXPIRES_AT=Date.parse("2026-08-22T16:30:00.000Z");
+const EXPIRES_AT=Date.parse("2026-08-22T17:30:00.000Z");
 const ENDPOINT="/__runtime-test/fuzhou-five-way-v21/R8mK3xT7vQ5sP2cN9hW1yF6dB0uGzA4eC7nL5jM3";
-const DEPLOY_MARKER="fuzhou-five-way-expert-v21r2";
+const DEPLOY_MARKER="fuzhou-five-way-expert-v21r3";
 const CANARY_TASK_ID="fuzhou-five-way-v21-persisted";
 const STALE_RUNNING_MS=10*60*1000;
 const MAX_RESPONSE_BYTES=3*1024*1024;
