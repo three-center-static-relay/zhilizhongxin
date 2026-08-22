@@ -2,7 +2,7 @@ import {handleLangGraphControl} from "./langgraph-control.js";
 
 const EXPIRES_AT=Date.parse("2026-08-22T16:30:00.000Z");
 const ENDPOINT="/__runtime-test/fuzhou-five-way-v21/R8mK3xT7vQ5sP2cN9hW1yF6dB0uGzA4eC7nL5jM3";
-const DEPLOY_MARKER="fuzhou-five-way-expert-v21r1";
+const DEPLOY_MARKER="fuzhou-five-way-expert-v21r2";
 const CANARY_TASK_ID="fuzhou-five-way-v21-persisted";
 const STALE_RUNNING_MS=10*60*1000;
 const MAX_RESPONSE_BYTES=3*1024*1024;
@@ -42,9 +42,9 @@ async function runOnce(env,attempt){
   if(!lr?.ok||la?.ok!==true)return{ok:false,http_status:lr?.status||502,selftest:"fuzhou-five-way-expert-v21",attempt,started_at,deploy_marker:DEPLOY_MARKER,stage:"langgraph-validation",langgraph:la,secrets_redacted:true};
   if(!env.EXPERT_CENTER?.fetch)return{ok:false,http_status:503,selftest:"fuzhou-five-way-expert-v21",attempt,started_at,deploy_marker:DEPLOY_MARKER,stage:"expert-execution",error:"EXPERT_SERVICE_BINDING_UNAVAILABLE",secrets_redacted:true};
   const started=Date.now();
-  const er=await env.EXPERT_CENTER.fetch(new Request("https://expert.internal/v1/run",{method:"POST",headers:{"content-type":"application/json",accept:"application/json"},body:JSON.stringify({task_id:expertTaskId,prompt:PROMPT,task_domain:"business",task_type:"comparison",complexity:"high",reasoning_depth:"deep",cost_mode:"balanced",model_count:4,rounds:1,timeout_seconds:420,tools:false,web:false})}));
+  const er=await env.EXPERT_CENTER.fetch(new Request("https://expert.internal/v1/run",{method:"POST",headers:{"content-type":"application/json",accept:"application/json"},body:JSON.stringify({task_id:expertTaskId,prompt:PROMPT,task_domain:"business",task_type:"comparison",complexity:"high",reasoning_depth:"deep",cost_mode:"balanced",model_count:2,rounds:1,timeout_seconds:420,tools:false,web:false})}));
   const expert=await bounded(er).catch(error=>({ok:false,error:String(error?.message||error)})),ok=er.ok&&expert?.ok===true;
-  return{ok,http_status:ok?200:(er.status||502),selftest:"fuzhou-five-way-expert-v21",attempt,started_at,finished_at:new Date().toISOString(),deploy_marker:DEPLOY_MARKER,expert_task_id:expertTaskId,stage:ok?"completed":"expert-execution",elapsed_ms:Date.now()-started,request_profile:{model_count:4,rounds:1,cost_mode:"balanced",semantic_prompt_unmodified:true},langgraph:{ok:true,status:la?.status||null,runtime:la?.runtime||null,runtime_host:la?.runtime_host||null,control_plane:la?.control_plane||null,planner:la?.planner||null,brain_can_command:la?.brain_can_command===true,execution_mode:la?.execution_mode||null,plan_digest:la?.plan_digest||null,plan_path:la?.plan_path||null,planned_centers:la?.planned_centers||[]},expert_http_status:er.status,expert,tools_used:false,web_used:false,production_mutation:false,secrets_redacted:true};
+  return{ok,http_status:ok?200:(er.status||502),selftest:"fuzhou-five-way-expert-v21",attempt,started_at,finished_at:new Date().toISOString(),deploy_marker:DEPLOY_MARKER,expert_task_id:expertTaskId,stage:ok?"completed":"expert-execution",elapsed_ms:Date.now()-started,request_profile:{model_count:2,rounds:1,cost_mode:"balanced",semantic_prompt_unmodified:true},langgraph:{ok:true,status:la?.status||null,runtime:la?.runtime||null,runtime_host:la?.runtime_host||null,control_plane:la?.control_plane||null,planner:la?.planner||null,brain_can_command:la?.brain_can_command===true,execution_mode:la?.execution_mode||null,plan_digest:la?.plan_digest||null,plan_path:la?.plan_path||null,planned_centers:la?.planned_centers||[]},expert_http_status:er.status,expert,tools_used:false,web_used:false,production_mutation:false,secrets_redacted:true};
 }
 
 export async function handleFuzhouFiveWayV21(request,env){
@@ -66,7 +66,7 @@ export async function handleFuzhouFiveWayV21(request,env){
     if(age<STALE_RUNNING_MS||current?.active_task)return json({ok:true,status:"running",attempt:stored.task?.attempt||null,age_ms:Number.isFinite(age)?age:null,active_task:Boolean(current?.active_task),deploy_marker:DEPLOY_MARKER,secrets_redacted:true},202);
     await stateCall(env,`/task/${encodeURIComponent(CANARY_TASK_ID)}`,"POST",{...stored.task,status:"stale-recovered",recovered_at:new Date().toISOString(),stale_age_ms:age,result:null}).catch(()=>{});
   }
-  if(stored.task?.status==="completed"&&stored.task?.result)return json({ok:true,status:"completed",persisted:true,result:stored.task.result,deploy_marker:DEPLOY_MARKER,secrets_redacted:true},200);
+  if(stored.task?.status==="completed"&&stored.task?.result?.ok===true)return json({ok:true,status:"completed",persisted:true,result:stored.task.result,deploy_marker:DEPLOY_MARKER,secrets_redacted:true},200);
   if(!current)current=await expertContext(env);
   if(current?.active_task)return json({ok:false,status:"busy",active_task:true,deploy_marker:DEPLOY_MARKER,secrets_redacted:true},409);
   const attempt=crypto.randomUUID();
