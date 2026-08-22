@@ -1,10 +1,15 @@
 const OR_URL="https://openrouter.ai/api/v1/models";
 const HF_URL="https://huggingface.co/api/models";
-const DEEPSEEK_URL="https://api.deepseek.com/models";
 const CF_API="https://api.cloudflare.com/client/v4";
 const CF_GATEWAY="https://gateway.ai.cloudflare.com/v1";
 const MAX_HF_PAGES=8;
 const HF_PAGE_SIZE=100;
+const APPROVED_SOURCES=Object.freeze(["workers-ai","openrouter","huggingface"]);
+const VERIFIED_WORKERS_FREE_MODELS=new Set([
+  "@cf/zai-org/glm-4.7-flash",
+  "@cf/google/gemma-4-26b-a4b-it",
+  "@cf/nvidia/nemotron-3-120b-a12b"
+]);
 const BANNED_COMPANIES=new Set(["openai","anthropic","claude","aion-labs"]);
 
 function clean(v){return String(v??"").trim()}
@@ -25,7 +30,7 @@ function textOutput(modalities){return !Array.isArray(modalities)||modalities.le
 function isSynthetic(id,name=""){const s=`${id} ${name}`.toLowerCase();return /\b(auto[- ]?router|multi[- ]model|ensemble|fusion)\b/.test(s)||norm(id)==="openrouter/free"}
 function freePricing(pricing={}){const vals=[pricing.prompt,pricing.completion,pricing.request].map(v=>Number(v));return vals.every(v=>!Number.isFinite(v)||v===0)}
 function dedupe(rows){const seen=new Map();for(const row of rows){const key=`${row.provider}::${row.model}`.toLowerCase();if(!seen.has(key))seen.set(key,row);else{const prev=seen.get(key);seen.set(key,{...prev,...row,capabilities:[...new Set([...(prev.capabilities||[]),...(row.capabilities||[])])],hints:{...(prev.hints||{}),...(row.hints||{})}})}}return[...seen.values()]}
-function candidate({provider,model,company,source,free=false,capabilities=[],hints={},verified=true,meta={}}){return{provider:clean(provider),model:clean(model),company:companyAlias(company),source:clean(source),free:Boolean(free),capabilities:[...new Set(capabilities.map(norm).filter(Boolean))],verified:Boolean(verified),hints:{quality:clamp(hints.quality),latency:clamp(hints.latency),throughput:clamp(hints.throughput),context:clamp(hints.context),price:clamp(hints.price),popularity:clamp(hints.popularity)},meta}}
+function candidate({provider,model,company,source,free=false,capabilities=[],hints={},verified=true,meta={}}){if(!APPROVED_SOURCES.includes(clean(source)))throw new Error("MODEL_SOURCE_NOT_APPROVED");return{provider:clean(provider),model:clean(model),company:companyAlias(company),source:clean(source),free:Boolean(free),capabilities:[...new Set(capabilities.map(norm).filter(Boolean))],verified:Boolean(verified),hints:{quality:clamp(hints.quality),latency:clamp(hints.latency),throughput:clamp(hints.throughput),context:clamp(hints.context),price:clamp(hints.price),popularity:clamp(hints.popularity)},meta}}
 
 async function requestJson(fetchImpl,url,{headers={},timeoutMs=12000}={}){
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
@@ -70,27 +75,18 @@ export async function discoverWorkersAI(env,fetchImpl=fetch){
   const accountId=clean(env?.CF_ACCOUNT_ID||env?.CLOUDFLARE_ACCOUNT_ID),token=clean(env?.CLOUDFLARE_AI_GATEWAY_API_TOKEN||env?.CF_API_TOKEN);if(!accountId||!token)throw new Error("WORKERS_AI_DISCOVERY_CREDENTIAL_MISSING");
   const url=`${CF_API}/accounts/${encodeURIComponent(accountId)}/ai/models/search?per_page=1000`;
   const{payload}=await requestJson(fetchImpl,url,{headers:{authorization:`Bearer ${token}`}});const result=payload?.result??payload?.data??payload,models=Array.isArray(result)?result:Array.isArray(result?.models)?result.models:[];const rows=[];
-  for(const m of models){const id=clean(m?.name||m?.id||m?.model);if(!id)continue;const company=companyAlias(id),task=norm(m?.task?.name||m?.task||m?.pipeline_tag||"");if(!companyAllowed(company))continue;if(task&&!["text-generation","text-to-text","text2text-generation","conversational"].some(x=>task.includes(x)))continue;const props=m?.properties||m?.metadata||{};rows.push(candidate({provider:"workers-ai",model:id,company,source:"workers-ai",free:false,capabilities:["text"],hints:{quality:0.58,context:props?.context_window?Math.min(1,Math.log2(Math.max(2048,Number(props.context_window)))/20):0.5,price:0.6,popularity:0.5,latency:0.6,throughput:0.6},verified:true,meta:{task:task||null,chat_route_eligible:true,catalog_transport:"cloudflare-workers-ai-control-api"}}))}
-  if(!rows.length)throw new Error("WORKERS_AI_MODEL_UNIVERSE_EMPTY");return dedupe(rows);
-}
-
-function deepSeekRows(payload,transport){const rows=[];for(const m of Array.isArray(payload?.data)?payload.data:[]){const id=clean(m?.id),company=companyAlias(m?.owned_by||"deepseek");if(!id||!companyAllowed(company))continue;rows.push(candidate({provider:"deepseek",model:id,company,source:"deepseek",free:false,capabilities:["text","reasoning"],hints:{quality:0.68,context:0.7,price:0.7,popularity:0.7,latency:0.55,throughput:0.55},verified:true,meta:{discovery:transport,catalog_transport:transport}}))}return rows}
-async function deepSeekViaGateway(env,fetchImpl){const{root,headers}=gatewayDiscovery(env,"deepseek");let last="NOT_ATTEMPTED";for(const suffix of ["models","v1/models"]){try{const{payload}=await requestJson(fetchImpl,`${root}/${suffix}`,{headers,timeoutMs:15000});const rows=deepSeekRows(payload,"cloudflare-ai-gateway-byok");if(rows.length)return rows;last="EMPTY"}catch(error){last=safeCode(error?.message||error)}}throw new Error(`DEEPSEEK_GATEWAY_MODEL_UNIVERSE_${last}`)}
-export async function discoverDeepSeek(env,openRouterRows=[],fetchImpl=fetch){
-  const rows=[];let gatewayError=null,directError=null;
-  try{rows.push(...await deepSeekViaGateway(env,fetchImpl))}catch(error){gatewayError=error}
-  if(!rows.length){const token=clean(env?.DEEPSEEK_API_KEY);if(token){try{const{payload}=await requestJson(fetchImpl,DEEPSEEK_URL,{headers:{authorization:`Bearer ${token}`}});rows.push(...deepSeekRows(payload,"deepseek-direct-fallback"))}catch(error){directError=error}}}
-  if(!rows.length){for(const or of openRouterRows){if(companyAlias(or.company)!=="deepseek")continue;const id=clean(or.model).replace(/^deepseek\//i,"");if(!id)continue;rows.push(candidate({provider:"deepseek",model:id,company:"deepseek",source:"deepseek",free:false,capabilities:or.capabilities||["text"],hints:{...(or.hints||{}),quality:Math.max(0.45,(or.hints?.quality||0.5)-0.08)},verified:false,meta:{discovery:"openrouter-owner-inference",catalog_transport:"openrouter-owner-inference",direct_model_unverified:true,gateway_error:gatewayError?safeCode(gatewayError?.message):null,direct_error:directError?safeCode(directError?.message):null}}))}}
-  return dedupe(rows);
+  for(const m of models){const id=clean(m?.name||m?.id||m?.model);if(!id||!VERIFIED_WORKERS_FREE_MODELS.has(id))continue;const company=companyAlias(id),task=norm(m?.task?.name||m?.task||m?.pipeline_tag||"");if(!companyAllowed(company))continue;if(task&&!["text-generation","text-to-text","text2text-generation","conversational"].some(x=>task.includes(x)))continue;const props=m?.properties||m?.metadata||{};rows.push(candidate({provider:"workers-ai",model:id,company,source:"workers-ai",free:true,capabilities:["text"],hints:{quality:0.68,context:props?.context_window?Math.min(1,Math.log2(Math.max(2048,Number(props.context_window)))/20):0.5,price:1,popularity:0.5,latency:0.6,throughput:0.6},verified:true,meta:{task:task||null,chat_route_eligible:true,free_plan_verified:true,catalog_transport:"cloudflare-workers-ai-control-api"}}))}
+  if(!rows.length)throw new Error("WORKERS_AI_FREE_MODEL_UNIVERSE_EMPTY");return dedupe(rows);
 }
 
 export async function buildModelUniverse(env={},fetchImpl=fetch){
-  const source_status={};let openrouter=[],huggingface=[],workersAI=[],deepseek=[];
+  const source_status={};let openrouter=[],huggingface=[],workersAI=[];
   try{openrouter=await discoverOpenRouter(env,fetchImpl);source_status.openrouter={ok:true,count:openrouter.length,transport:clean(openrouter[0]?.meta?.catalog_transport)||"unknown"}}catch(error){source_status.openrouter={ok:false,count:0,error:String(error?.message||error).slice(0,240)}}
   try{huggingface=await discoverHuggingFace(fetchImpl);source_status.huggingface={ok:true,count:huggingface.length,transport:"huggingface-hub-direct-catalog-only"}}catch(error){source_status.huggingface={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
-  try{workersAI=await discoverWorkersAI(env,fetchImpl);source_status["workers-ai"]={ok:true,count:workersAI.length,transport:"cloudflare-workers-ai-control-api"}}catch(error){source_status["workers-ai"]={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
-  try{deepseek=await discoverDeepSeek(env,openrouter,fetchImpl);source_status.deepseek={ok:deepseek.length>0,count:deepseek.length,transport:clean(deepseek[0]?.meta?.catalog_transport)||"unknown",verified_count:deepseek.filter(x=>x.verified).length,inferred_count:deepseek.filter(x=>!x.verified).length}}catch(error){source_status.deepseek={ok:false,count:0,error:String(error?.message||error).slice(0,120)}}
-  const excluded=excludedCompanies(env),candidates=dedupe([...openrouter,...huggingface,...workersAI,...deepseek]).filter(x=>x.model&&x.provider&&companyAllowed(x.company)&&!excluded.has(x.company));
+  try{workersAI=await discoverWorkersAI(env,fetchImpl);source_status["workers-ai"]={ok:true,count:workersAI.length,transport:"cloudflare-workers-ai-control-api",free_only:true}}catch(error){source_status["workers-ai"]={ok:false,count:0,error:String(error?.message||error).slice(0,120),free_only:true}}
+  const excluded=excludedCompanies(env),candidates=dedupe([...openrouter,...huggingface,...workersAI]).filter(x=>x.model&&x.provider&&APPROVED_SOURCES.includes(x.source)&&companyAllowed(x.company)&&!excluded.has(x.company));
   const companies=[...new Set(candidates.map(x=>x.company))];
-  return{schema:"expert-model-universe-v1",generated_at:new Date().toISOString(),discovery_policy:"cloudflare-ai-gateway-first-when-supported",direct_catalog_fallback:true,model_id_pinning:false,future_models_auto_discover:true,source_status,candidate_count:candidates.length,company_count:companies.length,companies,excluded_companies:[...excluded],candidates};
+  return{schema:"expert-model-universe-v2-three-source",generated_at:new Date().toISOString(),approved_sources:[...APPROVED_SOURCES],discovery_policy:"three-source-cloudflare-free-first",direct_catalog_fallback:true,model_id_pinning:false,future_models_auto_discover:true,workers_ai_free_only:true,source_status,candidate_count:candidates.length,company_count:companies.length,companies,excluded_companies:[...excluded],candidates};
 }
+
+export const MODEL_SOURCE_POLICY=Object.freeze({approved_sources:[...APPROVED_SOURCES],workers_ai_free_only:true,direct_vendor_sources:false});
