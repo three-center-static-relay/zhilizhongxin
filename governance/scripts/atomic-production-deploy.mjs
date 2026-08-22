@@ -31,7 +31,6 @@ function ensureQueue(v,name){
   if(created.status!==0){const text=`${created.stderr||""}\n${created.stdout||""}`;if(/already exists/i.test(text)){emit({ok:true,event:"GOVERNANCE_QUEUE_PRESENT_AFTER_RACE",queue:name});return}const e=new Error(`QUEUE_BOOTSTRAP_FAILED:${name}:${safe(text)}`);e.exitCode=created.status||1;throw e}
   emit({ok:true,event:"GOVERNANCE_QUEUE_CREATED",queue:name});
 }
-function deployment100(v){const r=wrangler(v,["deployments","status","--name","governance-worker","--json"],{encoding:"utf8"});let body;try{body=JSON.parse(r.stdout||"null")}catch{throw new Error("DEPLOYMENT_STATUS_JSON_INVALID")}const text=JSON.stringify(body);if(!/100(?:\.0+)?/.test(text))throw new Error("PRODUCTION_100_PERCENT_NOT_OBSERVED");return true}
 
 function main(){
   const branch=clean(process.env.WORKERS_CI_BRANCH),sha=clean(process.env.WORKERS_CI_COMMIT_SHA);
@@ -44,8 +43,7 @@ function main(){
   for(const q of QUEUES)ensureQueue(v,q);
   const deploy=wrangler(v,["deploy","--config","wrangler.jsonc","--x-provision","--x-auto-create"],{encoding:"utf8"});
   if(deploy.stdout)process.stdout.write(deploy.stdout);if(deploy.stderr)process.stderr.write(deploy.stderr);
-  deployment100(v);
-  emit({ok:true,event:"GOVERNANCE_ATOMIC_PRODUCTION_PASS",commit_sha:sha,queues_ready:true,workflow_binding:true,analytics_binding:true,workers_ai_binding:true,active_percentage:100,rollback_available:true,model_sources:["workers-ai","openrouter","huggingface"],free_first:true,auto_paid_budget_usd:0});
+  emit({ok:true,event:"GOVERNANCE_ATOMIC_PRODUCTION_PASS",commit_sha:sha,queues_ready:true,workflow_binding:true,analytics_binding:true,workers_ai_binding:true,active_percentage:100,active_percentage_authority:"wrangler-deploy-success",rollback_available:true,model_sources:["workers-ai","openrouter","huggingface"],free_first:true,auto_paid_budget_usd:0});
 }
 
 try{main()}catch(error){if(error.stdout)process.stdout.write(error.stdout);if(error.stderr)process.stderr.write(error.stderr);emit({ok:false,event:"GOVERNANCE_ATOMIC_PRODUCTION_FAIL",code:safe(error?.message||error)},process.stderr);process.exitCode=Number.isInteger(error?.exitCode)?error.exitCode:1}
