@@ -28,6 +28,7 @@ assert.match(manager,/terminal_model_quarantine_count/);
 assert.match(manager,/model_terminal_4xx_quarantine:true/);
 assert.match(manager,/provider_diverse_fallback_preferred:true/);
 assert.match(manager,/lane_provider_diversity_bonus:true/);
+assert.match(managerBase,/Number\(b\.providerCount>=2\)-Number\(a\.providerCount>=2\)\|\|b\.providerCount-a\.providerCount\|\|b\.best-a\.best/);
 assert.match(manager,/preferDifferentProvider/);
 assert.match(manager,/usedProviders/);
 assert.match(manager,/provider_count:x\.providerCount/);
@@ -89,4 +90,4 @@ assert.match(e2e,/Number\(body\?\.max_elements_per_route\)!==16/);
 assert.match(e2e,/r\.lanes\.length>2/);
 assert.match(e2e,/Number\(r\?\.element_count\)>16/);
 
-console.log(JSON.stringify({ok:true,suite:"expert-route-chat-compat-runtime-health-contract-v5",max_global_lanes:8,max_lanes_per_route:2,max_elements_per_route:16,dynamic_shards:true,provider_readiness:"ai-gateway-provider-config-plus-live-health-plus-model-terminal-quarantine-plus-chat-compat-quarantine-plus-model-runtime-quarantine",terminal_model_4xx_quarantine:true,chat_completion_compat_quarantine:true,runtime_model_quarantine:true,runtime_min_timeouts:2,runtime_min_samples:3,runtime_max_success_rate:0.34,provider_diverse_fallback:true,lane_provider_diversity_bonus:true,automatic_refresh:true,content_addressed_refresh:true,gateway_model_retries:0,effective_gateway_model_timeout_ms:30000,quality_fallback_budget_ms:60000,balanced_fallback_budget_ms:90000,free_first_fallback_budget_ms:120000,fallback_headroom_required:true,gateway_runtime_authority:"stage-depth-capability-cost-preference-conditions-plus-retries-plus-fallbacks"}));
+console.log(JSON.stringify({ok:true,suite:"expert-route-chat-compat-runtime-health-contract-v6",max_global_lanes:8,max_lanes_per_route:2,max_elements_per_route:16,dynamic_shards:true,provider_readiness:"ai-gateway-provider-config-plus-live-health-plus-model-terminal-quarantine-plus-chat-compat-quarantine-plus-model-runtime-quarantine",terminal_model_4xx_quarantine:true,chat_completion_compat_quarantine:true,runtime_model_quarantine:true,runtime_min_timeouts:2,runtime_min_samples:3,runtime_max_success_rate:0.34,provider_diverse_fallback:true,lane_provider_diversity_bonus:true,provider_diverse_early_lane_priority:true,automatic_refresh:true,content_addressed_refresh:true,gateway_model_retries:0,effective_gateway_model_timeout_ms:30000,quality_fallback_budget_ms:60000,balanced_fallback_budget_ms:90000,free_first_fallback_budget_ms:120000,fallback_headroom_required:true,gateway_runtime_authority:"stage-depth-capability-cost-preference-conditions-plus-retries-plus-fallbacks"}));
