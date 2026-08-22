@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "admin-la-four-limb-canary-worker",
+  "main": "src/la-four-limb-canary-entry.js",
+  "compatibility_date": "2026-08-20",
+  "workers_dev": true,
+  "preview_urls": false,
+  "services": [
+    {"binding": "GOVERNANCE_CENTER", "service": "governance-worker"},
+    {"binding": "INTELLIGENCE_CENTER", "service": "intelligence-worker"},
+    {"binding": "COMPUTE_CENTER", "service": "compute-worker"},
+    {"binding": "EXPERT_CENTER", "service": "expert-worker"}
+  ],
+  "vars": {"LA_FOUR_LIMB_CANARY": "true"},
+  "observability": {"enabled":true,"logs":{"enabled":true,"head_sampling_rate":1}}
+}
