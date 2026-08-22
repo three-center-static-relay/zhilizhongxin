@@ -3,8 +3,6 @@ import {WorkerEntrypoint} from "cloudflare:workers";
 import {aiGatewayControlRequest,operationRequest} from "./ai-gateway-control.js";
 import {handleLangGraphControl} from "./langgraph-control.js";
 import {handleLangGraphTest} from "./langgraph-test.js";
-import {handleRuntimeOneShotCanary} from "./runtime-one-shot-canary.js";
-import {handleV5ReceiptRecovery} from "./runtime-v5-receipt-recovery.js";
 
 export {AdminCoordinator};
 
@@ -33,10 +31,6 @@ export class AIGatewayControl extends WorkerEntrypoint {
 
 export default{
   async fetch(request,env,ctx){
-    const recovery=await handleV5ReceiptRecovery(request,env);
-    if(recovery)return recovery;
-    const canary=await handleRuntimeOneShotCanary(request,env);
-    if(canary)return canary;
     const langgraph=await handleLangGraphControl(request,env);
     if(langgraph)return langgraph;
     const langgraphTest=await handleLangGraphTest(request,env);
