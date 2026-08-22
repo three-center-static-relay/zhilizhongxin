@@ -1,1 +1,0 @@
-Retry trigger for PR #292 admin-worker post-273 production acceptance. The first admin build reached its 8-minute MAINT_V19 readiness deadline at 05:44:39Z; maintenance-worker completed successfully at 05:44:52Z, 13 seconds later. This file has no runtime behavior and exists only to re-run the admin preview acceptance now that maintenance v19 is live.
