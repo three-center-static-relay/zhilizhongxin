@@ -1,0 +1,1 @@
+Trigger the admin-worker preview build from the current validation branch after removing the cross-project E2E from admin cf:ci:preview. This deploys the short-lived v19 connected-client canary first; the governance preview performs the cross-project E2E separately. Validation-only; do not merge.
