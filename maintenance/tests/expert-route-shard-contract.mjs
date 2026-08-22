@@ -59,14 +59,16 @@ assert.match(managerWrapper,/const RUNTIME_MIN_TIMEOUTS=2/);
 assert.match(managerWrapper,/const RUNTIME_MIN_SAMPLES=3/);
 assert.match(managerWrapper,/const RUNTIME_MAX_SUCCESS_RATE=0\.34/);
 assert.match(managerWrapper,/model_runtime_quarantine:true/);
+assert.match(managerWrapper,/chat_completion_compat_quarantine:true/);
+assert.match(managerWrapper,/chatIncompatible=text\.includes\("2020"\)\|\|text\.includes\("does not support chat completion"\)/);
+assert.match(managerWrapper,/s\.chatIncompatible>0\|\|s\.timeout>=RUNTIME_MIN_TIMEOUTS/);
 assert.match(managerWrapper,/runtime_quarantine_count/);
-assert.match(managerWrapper,/expert-route-plan-v11-time-budgeted-runtime-health/);
-assert.match(managerWrapper,/expert-route-refresh-v11-time-budgeted-runtime-health/);
+assert.match(managerWrapper,/expert-route-plan-v12-chat-compat-runtime-health/);
+assert.match(managerWrapper,/expert-route-refresh-v12-chat-compat-runtime-health/);
 assert.match(managerWrapper,/effective_model_timeout_ms:GATEWAY_MODEL_TIMEOUT_MS/);
 assert.match(managerWrapper,/fallback_budget_policy:"quality<=60s-balanced<=90s-free-first<=120s-before-overhead"/);
-assert.match(managerWrapper,/plus-model-runtime-quarantine/);
+assert.match(managerWrapper,/plus-chat-compat-quarantine-plus-model-runtime-quarantine/);
 assert.match(managerWrapper,/text\.includes\("2014"\)/);
-assert.match(managerWrapper,/s\.timeout>=RUNTIME_MIN_TIMEOUTS/);
 assert.match(managerWrapper,/!quarantine\.has\(providerKey\(c\)\)/);
 
 assert.match(index,/buildExpertRoutePlan,refreshExpertRoutes/);
@@ -87,4 +89,4 @@ assert.match(e2e,/Number\(body\?\.max_elements_per_route\)!==16/);
 assert.match(e2e,/r\.lanes\.length>2/);
 assert.match(e2e,/Number\(r\?\.element_count\)>16/);
 
-console.log(JSON.stringify({ok:true,suite:"expert-route-time-budgeted-runtime-health-contract-v4",max_global_lanes:8,max_lanes_per_route:2,max_elements_per_route:16,dynamic_shards:true,provider_readiness:"ai-gateway-provider-config-plus-live-health-plus-model-terminal-quarantine-plus-model-runtime-quarantine",terminal_model_4xx_quarantine:true,runtime_model_quarantine:true,runtime_min_timeouts:2,runtime_min_samples:3,runtime_max_success_rate:0.34,provider_diverse_fallback:true,lane_provider_diversity_bonus:true,automatic_refresh:true,content_addressed_refresh:true,gateway_model_retries:0,effective_gateway_model_timeout_ms:30000,quality_fallback_budget_ms:60000,balanced_fallback_budget_ms:90000,free_first_fallback_budget_ms:120000,fallback_headroom_required:true,gateway_runtime_authority:"stage-depth-capability-cost-preference-conditions-plus-retries-plus-fallbacks"}));
+console.log(JSON.stringify({ok:true,suite:"expert-route-chat-compat-runtime-health-contract-v5",max_global_lanes:8,max_lanes_per_route:2,max_elements_per_route:16,dynamic_shards:true,provider_readiness:"ai-gateway-provider-config-plus-live-health-plus-model-terminal-quarantine-plus-chat-compat-quarantine-plus-model-runtime-quarantine",terminal_model_4xx_quarantine:true,chat_completion_compat_quarantine:true,runtime_model_quarantine:true,runtime_min_timeouts:2,runtime_min_samples:3,runtime_max_success_rate:0.34,provider_diverse_fallback:true,lane_provider_diversity_bonus:true,automatic_refresh:true,content_addressed_refresh:true,gateway_model_retries:0,effective_gateway_model_timeout_ms:30000,quality_fallback_budget_ms:60000,balanced_fallback_budget_ms:90000,free_first_fallback_budget_ms:120000,fallback_headroom_required:true,gateway_runtime_authority:"stage-depth-capability-cost-preference-conditions-plus-retries-plus-fallbacks"}));
