@@ -4,6 +4,7 @@ import {aiGatewayControlRequest,operationRequest} from "./ai-gateway-control.js"
 import {handleLangGraphControl} from "./langgraph-control.js";
 import {handleLangGraphTest} from "./langgraph-test.js";
 import {handleRuntimeAdaptiveRerunV6} from "./runtime-adaptive-rerun-v6.js";
+import {handleAutonomicExpertE2EV20} from "./autonomic-expert-e2e-v20.js";
 
 export {AdminCoordinator};
 
@@ -32,6 +33,8 @@ export class AIGatewayControl extends WorkerEntrypoint {
 
 export default{
   async fetch(request,env,ctx){
+    const autonomicE2E=await handleAutonomicExpertE2EV20(request,env,ctx);
+    if(autonomicE2E)return autonomicE2E;
     const rerun=await handleRuntimeAdaptiveRerunV6(request,env,ctx);
     if(rerun)return rerun;
     const langgraph=await handleLangGraphControl(request,env);
