@@ -32,7 +32,7 @@ export class AIGatewayControl extends WorkerEntrypoint {
 
 export default{
   async fetch(request,env,ctx){
-    const rerun=await handleRuntimeAdaptiveRerunV6(request,env);
+    const rerun=await handleRuntimeAdaptiveRerunV6(request,env,ctx);
     if(rerun)return rerun;
     const langgraph=await handleLangGraphControl(request,env);
     if(langgraph)return langgraph;
