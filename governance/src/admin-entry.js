@@ -3,6 +3,7 @@ import {AdminState} from "./admin-state.js";
 import {adminOpenApiPaths,createCandidateVersion,getAcceptanceResult,getAdminContext,getProductionVersions,getSystemHealth,validateCandidate} from "./admin-gateway.js";
 import {handleEvolutionRoute} from "./evolution-router.js";
 import {handleNeonMemoryRoute} from "./neon-memory-router.js";
+import {buildStrategicAnalysisPlan,strategicAnalysisGovernanceMeta} from "./strategic-analysis-governance.js";
 export {AdminState};
 
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
@@ -53,9 +54,17 @@ async function aiGatewayControlRuntimeProbe(request,env){
   }finally{clearTimeout(timer)}
 }
 
+async function strategicAnalysisPolicyRoute(request){
+  const url=new URL(request.url);if(url.hostname!=="governance.internal")return json({ok:false,error:"POLICY_DENIED",message:"strategic analysis governance is service-binding internal only"},403);
+  if(request.method==="GET"&&url.pathname==="/v1/admin/strategic-analysis-policy")return json({ok:true,...strategicAnalysisGovernanceMeta()});
+  if(request.method==="POST"&&url.pathname==="/v1/admin/strategic-analysis-plan"){const body=await request.json().catch(()=>null);if(!body)return json({ok:false,error:"INVALID_JSON"},400);return json(buildStrategicAnalysisPlan(body))}
+  return null
+}
+
 export default{
   async fetch(request,env,ctx){
     const url=new URL(request.url);
+    const strategic=await strategicAnalysisPolicyRoute(request);if(strategic)return strategic;
     const memory=await handleNeonMemoryRoute(request,env,ctx);if(memory)return memory;
     const evolution=await handleEvolutionRoute(request,env,ctx);if(evolution)return evolution;
     if(request.method==="GET"&&url.pathname==="/_internal/ai-gateway-control-readonly-probe")return aiGatewayControlRuntimeProbe(request,env);
