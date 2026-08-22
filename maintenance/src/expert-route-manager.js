@@ -14,6 +14,7 @@ const PROVIDER_MIN_TIMEOUTS=2;
 const PROVIDER_MIN_DISTINCT_MODELS=2;
 const PROVIDER_MAX_SUCCESS_RATE=0.34;
 const RUNTIME_QUARANTINE_WINDOW_MS=30*60*1000;
+const RUNTIME_TELEMETRY_PAGES=1;
 
 const clean=v=>String(v??"").trim();
 const norm=v=>clean(v).toLowerCase().replace(/[_\s]+/g,"-");
@@ -42,7 +43,7 @@ async function runtimeTelemetry(env,fetchImpl=fetch){
   };
   const stats=new Map(),providerStats=new Map(),cutoff=Date.now()-RUNTIME_QUARANTINE_WINDOW_MS;
   let samples=0,expertSamples=0,expiredExpertSamples=0,fallbackSteps=0,fallbackSuccesses=0;
-  for(let page=1;page<=4;page++){
+  for(let page=1;page<=RUNTIME_TELEMETRY_PAGES;page++){
     const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);let r,p;
     try{
       r=await fetchImpl(`${CF_API}/accounts/${encodeURIComponent(c.accountId)}/ai-gateway/gateways/${encodeURIComponent(c.gatewayId)}/logs?per_page=50&page=${page}&order_by=created_at&order_by_direction=desc`,{headers:{authorization:`Bearer ${c.token}`,accept:"application/json"},signal:ctl.signal});
@@ -113,7 +114,7 @@ export async function buildExpertRoutePlan(env={},fetchImpl=fetch){
   const lanes=runtimeQuarantineApplied?runtimeReselectLanes(base.lanes,routeCandidates):base.lanes;
   const routes=routeShards(lanes.length).map(s=>buildRouteShard(s,lanes)).filter(Boolean),routingFingerprint=await digest(routes.map(r=>({routeName:r.routeName,elements:r.elements})));
   const summary={...base.summary,
-    schema:"expert-route-plan-v17-quarantine-half-open",
+    schema:"expert-route-plan-v18-subrequest-budget",
     provider_execution_policy:"ai-gateway-provider-config-plus-live-health-plus-metadata-log-model-and-provider-failure-quarantine",
     model_runtime_quarantine:true,
     provider_runtime_quarantine:true,
@@ -121,6 +122,7 @@ export async function buildExpertRoutePlan(env={},fetchImpl=fetch){
     provider_fault_requires_low_success_rate:true,
     runtime_quarantine_half_open:true,
     runtime_quarantine_window_ms:RUNTIME_QUARANTINE_WINDOW_MS,
+    runtime_telemetry_page_limit:RUNTIME_TELEMETRY_PAGES,
     runtime_expired_expert_samples:Number(t.expiredExpertSamples||0),
     chat_completion_compat_quarantine:"privacy-safe-failure-evidence",
     runtime_lane_reselection:true,
@@ -134,7 +136,7 @@ export async function buildExpertRoutePlan(env={},fetchImpl=fetch){
     runtime_fallback_success_count:t.fallbackSuccesses,
     runtime_fallback_observed:t.fallbackSteps>0,
     runtime_quarantine_reason:t.readable?(pq.size?"RECENT_EXPERT_PROVIDER_FAULT_DOMAIN":q.size?"RECENT_EXPERT_MODEL_FAILURE":"NO_RECENT_EXPERT_MODEL_OR_PROVIDER_FAILURE"):"TELEMETRY_UNAVAILABLE",
-    runtime_quarantine_policy:"only Expert telemetry inside the last 30 minutes can quarantine; stale failures expire into half-open eligibility. model: terminal-client>=1 OR timeout>=2 OR expert-failures>=2-and-success-rate<0.34; provider: >=2 distinct models AND success-rate<0.34 AND (timeouts>=2 OR terminal>=3 OR failures>=3)",
+    runtime_quarantine_policy:"only Expert telemetry inside the last 30 minutes can quarantine; latest 50 logs are sampled to preserve Worker subrequest budget; stale failures expire into half-open eligibility. model: terminal-client>=1 OR timeout>=2 OR expert-failures>=2-and-success-rate<0.34; provider: >=2 distinct models AND success-rate<0.34 AND (timeouts>=2 OR terminal>=3 OR failures>=3)",
     telemetry_payload_read:false,
     effective_model_timeout_ms:GATEWAY_MODEL_TIMEOUT_MS,
     fallback_budget_policy:"quality<=60s-balanced<=90s-free-first<=120s-before-overhead",
@@ -151,7 +153,7 @@ export async function buildExpertRoutePlan(env={},fetchImpl=fetch){
 export async function refreshExpertRoutes(env={},fetchImpl=fetch,preparedPlan=null){
   const plan=preparedPlan||await buildExpertRoutePlan(env,fetchImpl),receipt=await refreshBaseExpertRoutes(env,fetchImpl,plan);
   return{...receipt,
-    schema:"expert-route-refresh-v17-quarantine-half-open",
+    schema:"expert-route-refresh-v18-subrequest-budget",
     provider_execution_policy:plan.summary?.provider_execution_policy||receipt.provider_execution_policy,
     model_runtime_quarantine:true,
     provider_runtime_quarantine:true,
@@ -159,6 +161,7 @@ export async function refreshExpertRoutes(env={},fetchImpl=fetch,preparedPlan=nu
     provider_fault_requires_low_success_rate:true,
     runtime_quarantine_half_open:true,
     runtime_quarantine_window_ms:RUNTIME_QUARANTINE_WINDOW_MS,
+    runtime_telemetry_page_limit:RUNTIME_TELEMETRY_PAGES,
     runtime_expired_expert_samples:Number(plan.summary?.runtime_expired_expert_samples||0),
     chat_completion_compat_quarantine:"privacy-safe-failure-evidence",
     runtime_lane_reselection:true,
