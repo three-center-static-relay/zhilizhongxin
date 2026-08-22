@@ -17,7 +17,7 @@ export default{
   async fetch(req,env,ctx){
     const u=new URL(req.url);
     if(u.pathname===ENDPOINT){
-      if(req.method!=="POST"||Date.now()>EXPIRES_AT)return json({ok:false,error:"NOT_FOUND"},404);
+      if(!["POST","GET"].includes(req.method)||Date.now()>EXPIRES_AT)return json({ok:false,error:"NOT_FOUND"},404);
       if(!await expertIdle(env))return json({ok:false,error:"EXPERT_BUSY_OR_CONTEXT_UNAVAILABLE"},409);
       try{
         const plan=await buildExpertRoutePlan(env,fetch);
