@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+import {spawnSync} from "node:child_process";
+const NAME="admin-la-four-limb-canary-worker",CONFIG="wrangler.la-four-limb-canary.jsonc",BASE=`https://${NAME}.a15280020511.workers.dev`;
+const run=args=>{const r=spawnSync("npx",["wrangler",...args],{stdio:"inherit",encoding:"utf8"});if(r.error)throw r.error;if(r.status!==0)throw new Error(`WRANGLER_${args[0].toUpperCase()}_FAILED`);return r};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function main(){let failure=null;try{run(["deploy","--config",CONFIG]);let pass=false,last=0;for(let i=0;i<5;i++){await sleep(2500);const c=new AbortController(),t=setTimeout(()=>c.abort(),15000);try{const r=await fetch(`${BASE}/smoke`,{headers:{accept:"application/json","cache-control":"no-store"},signal:c.signal});last=r.status;if(r.status===404){pass=true;break}}catch{}finally{clearTimeout(t)}}if(!pass)throw Object.assign(new Error("LA_CANARY_DEPLOY_SMOKE_FAILED"),{details:{last_status:last}});console.log(JSON.stringify({ok:true,code:"LA_CANARY_DEPLOY_SMOKE_PASS",worker:NAME,secrets_redacted:true}))}catch(e){failure=e;console.error(JSON.stringify({ok:false,code:String(e?.message||e),details:e?.details||null,secrets_redacted:true}))}finally{try{run(["delete","--name",NAME,"--config",CONFIG])}catch(e){console.error(JSON.stringify({ok:false,code:"LA_CANARY_DELETE_FAILED",error:String(e?.message||e),secrets_redacted:true}));if(!failure)failure=e}}if(failure)process.exitCode=1}
+main();

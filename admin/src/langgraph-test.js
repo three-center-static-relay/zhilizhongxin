@@ -134,6 +134,23 @@ async function executeExpert(input,task,env){
   return {ok:response.ok&&body?.ok===true,http_status:response.status,body,error:body?.error||body?.error_code||null};
 }
 
+function safeBrainReceipt(body){
+  return {
+    source:String(body?.brain_source||""),
+    provider:String(body?.brain_provider||""),
+    model:String(body?.brain_model||""),
+    mode:String(body?.brain_mode||""),
+    model_invoked:body?.brain_model_invoked===true,
+    fallback_used:body?.brain_fallback_used===true,
+    fallback_trigger:String(body?.brain_fallback_trigger||""),
+    degraded:body?.brain_degraded===true,
+    advisory_applied:body?.brain_advisory_applied===true,
+    tools_used:body?.brain_tools_used===true,
+    web_used:body?.brain_web_used===true,
+    production_mutation:body?.brain_production_mutation===true
+  };
+}
+
 export async function handleLangGraphTest(request,env){
   const url=new URL(request.url);
   if(request.method!=="POST"||url.pathname!=="/v1/admin/langgraph/test")return null;
@@ -172,6 +189,7 @@ export async function handleLangGraphTest(request,env){
         plan_digest:la.body?.plan_digest||null,
         planned_centers:la.body?.planned_centers||[],
         brain_can_command:la.body?.brain_can_command===true,
+        brain:safeBrainReceipt(la.body),
         execution_mode:la.body?.execution_mode||null
       },
       policy:{cost_control:"soft-price-performance",length_control:"soft-adaptive",token_cap:false,tools:false,web:false},

@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "admin-la-deploy-smoke-worker",
+  "main": "src/la-deploy-smoke-entry.js",
+  "compatibility_date": "2026-08-20",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {"enabled":true,"logs":{"enabled":true,"head_sampling_rate":1}}
+}
