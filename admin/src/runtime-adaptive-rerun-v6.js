@@ -2,7 +2,7 @@ import {handleLangGraphControl} from "./langgraph-control.js";
 
 const EXPIRES_AT=Date.parse("2026-08-22T06:30:00.000Z");
 const ENDPOINT="/__runtime-canary/adaptive-rerun-v15/W5nR8xQ2vK7sP4cT9hM1yF6dB0uGzA3eC7nL2jQ8";
-const DEPLOY_MARKER="post273-v15-web-trigger";
+const DEPLOY_MARKER="post273-v15-web-trigger-after-pr";
 const MAX_RESPONSE_BYTES=2*1024*1024;
 const PROMPT=`在福州送外卖、送快递、开网约车、当保安哪个好？请具体比较收入潜力、收入稳定性、时间自由度、体力负荷、车辆和设备成本、安全及事故风险、平台规则风险、长期可持续性、进入门槛和综合性价比。不要联网，不使用任何工具；如果缺乏实时本地数据，必须明确不确定性，不要编造当前工资数字。最后给出清晰综合排序，并说明不同类型的人分别更适合哪一种。`;
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
