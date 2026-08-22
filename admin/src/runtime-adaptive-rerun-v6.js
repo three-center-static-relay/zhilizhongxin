@@ -22,8 +22,8 @@ async function runOnce(env){
   return{ok,http_status:ok?200:(expertResponse.status||502),selftest:"runtime-adaptive-rerun-v12-post273",stage:ok?"completed":"expert-execution",elapsed_ms:Date.now()-started,post273_expectation:{effective_model_timeout_ms:30000,requested_cost_mode:"quality-first",fallback_headroom_expected:true,organization_dynamic:true,model_provider_dynamic:true},langgraph:{ok:true,status:la?.status||null,runtime:la?.runtime||null,runtime_host:la?.runtime_host||null,control_plane:la?.control_plane||null,planner:la?.planner||null,brain_can_command:la?.brain_can_command===true,execution_mode:la?.execution_mode||null},expert_http_status:expertResponse.status,expert,tools_used:false,web_used:false,production_mutation:false,secrets_redacted:true};
 }
 export async function handleRuntimeAdaptiveRerunV6(request,env){
-  const url=new URL(request.url);if(url.pathname!==ENDPOINT)return null;if(request.method!=="POST"||Date.now()>EXPIRES_AT)return json({ok:false,error:"NOT_FOUND"},404);
-  let input;try{input=await request.json()}catch{return json({ok:false,error:"NOT_FOUND"},404)}
+  const url=new URL(request.url);if(url.pathname!==ENDPOINT)return null;if(!["POST","GET"].includes(request.method)||Date.now()>EXPIRES_AT)return json({ok:false,error:"NOT_FOUND"},404);
+  let input;if(request.method==="GET"){input={operation:url.searchParams.get("operation")||"status"}}else{try{input=await request.json()}catch{return json({ok:false,error:"NOT_FOUND"},404)}}
   if(input?.operation==="status"){const stored=await stateCall(env,`/task/${encodeURIComponent(CANARY_TASK_ID)}`).catch(()=>({task:null}));return json({ok:true,canary_task:stored.task||null,expert:await expertStatus(env),expires_at:new Date(EXPIRES_AT).toISOString(),secrets_redacted:true})}
   if(input?.operation==="cleanup"){await stateCall(env,`/task/${encodeURIComponent(CANARY_TASK_ID)}`,"POST",{id:CANARY_TASK_ID,status:"cleaned",result:null,cleaned_at:new Date().toISOString()});return json({ok:true,cleaned:true,secrets_redacted:true})}
   if(input?.operation!=="run")return json({ok:false,error:"INVALID_OPERATION"},400);
