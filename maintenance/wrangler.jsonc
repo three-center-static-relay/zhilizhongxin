@@ -21,8 +21,9 @@
   "vars": {
     "CF_ACCOUNT_ID": "e3aec027af13c557bbcb831d29c1e7b4",
     "AI_GATEWAY_ID": "test",
-    "EXPERT_MODEL_SOURCE_POLICY": "dynamic-all-available-within-approved-sources",
-    "EXPERT_MODEL_SOURCE_CLASSES": "workers-ai,openrouter,deepseek,huggingface",
+    "EXPERT_MODEL_SOURCE_POLICY": "three-source-cloudflare-free-first",
+    "EXPERT_MODEL_SOURCE_CLASSES": "workers-ai,openrouter,huggingface",
+    "EXPERT_WORKERS_AI_FREE_ONLY": "true",
     "EXPERT_ROUTE_REFRESH_MINUTES": "15",
     "EXPERT_ROUTE_AUTOMATION_ENABLED": "true",
     "EXPERT_MODEL_ID_PINNING": "false",
