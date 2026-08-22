@@ -6,12 +6,19 @@
     "dispatch",
     "validate",
     "repair-loop",
-    "promotion-gate"
+    "promotion-gate",
+    "priority-intelligence-requirements",
+    "strategic-analysis-routing",
+    "warning-escalation-policy",
+    "forecast-scorecard",
+    "decision-science-validation"
   ],
   "managed_centers": [
     "qingbao",
     "jisuan",
     "zhuanjiatuan"
   ],
+  "decision_authority": "user-or-explicit-governance-policy",
+  "external_action_authority": false,
   "fail_closed": true
 }
