@@ -2,8 +2,9 @@ import {handleLangGraphControl} from "./langgraph-control.js";
 
 const EXPIRES_AT=Date.parse("2026-08-22T16:30:00.000Z");
 const ENDPOINT="/__runtime-test/fuzhou-five-way-v21/R8mK3xT7vQ5sP2cN9hW1yF6dB0uGzA4eC7nL5jM3";
-const DEPLOY_MARKER="fuzhou-five-way-expert-v21";
+const DEPLOY_MARKER="fuzhou-five-way-expert-v21r1";
 const CANARY_TASK_ID="fuzhou-five-way-v21-persisted";
+const STALE_RUNNING_MS=10*60*1000;
 const MAX_RESPONSE_BYTES=3*1024*1024;
 const PROMPT=`在福州，开网约车、当保安、送快递、送外卖、送朴朴这五种工作，综合来看哪个更好？请从收入潜力、净收入与隐性成本、收入稳定性、工作时长、时间自由度、体力负荷、车辆/设备投入、安全与事故风险、平台规则和罚款风险、淡旺季波动、进入门槛、长期可持续性、职业发展空间、适合人群等维度进行系统比较。不要联网，不使用任何工具；如果缺少实时福州本地工资和单量数据，必须明确不确定性，不要编造当前实时数字。请区分“短期赚钱能力”和“长期综合性价比”，最后给出清晰综合排序，并说明不同类型的人分别适合哪一种。`;
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
@@ -57,9 +58,16 @@ export async function handleFuzhouFiveWayV21(request,env){
   }
   if(operation!=="run")return json({ok:false,error:"INVALID_OPERATION"},400);
   const stored=await stateCall(env,`/task/${encodeURIComponent(CANARY_TASK_ID)}`).catch(()=>({task:null}));
-  if(stored.task?.status==="running")return json({ok:true,status:"running",attempt:stored.task?.attempt||null,deploy_marker:DEPLOY_MARKER,secrets_redacted:true},202);
+  let current=null;
+  if(stored.task?.status==="running"){
+    const started=Date.parse(stored.task?.started_at||"");
+    const age=Number.isFinite(started)?Date.now()-started:Infinity;
+    current=await expertContext(env);
+    if(age<STALE_RUNNING_MS||current?.active_task)return json({ok:true,status:"running",attempt:stored.task?.attempt||null,age_ms:Number.isFinite(age)?age:null,active_task:Boolean(current?.active_task),deploy_marker:DEPLOY_MARKER,secrets_redacted:true},202);
+    await stateCall(env,`/task/${encodeURIComponent(CANARY_TASK_ID)}`,"POST",{...stored.task,status:"stale-recovered",recovered_at:new Date().toISOString(),stale_age_ms:age,result:null}).catch(()=>{});
+  }
   if(stored.task?.status==="completed"&&stored.task?.result)return json({ok:true,status:"completed",persisted:true,result:stored.task.result,deploy_marker:DEPLOY_MARKER,secrets_redacted:true},200);
-  const current=await expertContext(env);
+  if(!current)current=await expertContext(env);
   if(current?.active_task)return json({ok:false,status:"busy",active_task:true,deploy_marker:DEPLOY_MARKER,secrets_redacted:true},409);
   const attempt=crypto.randomUUID();
   await stateCall(env,`/task/${encodeURIComponent(CANARY_TASK_ID)}`,"POST",{id:CANARY_TASK_ID,status:"running",attempt,started_at:new Date().toISOString(),result:null});
