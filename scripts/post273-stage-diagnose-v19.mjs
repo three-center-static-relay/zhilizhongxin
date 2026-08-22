@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+import {readFileSync} from "node:fs";import {resolve} from "node:path";
+const MEP="/__runtime-canary/post273-route-v19/W9mQ5xR7vK3sP8cN6hT2yF4dB0uGzA1eC7nL5jN9",MM="post273-metadata-log-quarantine-v19";
+function fail(c,d={}){const e=new Error(c);e.details=d;throw e}function ok(x,c,d={}){if(!x)fail(c,d)}
+function base(){const s=JSON.parse(readFileSync(resolve(process.cwd(),"openapi.json"),"utf8")),a=new URL(String(s?.servers?.[0]?.url||""));ok(a.protocol==="https:"&&a.hostname.startsWith("admin-worker."),"ADMIN_URL_REQUIRED");a.hostname=a.hostname.replace(/^admin-worker\./,"maintenance-worker.");return`${a.protocol}//${a.host}`}
+async function main(){const c=new AbortController(),t=setTimeout(()=>c.abort(),30000);try{const r=await fetch(`${base()}${MEP}?operation=diagnose`,{headers:{accept:"application/json","cache-control":"no-store"},signal:c.signal}),b=await r.json().catch(()=>null);ok([200,502].includes(r.status),"DIAGNOSE_ENDPOINT_HTTP",{status:r.status});ok(b?.deploy_marker===MM,"DIAGNOSE_MARKER",{status:r.status,marker:b?.deploy_marker});ok(b?.selftest==="post273-route-diagnose-v19","DIAGNOSE_SELFTEST",{status:r.status,selftest:b?.selftest});console.log(JSON.stringify({ok:true,code:"POST273_V19_ENDPOINT_REACHABLE",route_plan_ok:b?.ok===true,http_status:r.status,error_code:b?.ok===true?null:String(b?.error||"UNKNOWN"),secrets_redacted:true}))}finally{clearTimeout(t)}}
+main().catch(e=>{console.error(JSON.stringify({ok:false,code:String(e?.message||e),details:e?.details||null,secrets_redacted:true}));process.exitCode=1});

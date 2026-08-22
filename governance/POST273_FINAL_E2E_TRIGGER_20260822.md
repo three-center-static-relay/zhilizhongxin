@@ -1,0 +1,1 @@
+Validation-only trigger: admin-worker and maintenance-worker v19 are deployed successfully on the current validation head. Re-run the governance cross-project post-273 fail-closed production E2E now that both dependent canaries are live. Do not merge this PR.
