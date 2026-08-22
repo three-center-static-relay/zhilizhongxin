@@ -13,6 +13,7 @@ const PROVIDER_MIN_FAILURES=3;
 const PROVIDER_MIN_TIMEOUTS=2;
 const PROVIDER_MIN_DISTINCT_MODELS=2;
 const PROVIDER_MAX_SUCCESS_RATE=0.34;
+const RUNTIME_QUARANTINE_WINDOW_MS=30*60*1000;
 
 const clean=v=>String(v??"").trim();
 const norm=v=>clean(v).toLowerCase().replace(/[_\s]+/g,"-");
@@ -31,29 +32,32 @@ function rowsOf(p){const d=p?.result??p?.data??p;return Array.isArray(d)?d:Array
 function metadataOf(v){if(v&&typeof v==="object")return v;try{const x=JSON.parse(String(v||""));return x&&typeof x==="object"?x:{}}catch{return{}}}
 function expertMeta(m){const lane=Number(m?.lane);return Boolean(clean(m?.stage)&&clean(m?.cost_mode)&&Number.isFinite(lane)&&lane>=1&&lane<=8)}
 function terminalClient(status){return status>=400&&status<500&&![408,409,425,429].includes(status)}
+function rowCreatedAtMs(row){const raw=row?.created_at??row?.createdAt??row?.timestamp??row?.created;const t=Date.parse(String(raw??""));return Number.isFinite(t)?t:null}
 
 async function runtimeTelemetry(env,fetchImpl=fetch){
   const c=credentials(env);
   if(!c.accountId||!c.token||!c.gatewayId)return{
-    readable:false,samples:0,expertSamples:0,fallbackSteps:0,fallbackSuccesses:0,
+    readable:false,samples:0,expertSamples:0,expiredExpertSamples:0,quarantineWindowMs:RUNTIME_QUARANTINE_WINDOW_MS,fallbackSteps:0,fallbackSuccesses:0,
     quarantine:new Set(),stats:new Map(),providerQuarantine:new Set(),providerStats:new Map(),providerQuarantineDetails:[]
   };
-  const stats=new Map(),providerStats=new Map();
-  let samples=0,expertSamples=0,fallbackSteps=0,fallbackSuccesses=0;
+  const stats=new Map(),providerStats=new Map(),cutoff=Date.now()-RUNTIME_QUARANTINE_WINDOW_MS;
+  let samples=0,expertSamples=0,expiredExpertSamples=0,fallbackSteps=0,fallbackSuccesses=0;
   for(let page=1;page<=4;page++){
     const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),12000);let r,p;
     try{
       r=await fetchImpl(`${CF_API}/accounts/${encodeURIComponent(c.accountId)}/ai-gateway/gateways/${encodeURIComponent(c.gatewayId)}/logs?per_page=50&page=${page}&order_by=created_at&order_by_direction=desc`,{headers:{authorization:`Bearer ${c.token}`,accept:"application/json"},signal:ctl.signal});
       p=await r.json().catch(()=>null);
     }catch{
-      return{readable:false,samples,expertSamples,fallbackSteps,fallbackSuccesses,quarantine:new Set(),stats,providerQuarantine:new Set(),providerStats,providerQuarantineDetails:[]};
+      return{readable:false,samples,expertSamples,expiredExpertSamples,quarantineWindowMs:RUNTIME_QUARANTINE_WINDOW_MS,fallbackSteps,fallbackSuccesses,quarantine:new Set(),stats,providerQuarantine:new Set(),providerStats,providerQuarantineDetails:[]};
     }finally{clearTimeout(timer)}
-    if(!r?.ok||p?.success===false)return{readable:false,samples,expertSamples,fallbackSteps,fallbackSuccesses,quarantine:new Set(),stats,providerQuarantine:new Set(),providerStats,providerQuarantineDetails:[]};
+    if(!r?.ok||p?.success===false)return{readable:false,samples,expertSamples,expiredExpertSamples,quarantineWindowMs:RUNTIME_QUARANTINE_WINDOW_MS,fallbackSteps,fallbackSuccesses,quarantine:new Set(),stats,providerQuarantine:new Set(),providerStats,providerQuarantineDetails:[]};
     const rows=rowsOf(p);
     for(const row of rows){
       samples++;
       const meta=metadataOf(row?.metadata);
       if(!expertMeta(meta))continue;
+      const createdAt=rowCreatedAtMs(row);
+      if(createdAt!==null&&createdAt<cutoff){expiredExpertSamples++;continue}
       expertSamples++;
       const model=clean(row?.model),provider=norm(row?.provider),status=Number(row?.status_code||0),success=row?.success===true,failed=row?.success===false||status>=400,step=Number(row?.step);
       if(Number.isFinite(step)&&step>0){fallbackSteps++;if(success)fallbackSuccesses++}
@@ -85,7 +89,7 @@ async function runtimeTelemetry(env,fetchImpl=fetch){
       providerQuarantineDetails.push({provider,sample_count:s.n,success_count:s.ok,failure_count:s.fail,timeout_count:s.timeout,terminal_count:s.terminal,distinct_model_count:distinctModels,success_rate:+rate.toFixed(4),reason:timeoutFault?"CROSS_MODEL_TIMEOUT_FAULT_DOMAIN":terminalFault?"CROSS_MODEL_TERMINAL_FAULT_DOMAIN":"CROSS_MODEL_FAILURE_FAULT_DOMAIN"});
     }
   }
-  return{readable:true,samples,expertSamples,fallbackSteps,fallbackSuccesses,quarantine,stats,providerQuarantine,providerStats,providerQuarantineDetails};
+  return{readable:true,samples,expertSamples,expiredExpertSamples,quarantineWindowMs:RUNTIME_QUARANTINE_WINDOW_MS,fallbackSteps,fallbackSuccesses,quarantine,stats,providerQuarantine,providerStats,providerQuarantineDetails};
 }
 
 function routeShards(n){const out=[],count=Math.max(1,Math.min(MAX_LANES,Math.trunc(Number(n)||1)));for(let min=1;min<=count;min+=MAX_SHARD_LANES){const max=Math.min(MAX_LANES,min+1),key=`lanes-${min}-${max}`;out.push({key,name:`expert-panel-${key}-v1`,min,max})}return out}
@@ -109,12 +113,15 @@ export async function buildExpertRoutePlan(env={},fetchImpl=fetch){
   const lanes=runtimeQuarantineApplied?runtimeReselectLanes(base.lanes,routeCandidates):base.lanes;
   const routes=routeShards(lanes.length).map(s=>buildRouteShard(s,lanes)).filter(Boolean),routingFingerprint=await digest(routes.map(r=>({routeName:r.routeName,elements:r.elements})));
   const summary={...base.summary,
-    schema:"expert-route-plan-v16-provider-fault-density-quarantine",
+    schema:"expert-route-plan-v17-quarantine-half-open",
     provider_execution_policy:"ai-gateway-provider-config-plus-live-health-plus-metadata-log-model-and-provider-failure-quarantine",
     model_runtime_quarantine:true,
     provider_runtime_quarantine:true,
     provider_fault_domain_isolation:true,
     provider_fault_requires_low_success_rate:true,
+    runtime_quarantine_half_open:true,
+    runtime_quarantine_window_ms:RUNTIME_QUARANTINE_WINDOW_MS,
+    runtime_expired_expert_samples:Number(t.expiredExpertSamples||0),
     chat_completion_compat_quarantine:"privacy-safe-failure-evidence",
     runtime_lane_reselection:true,
     runtime_reselection_applied:runtimeQuarantineApplied,
@@ -126,8 +133,8 @@ export async function buildExpertRoutePlan(env={},fetchImpl=fetch){
     runtime_fallback_step_count:t.fallbackSteps,
     runtime_fallback_success_count:t.fallbackSuccesses,
     runtime_fallback_observed:t.fallbackSteps>0,
-    runtime_quarantine_reason:t.readable?(pq.size?"RECENT_EXPERT_PROVIDER_FAULT_DOMAIN":q.size?"RECENT_EXPERT_MODEL_FAILURE":"NO_REPEATED_EXPERT_MODEL_OR_PROVIDER_FAILURE"):"TELEMETRY_UNAVAILABLE",
-    runtime_quarantine_policy:"model: terminal-client>=1 OR timeout>=2 OR expert-failures>=2-and-success-rate<0.34; provider: >=2 distinct models AND success-rate<0.34 AND (timeouts>=2 OR terminal>=3 OR failures>=3)",
+    runtime_quarantine_reason:t.readable?(pq.size?"RECENT_EXPERT_PROVIDER_FAULT_DOMAIN":q.size?"RECENT_EXPERT_MODEL_FAILURE":"NO_RECENT_EXPERT_MODEL_OR_PROVIDER_FAILURE"):"TELEMETRY_UNAVAILABLE",
+    runtime_quarantine_policy:"only Expert telemetry inside the last 30 minutes can quarantine; stale failures expire into half-open eligibility. model: terminal-client>=1 OR timeout>=2 OR expert-failures>=2-and-success-rate<0.34; provider: >=2 distinct models AND success-rate<0.34 AND (timeouts>=2 OR terminal>=3 OR failures>=3)",
     telemetry_payload_read:false,
     effective_model_timeout_ms:GATEWAY_MODEL_TIMEOUT_MS,
     fallback_budget_policy:"quality<=60s-balanced<=90s-free-first<=120s-before-overhead",
@@ -144,12 +151,15 @@ export async function buildExpertRoutePlan(env={},fetchImpl=fetch){
 export async function refreshExpertRoutes(env={},fetchImpl=fetch,preparedPlan=null){
   const plan=preparedPlan||await buildExpertRoutePlan(env,fetchImpl),receipt=await refreshBaseExpertRoutes(env,fetchImpl,plan);
   return{...receipt,
-    schema:"expert-route-refresh-v16-provider-fault-density-quarantine",
+    schema:"expert-route-refresh-v17-quarantine-half-open",
     provider_execution_policy:plan.summary?.provider_execution_policy||receipt.provider_execution_policy,
     model_runtime_quarantine:true,
     provider_runtime_quarantine:true,
     provider_fault_domain_isolation:true,
     provider_fault_requires_low_success_rate:true,
+    runtime_quarantine_half_open:true,
+    runtime_quarantine_window_ms:RUNTIME_QUARANTINE_WINDOW_MS,
+    runtime_expired_expert_samples:Number(plan.summary?.runtime_expired_expert_samples||0),
     chat_completion_compat_quarantine:"privacy-safe-failure-evidence",
     runtime_lane_reselection:true,
     runtime_reselection_applied:plan.summary?.runtime_reselection_applied===true,
