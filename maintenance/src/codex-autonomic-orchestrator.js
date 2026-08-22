@@ -19,3 +19,17 @@ export function createAutonomicCodexBridge({ constitutionGate, modelResolver, re
     },
   };
 }
+
+export async function runCodexAutonomicCycle(env = {}, task = {}) {
+  const bridge = createAutonomicCodexBridge({
+    constitutionGate: env.constitutionGate,
+    modelResolver: env.modelResolver,
+    receiptWriter: env.receiptWriter,
+  });
+
+  return bridge.diagnoseAndPrepare({
+    ...task,
+    mode: 'autonomic-maintenance',
+    production_mutation: false,
+  });
+}
