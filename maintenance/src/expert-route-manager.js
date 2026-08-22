@@ -1,4 +1,5 @@
 import {buildExpertRoutePlan as buildBaseExpertRoutePlan,refreshExpertRoutes as refreshBaseExpertRoutes} from "./expert-route-manager-base.js";
+import {assertExpertRouteMutation} from "./constitution-gate.js";
 
 const CF_API="https://api.cloudflare.com/client/v4";
 const MAX_LANES=8;
@@ -151,9 +152,13 @@ export async function buildExpertRoutePlan(env={},fetchImpl=fetch){
 }
 
 export async function refreshExpertRoutes(env={},fetchImpl=fetch,preparedPlan=null){
-  const plan=preparedPlan||await buildExpertRoutePlan(env,fetchImpl),receipt=await refreshBaseExpertRoutes(env,fetchImpl,plan);
+  const plan=preparedPlan||await buildExpertRoutePlan(env,fetchImpl);
+  const constitution=assertExpertRouteMutation(plan);
+  const receipt=await refreshBaseExpertRoutes(env,fetchImpl,plan);
   return{...receipt,
     schema:"expert-route-refresh-v18-subrequest-budget",
+    constitution_gate:constitution,
+    constitution_gate_pass:constitution.ok===true,
     provider_execution_policy:plan.summary?.provider_execution_policy||receipt.provider_execution_policy,
     model_runtime_quarantine:true,
     provider_runtime_quarantine:true,

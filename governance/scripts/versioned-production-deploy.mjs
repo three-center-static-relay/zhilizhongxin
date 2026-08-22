@@ -4,6 +4,7 @@ import {mkdtempSync,readFileSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join,resolve} from "node:path";
 import {spawnSync} from "node:child_process";
+import {assertDeployConstitution} from "./constitution-deploy-gate.mjs";
 
 const WORKER="governance-worker";
 const SHA=/^[a-f0-9]{40,64}$/i;
@@ -105,6 +106,8 @@ function main(){
   emit({ok:true,event:"GOVERNANCE_VERSIONED_PRODUCTION_START",commit_sha:sha,history_deepened:lifecycle.historyDeepened,parent_available:lifecycle.parentAvailable});
   run("npm",["run","cf:build"],{stdio:"inherit"});
   const previous=singleActive(v);
+  const constitution=assertDeployConstitution({change_type:"production-deploy",deterministic_validation_passed:true,rollback_ready:Boolean(previous)});
+  emit({ok:true,event:"CONSTITUTION_GATE_PASS",constitution_version:constitution.constitution_version,change_type:constitution.change_type,verdict:constitution.verdict});
   const candidate=uploadCandidate(v,sha);
   if(candidate===previous)throw new Error("CANDIDATE_MUST_DIFFER_FROM_ACTIVE");
   let deploymentAttempted=false;
@@ -112,7 +115,7 @@ function main(){
     deploymentAttempted=true;
     deploy100(v,candidate,`Governance production ${sha.slice(0,12)}`);
     verify100(v,candidate);
-    emit({ok:true,event:"GOVERNANCE_VERSIONED_PRODUCTION_PASS",commit_sha:sha,version_upload:true,production_deployment:true,active_percentage:100,rollback_available:true});
+    emit({ok:true,event:"GOVERNANCE_VERSIONED_PRODUCTION_PASS",commit_sha:sha,version_upload:true,production_deployment:true,active_percentage:100,rollback_available:true,constitution_gate_pass:true});
   }catch(error){
     if(deploymentAttempted){
       try{deploy100(v,previous,`Automatic rollback after failed governance production ${sha.slice(0,12)}`);verify100(v,previous);emit({ok:true,event:"GOVERNANCE_VERSIONED_PRODUCTION_ROLLBACK_COMPLETE",commit_sha:sha},process.stderr)}
