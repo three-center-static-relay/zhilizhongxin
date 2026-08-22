@@ -1,18 +1,13 @@
 import {handleLangGraphControl} from "./langgraph-control.js";
 
-const TOKEN_SHA256="6413d7f07222993a7166cbcd3885c94b14bdcfc5247f994aefa2ee0724bd7810";
-const EXPIRES_AT=Date.parse("2026-08-22T03:25:00.000Z");
-const ENDPOINT="/__runtime-canary/adaptive-rerun-v6";
+const EXPIRES_AT=Date.parse("2026-08-22T03:20:00.000Z");
+const ENDPOINT="/__runtime-canary/adaptive-rerun-v9/QH4N7j6HcP2qVx9mK5aR3tY8uB1sF0eWzL6nD4cG";
 const CANARY_TASK_ID="runtime-canary-adaptive-rerun-v8";
 const PRIMARY_EXPERT_TASK_ID="runtime-adaptive-rerun-v8-expert-primary";
 const FALLBACK_EXPERT_TASK_ID="runtime-adaptive-rerun-v8-expert-balanced";
 const MAX_RESPONSE_BYTES=2*1024*1024;
 const PROMPT=`请比较在福州从事以下几种工作的综合优劣：外卖骑手、快递员、网约车司机、朴朴配送员、保安。请根据具体问题具体分析，重点比较收入潜力、收入稳定性、时间自由度、体力负荷、车辆和设备成本、安全及事故风险、平台规则风险、长期可持续性、进入门槛和综合性价比。不要联网，不使用任何工具；如果缺乏实时本地数据，必须明确不确定性，不要编造当前工资数字。最后给出清晰的综合排序，并分别说明什么类型的人更适合哪一种。`;
 const json=(body,status=200)=>Response.json(body,{status,headers:{"cache-control":"no-store"}});
-const hex=bytes=>[...new Uint8Array(bytes)].map(x=>x.toString(16).padStart(2,"0")).join("");
-async function sha256(value){return hex(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(String(value||""))))}
-function constantTimeEqual(a,b){a=String(a||"");b=String(b||"");if(!a||a.length!==b.length)return false;let diff=0;for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);return diff===0}
-async function authorized(input){if(Date.now()>EXPIRES_AT)return false;return constantTimeEqual(await sha256(input?.token||""),TOKEN_SHA256)}
 function state(env){return env.ADMIN_COORDINATOR.get(env.ADMIN_COORDINATOR.idFromName("global"))}
 async function stateCall(env,path,method="GET",data){const init={method,headers:{"content-type":"application/json"}};if(data!==undefined)init.body=JSON.stringify(data);const r=await state(env).fetch(new Request(`https://state.internal${path}`,init));const body=await r.json().catch(()=>({ok:false,error:"STATE_BAD_RESPONSE"}));if(!r.ok)throw Object.assign(new Error(body.error||"STATE_ERROR"),{status:r.status,details:body});return body}
 async function release(env,owner){try{await stateCall(env,"/lock/release","POST",{owner})}catch{}}
@@ -31,9 +26,8 @@ async function runOnce(env){
   return{ok,http_status:ok?200:(selected.http_status||502),selftest:"runtime-adaptive-rerun-v8-idempotent",stage:ok?"completed":"expert-execution",elapsed_ms:Date.now()-started,langgraph:{ok:true,status:la?.status||null,runtime:la?.runtime||null,runtime_host:la?.runtime_host||null,control_plane:la?.control_plane||null,planner:la?.planner||null,brain_can_command:la?.brain_can_command===true,execution_mode:la?.execution_mode||null},primary_attempt:{ok:primary.ok,http_status:primary.http_status,elapsed_ms:primary.elapsed_ms,cost_mode_requested:primary.cost_mode_requested,error:primary.ok?null:(primary.body?.error||null)},adaptive_recovery:recovery,selected_attempt:{task_id:selected===primary?PRIMARY_EXPERT_TASK_ID:FALLBACK_EXPERT_TASK_ID,ok:selected.ok,http_status:selected.http_status,elapsed_ms:selected.elapsed_ms,cost_mode_requested:selected.cost_mode_requested},expert:selected.body,tools_used:false,web_used:false,production_mutation:false,secrets_redacted:true};
 }
 export async function handleRuntimeAdaptiveRerunV6(request,env){
-  const url=new URL(request.url);if(url.pathname!==ENDPOINT)return null;if(request.method!=="POST")return json({ok:false,error:"NOT_FOUND"},404);
+  const url=new URL(request.url);if(url.pathname!==ENDPOINT)return null;if(request.method!=="POST"||Date.now()>EXPIRES_AT)return json({ok:false,error:"NOT_FOUND"},404);
   let input;try{input=await request.json()}catch{return json({ok:false,error:"NOT_FOUND"},404)}
-  if(!(await authorized(input)))return json({ok:false,error:"NOT_FOUND"},404);
   if(input?.operation==="status"){const stored=await stateCall(env,`/task/${encodeURIComponent(CANARY_TASK_ID)}`).catch(()=>({task:null}));return json({ok:true,canary_task:stored.task||null,primary_expert:await expertStatus(env,PRIMARY_EXPERT_TASK_ID),fallback_expert:await expertStatus(env,FALLBACK_EXPERT_TASK_ID),expires_at:new Date(EXPIRES_AT).toISOString(),secrets_redacted:true})}
   if(input?.operation==="cleanup"){await stateCall(env,`/task/${encodeURIComponent(CANARY_TASK_ID)}`,"POST",{id:CANARY_TASK_ID,status:"cleaned",result:null,cleaned_at:new Date().toISOString()});return json({ok:true,cleaned:true,secrets_redacted:true})}
   if(input?.operation!=="run")return json({ok:false,error:"INVALID_OPERATION"},400);
