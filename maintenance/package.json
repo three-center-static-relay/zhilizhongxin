@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Maintenance Worker participating in shared fail-closed Cloudflare gate validation; infrastructure deploy is independent from Expert Phase2 promotion",
   "scripts": {
-    "cf:build": "node --check src/expert-route-manager.js",
+    "cf:build": "node --check src/expert-route-manager.js && node tests/expert-route-shard-contract.mjs",
     "cf:ci:preview": "node ../scripts/cloudflare-worker-gate.mjs maintenance preview",
     "cf:ci:deploy": "npm run cf:build && npx wrangler deploy && node ../scripts/autonomic-expert-recovery-v20.mjs",
     "cf:ci:expert-phase2": "node scripts/runtime-expert-phase2-deploy-gate.mjs",
