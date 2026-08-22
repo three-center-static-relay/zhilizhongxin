@@ -9,6 +9,13 @@ const openapi=await readFile(new URL("../openapi.json",import.meta.url),"utf8");
 
 assert.match(control,/https:\/\/governance\.internal\/v1\/evolution\/internal-plan/);
 assert.match(control,/https:\/\/expert\.internal\/v1\/langgraph\/run/);
+assert.match(control,/brain-advisory/);
+assert.match(control,/boundedBrainAdvisory/);
+assert.match(control,/untrusted_advisory:true/);
+assert.match(control,/brain_source/);
+assert.match(control,/brain_model_invoked/);
+assert.match(control,/brain_advisory_applied/);
+assert.match(control,/model-advisory-governance-validated-bounded-service-binding-dispatch/);
 assert.match(control,/supervisor-validate/);
 assert.match(control,/https:\/\/expert\.internal\/v1\/selftest/);
 assert.match(control,/langgraph-system-command-v1/);
